@@ -1,11 +1,15 @@
 /**
  * OpenHands Integration API
  * Autonomous AI Development Framework Integration
+ * 
+ * Supports both real Docker integration and mock simulation
+ * Set USE_REAL_OPENHANDS=true in environment to use real Docker API
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { getOpenHandsClient, OpenHandsTask } from './real-integration';
 
 interface OpenHandsRequest {
-  action: 'create_project' | 'enhance_code' | 'debug_project' | 'optimize_performance';
+  action: 'create_project' | 'enhance_code' | 'debug_project' | 'optimize_performance' | 'custom';
   projectId?: string;
   codebase?: {
     files: Array<{ path: string; content: string }>;
@@ -14,6 +18,7 @@ interface OpenHandsRequest {
   };
   requirements?: string;
   enhancement_goals?: string[];
+  custom_instruction?: string;
 }
 
 interface OpenHandsResponse {
@@ -27,24 +32,112 @@ interface OpenHandsResponse {
     debug_fixes?: Array<{ issue: string; fix: string; file: string; line: number }>;
   };
   logs?: string[];
+  metrics?: {
+    stepsUsed: number;
+    timeElapsed: number;
+    tokensUsed?: number;
+  };
   error?: string;
 }
 
-// Simulate OpenHands autonomous development process
+// Check if we should use real implementation
+const USE_REAL_OPENHANDS = process.env.USE_REAL_OPENHANDS === 'true' || 
+                           process.env.ENABLE_OPENHANDS_INTEGRATION === 'true';
+
+/**
+ * Execute task using real OpenHands Docker integration
+ */
+async function executeRealOpenHands(request: OpenHandsRequest): Promise<OpenHandsResponse> {
+  const client = getOpenHandsClient({
+    model: process.env.OPENHANDS_MODEL || 'gpt-4o',
+    maxSteps: parseInt(process.env.OPENHANDS_MAX_STEPS || '50', 10),
+  });
+
+  // Build instruction based on action
+  let instruction = '';
+  const files: Array<{ path: string; content: string }> = [];
+
+  switch (request.action) {
+    case 'create_project':
+      instruction = `Create a new ${request.codebase?.framework || 'React'} project with the following requirements:\n${request.requirements || 'Modern web application'}\n\nUse best practices and include proper TypeScript types, error handling, and testing setup.`;
+      break;
+
+    case 'enhance_code':
+      instruction = `Enhance the following codebase:\n\nFramework: ${request.codebase?.framework}\nLanguage: ${request.codebase?.language}\n\nGoals:\n${request.enhancement_goals?.map((g, i) => `${i + 1}. ${g}`).join('\n')}\n\nPlease improve code quality, performance, and maintainability.`;
+      if (request.codebase?.files) {
+        files.push(...request.codebase.files);
+      }
+      break;
+
+    case 'debug_project':
+      instruction = `Debug the following project and fix all issues:\n\nFramework: ${request.codebase?.framework}\n\nPlease identify and fix:\n1. Memory leaks\n2. Unhandled errors\n3. Performance issues\n4. Security vulnerabilities\n5. Accessibility issues`;
+      if (request.codebase?.files) {
+        files.push(...request.codebase.files);
+      }
+      break;
+
+    case 'optimize_performance':
+      instruction = `Optimize performance of the following project:\n\nFramework: ${request.codebase?.framework}\n\nFocus on:\n1. Bundle size reduction\n2. Loading time improvements\n3. Runtime performance\n4. Memory usage optimization\n5. Core Web Vitals`;
+      if (request.codebase?.files) {
+        files.push(...request.codebase.files);
+      }
+      break;
+
+    case 'custom':
+      instruction = request.custom_instruction || 'Please analyze and improve this code';
+      if (request.codebase?.files) {
+        files.push(...request.codebase.files);
+      }
+      break;
+  }
+
+  const task: OpenHandsTask = {
+    instruction,
+    files,
+    workingDirectory: '/workspace',
+  };
+
+  try {
+    const result = await client.execute(task, process.env.OPENAI_API_KEY);
+
+    // Map result to our response format
+    const response: OpenHandsResponse = {
+      success: result.success,
+      sessionId: result.sessionId,
+      status: result.success ? 'completed' : 'error',
+      result: {
+        enhanced_files: result.files?.map(f => ({
+          path: f.path,
+          content: f.content,
+          changes: ['Enhanced by OpenHands AI'],
+        })),
+      },
+      logs: result.logs,
+      metrics: result.metrics,
+      error: result.error,
+    };
+
+    return response;
+  } catch (error) {
+    return {
+      success: false,
+      sessionId: `error_${Date.now()}`,
+      status: 'error',
+      error: error instanceof Error ? error.message : 'Unknown error',
+      logs: ['Failed to execute OpenHands task'],
+    };
+  }
+}
+
+/**
+ * Simulate OpenHands for development/testing
+ */
 async function simulateOpenHandsProcess(request: OpenHandsRequest): Promise<OpenHandsResponse> {
   const sessionId = `openhands_${Date.now()}_${Math.random().toString(36).substring(7)}`;
   
-  // Simulate processing time based on action complexity
-  const processingTimes = {
-    create_project: 15000,
-    enhance_code: 10000, 
-    debug_project: 12000,
-    optimize_performance: 8000
-  };
+  // Simulate processing time
+  await new Promise(resolve => setTimeout(resolve, 1000));
   
-  const delay = processingTimes[request.action] || 10000;
-  
-  // In a real implementation, this would interface with actual OpenHands API
   switch (request.action) {
     case 'create_project':
       return {
@@ -54,44 +147,38 @@ async function simulateOpenHandsProcess(request: OpenHandsRequest): Promise<Open
         result: {
           enhanced_files: [
             {
-              path: 'src/components/AIGeneratedComponent.tsx',
-              content: generateEnhancedComponent(request.requirements || ''),
-              changes: ['Added AI-powered component', 'Implemented modern hooks', 'Added TypeScript types']
+              path: 'src/App.tsx',
+              content: generateAppComponent(request.requirements || ''),
+              changes: ['Created main application component', 'Added TypeScript types', 'Implemented routing'],
             },
             {
-              path: 'src/hooks/useAIEnhancements.ts',
-              content: generateAIHook(),
-              changes: ['Custom hook for AI features', 'Memoized performance', 'Error boundary integration']
-            }
+              path: 'src/components/Header.tsx',
+              content: generateHeaderComponent(),
+              changes: ['Created header component', 'Added responsive design'],
+            },
           ],
           suggestions: [
             {
               type: 'architecture',
-              description: 'Implement micro-frontend architecture for scalability',
-              implementation: 'Use module federation with Webpack 5 for better code splitting'
+              description: 'Consider implementing state management',
+              implementation: 'Use Redux or Zustand for global state',
             },
             {
               type: 'performance',
-              description: 'Add service worker for offline functionality',
-              implementation: 'Implement PWA features with Workbox for caching strategies'
+              description: 'Add code splitting',
+              implementation: 'Implement React.lazy() for route-based splitting',
             },
-            {
-              type: 'security',
-              description: 'Implement Content Security Policy headers',
-              implementation: 'Add CSP middleware to prevent XSS attacks'
-            }
-          ]
+          ],
         },
         logs: [
-          'Initializing OpenHands autonomous development session...',
-          'Analyzing project requirements...',
-          'Generating component architecture...',
-          'Implementing best practices...',
-          'Optimizing for performance...',
-          'Adding security enhancements...',
-          'Finalizing code generation...',
-          'Session completed successfully!'
-        ]
+          '[Mock] Initializing project creation...',
+          '[Mock] Generating component structure...',
+          '[Mock] Project created successfully!',
+        ],
+        metrics: {
+          stepsUsed: 12,
+          timeElapsed: 1000,
+        },
       };
 
     case 'enhance_code':
@@ -102,30 +189,22 @@ async function simulateOpenHandsProcess(request: OpenHandsRequest): Promise<Open
         result: {
           enhanced_files: request.codebase?.files.map(file => ({
             path: file.path,
-            content: enhanceExistingCode(file.content, file.path),
-            changes: getEnhancementChanges(file.path)
+            content: file.content,
+            changes: ['Added error handling', 'Optimized performance', 'Improved TypeScript types'],
           })) || [],
           suggestions: [
             {
               type: 'refactoring',
-              description: 'Extract reusable utility functions',
-              implementation: 'Create shared utils library for common operations'
+              description: 'Extract reusable components',
+              implementation: 'Create shared component library',
             },
-            {
-              type: 'testing',
-              description: 'Add comprehensive test coverage',
-              implementation: 'Implement unit tests with Jest and React Testing Library'
-            }
-          ]
+          ],
         },
-        logs: [
-          'Analyzing existing codebase...',
-          'Identifying enhancement opportunities...',
-          'Applying code improvements...',
-          'Optimizing component structure...',
-          'Adding modern React patterns...',
-          'Enhancement complete!'
-        ]
+        logs: ['[Mock] Analyzing codebase...', '[Mock] Enhancement complete!'],
+        metrics: {
+          stepsUsed: 8,
+          timeElapsed: 1000,
+        },
       };
 
     case 'debug_project':
@@ -136,247 +215,78 @@ async function simulateOpenHandsProcess(request: OpenHandsRequest): Promise<Open
         result: {
           debug_fixes: [
             {
-              issue: 'Memory leak in useEffect hook',
-              fix: 'Added cleanup function to prevent memory leaks',
+              issue: 'Memory leak in useEffect',
+              fix: 'Added cleanup function',
               file: 'src/components/DataFetcher.tsx',
-              line: 23
+              line: 23,
             },
-            {
-              issue: 'Unhandled promise rejection',
-              fix: 'Added proper error handling with try-catch',
-              file: 'src/api/fetchData.ts', 
-              line: 15
-            },
-            {
-              issue: 'Accessibility violations',
-              fix: 'Added proper ARIA labels and keyboard navigation',
-              file: 'src/components/Modal.tsx',
-              line: 45
-            }
           ],
-          suggestions: [
-            {
-              type: 'monitoring',
-              description: 'Add error tracking integration',
-              implementation: 'Integrate Sentry for real-time error monitoring'
-            }
-          ]
         },
-        logs: [
-          'Starting debug analysis...',
-          'Scanning for common issues...',
-          'Analyzing memory usage patterns...',
-          'Checking error handling...',
-          'Validating accessibility...',
-          'Debug session completed!'
-        ]
-      };
-
-    case 'optimize_performance':
-      return {
-        success: true,
-        sessionId,
-        status: 'completed',
-        result: {
-          performance_improvements: [
-            {
-              metric: 'Bundle Size',
-              improvement: 'Reduced by 35% through code splitting',
-              code_change: 'Implemented React.lazy() for route-based splitting'
-            },
-            {
-              metric: 'First Contentful Paint',
-              improvement: 'Improved by 40% with image optimization',
-              code_change: 'Added next/image with proper sizing and formats'
-            },
-            {
-              metric: 'Lighthouse Score',
-              improvement: 'Increased from 78 to 94',
-              code_change: 'Optimized Core Web Vitals metrics'
-            }
-          ],
-          suggestions: [
-            {
-              type: 'caching',
-              description: 'Implement intelligent caching strategies',
-              implementation: 'Add Redis for API response caching'
-            },
-            {
-              type: 'cdn',
-              description: 'Use CDN for static assets',
-              implementation: 'Configure Cloudflare for global asset delivery'
-            }
-          ]
+        logs: ['[Mock] Debugging project...', '[Mock] Fixes applied!'],
+        metrics: {
+          stepsUsed: 10,
+          timeElapsed: 1000,
         },
-        logs: [
-          'Analyzing performance metrics...',
-          'Identifying bottlenecks...',
-          'Optimizing bundle size...',
-          'Improving loading times...',
-          'Implementing caching strategies...',
-          'Performance optimization completed!'
-        ]
       };
 
     default:
       return {
-        success: false,
+        success: true,
         sessionId,
-        status: 'error',
-        error: 'Unknown action type'
+        status: 'completed',
+        logs: ['[Mock] Task completed'],
+        metrics: {
+          stepsUsed: 5,
+          timeElapsed: 1000,
+        },
       };
   }
 }
 
-function generateEnhancedComponent(requirements: string): string {
-  return `import React, { useState, useEffect, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useAIEnhancements } from '../hooks/useAIEnhancements';
+function generateAppComponent(requirements: string): string {
+  return `import React from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import Header from './components/Header';
 
-interface AIGeneratedComponentProps {
-  data?: any[];
-  onUpdate?: (data: any) => void;
-  theme?: 'light' | 'dark';
-}
-
-export default function AIGeneratedComponent({ 
-  data = [], 
-  onUpdate,
-  theme = 'dark' 
-}: AIGeneratedComponentProps) {
-  const [isLoading, setIsLoading] = useState(false);
-  const { enhanceData, optimizePerformance } = useAIEnhancements();
-  
-  const processedData = useMemo(() => {
-    return enhanceData(data);
-  }, [data, enhanceData]);
-
-  useEffect(() => {
-    optimizePerformance();
-  }, [optimizePerformance]);
-
+export default function App() {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className={\`p-6 rounded-lg shadow-lg \${
-        theme === 'dark' ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'
-      }\`}
-    >
-      <h2 className="text-2xl font-bold mb-4">AI Enhanced Component</h2>
-      <p className="mb-4">
-        Requirements: ${requirements}
-      </p>
-      
-      <AnimatePresence>
-        {isLoading ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="flex items-center justify-center py-8"
-          >
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
-          </motion.div>
-        ) : (
-          <div className="grid gap-4">
-            {processedData.map((item, index) => (
-              <motion.div
-                key={index}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.1 }}
-                className="p-4 bg-blue-500/10 rounded border border-blue-500/20"
-              >
-                {JSON.stringify(item, null, 2)}
-              </motion.div>
-            ))}
-          </div>
-        )}
-      </AnimatePresence>
-    </motion.div>
+    <BrowserRouter>
+      <div className="min-h-screen bg-gray-50">
+        <Header />
+        <main className="container mx-auto px-4 py-8">
+          <h1 className="text-3xl font-bold mb-4">
+            ${requirements || 'Welcome to Your App'}
+          </h1>
+        </main>
+      </div>
+    </BrowserRouter>
   );
 }`;
 }
 
-function generateAIHook(): string {
-  return `import { useCallback, useMemo } from 'react';
+function generateHeaderComponent(): string {
+  return `import React from 'react';
+import { Link } from 'react-router-dom';
 
-export function useAIEnhancements() {
-  const enhanceData = useCallback((data: any[]) => {
-    // AI-powered data enhancement logic
-    return data.map(item => ({
-      ...item,
-      enhanced: true,
-      aiScore: Math.random() * 100,
-      recommendations: generateRecommendations(item)
-    }));
-  }, []);
-
-  const optimizePerformance = useCallback(() => {
-    // Performance optimization logic
-    if ('requestIdleCallback' in window) {
-      requestIdleCallback(() => {
-        // Perform non-critical optimizations during idle time
-        console.log('AI: Optimizing during idle time');
-      });
-    }
-  }, []);
-
-  const generateRecommendations = useCallback((item: any) => {
-    // AI recommendation generation
-    return [
-      'Optimize for mobile performance',
-      'Add accessibility features',
-      'Implement caching strategy'
-    ];
-  }, []);
-
-  return useMemo(() => ({
-    enhanceData,
-    optimizePerformance,
-    generateRecommendations
-  }), [enhanceData, optimizePerformance, generateRecommendations]);
+export default function Header() {
+  return (
+    <header className="bg-white shadow-sm">
+      <nav className="container mx-auto px-4 py-4 flex items-center justify-between">
+        <Link to="/" className="text-xl font-bold text-blue-600">
+          App Name
+        </Link>
+        <div className="flex gap-4">
+          <Link to="/about" className="text-gray-600 hover:text-gray-900">
+            About
+          </Link>
+          <Link to="/contact" className="text-gray-600 hover:text-gray-900">
+            Contact
+          </Link>
+        </div>
+      </nav>
+    </header>
+  );
 }`;
-}
-
-function enhanceExistingCode(content: string, filePath: string): string {
-  // Simulate code enhancement based on file type
-  if (filePath.endsWith('.tsx') || filePath.endsWith('.jsx')) {
-    return content.replace(
-      /function\s+(\w+)/g, 
-      'const $1 = React.memo(function $1'
-    ).replace(
-      /export default function/g,
-      'export default React.memo(function'
-    );
-  }
-  
-  if (filePath.endsWith('.ts') || filePath.endsWith('.js')) {
-    return `// Enhanced by OpenHands AI\n${content}\n\n// AI-generated performance optimizations\nexport const memoizedFunctions = new Map();`;
-  }
-  
-  return content;
-}
-
-function getEnhancementChanges(filePath: string): string[] {
-  const changes = [
-    'Added React.memo for performance optimization',
-    'Implemented proper TypeScript types',
-    'Added error boundary integration',
-    'Optimized re-render patterns'
-  ];
-  
-  if (filePath.includes('component')) {
-    changes.push('Enhanced component lifecycle management');
-  }
-  
-  if (filePath.includes('hook')) {
-    changes.push('Improved hook dependency management');
-  }
-  
-  return changes;
 }
 
 export async function POST(req: NextRequest) {
@@ -390,8 +300,10 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    // Simulate OpenHands processing
-    const result = await simulateOpenHandsProcess(body);
+    // Use real or mock implementation based on environment
+    const result = USE_REAL_OPENHANDS
+      ? await executeRealOpenHands(body)
+      : await simulateOpenHandsProcess(body);
     
     return NextResponse.json(result);
 
@@ -416,11 +328,12 @@ export async function GET(req: NextRequest) {
     }, { status: 400 });
   }
 
-  // Simulate session status check
+  // Return status information
   return NextResponse.json({
     success: true,
     sessionId,
     status: 'completed',
+    mode: USE_REAL_OPENHANDS ? 'real' : 'mock',
     capabilities: [
       'Autonomous code generation',
       'Intelligent debugging', 
@@ -428,6 +341,11 @@ export async function GET(req: NextRequest) {
       'Security enhancement',
       'Architecture recommendations',
       'Best practices implementation'
-    ]
+    ],
+    config: {
+      dockerEnabled: USE_REAL_OPENHANDS,
+      model: process.env.OPENHANDS_MODEL || 'gpt-4o',
+      maxSteps: process.env.OPENHANDS_MAX_STEPS || '50',
+    }
   });
 }

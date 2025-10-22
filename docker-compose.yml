@@ -1,0 +1,110 @@
+version: '3.8'
+
+services:
+  # Qdrant Vector Database
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: ecosyz_qdrant
+    ports:
+      - "6333:6333"  # HTTP API
+      - "6334:6334"  # gRPC API
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    restart: unless-stopped
+    networks:
+      - ecosyz-network
+
+  # Neo4j Community Edition (Graph Database)
+  neo4j:
+    image: neo4j:5.15-community
+    container_name: ecosyz_neo4j
+    ports:
+      - "7474:7474"  # HTTP
+      - "7687:7687"  # Bolt
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    environment:
+      - NEO4J_AUTH=neo4j/password123  # Change in production
+      - NEO4J_PLUGINS=["graph-data-science", "apoc"]
+      - NEO4J_dbms_security_procedures_unrestricted=gds.*,apoc.*
+      - NEO4J_dbms_memory_heap_initial__size=512m
+      - NEO4J_dbms_memory_heap_max__size=2G
+    restart: unless-stopped
+    networks:
+      - ecosyz-network
+
+  # MeiliSearch (Fast Search Engine)
+  meilisearch:
+    image: getmeili/meilisearch:latest
+    container_name: ecosyz_meilisearch
+    ports:
+      - "7700:7700"
+    volumes:
+      - meilisearch_data:/meili_data
+    environment:
+      - MEILI_ENV=development
+      - MEILI_MASTER_KEY=masterKey123  # Change in production
+    restart: unless-stopped
+    networks:
+      - ecosyz-network
+
+  # Redis (Caching & Real-time)
+  redis:
+    image: redis:7-alpine
+    container_name: ecosyz_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    networks:
+      - ecosyz-network
+
+  # Optional: Redis Commander (Redis GUI)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: ecosyz_redis_commander
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - ecosyz-network
+
+  # Optional: Qdrant Dashboard (if needed)
+  # qdrant-dashboard:
+  #   image: qdrant/qdrant-dashboard:latest
+  #   container_name: ecosyz_qdrant_dashboard
+  #   ports:
+  #     - "8082:80"
+  #   environment:
+  #     - QDRANT_URL=http://qdrant:6333
+  #   depends_on:
+  #     - qdrant
+  #   restart: unless-stopped
+  #   networks:
+  #     - ecosyz-network
+
+volumes:
+  qdrant_storage:
+    driver: local
+  neo4j_data:
+    driver: local
+  neo4j_logs:
+    driver: local
+  meilisearch_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  ecosyz-network:
+    driver: bridge
+
