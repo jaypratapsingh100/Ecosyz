@@ -1,301 +1,58 @@
-@import 'tailwindcss';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 @import '@fortawesome/fontawesome-free/css/all.min.css';
 
-.gradient-text {
-  background: linear-gradient(90deg, #10ff8b, #2fd0ff 60%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-.bg-neon-green {
-  background: #10ff8b;
-}
-.bg-neon-blue {
-  background: #2fd0ff;
-}
-.text-neon-green {
-  color: #10ff8b;
-}
-.border-neon-green {
-  border-color: #10ff8b;
-}
-.drop-shadow-neon {
-  filter: drop-shadow(0 0 8px #10ff8b);
-}
-
-/* --- Neon Color Palette & Utility Classes --- */
+/* ========================================
+   CSS CUSTOM PROPERTIES (Design Tokens)
+   ======================================== */
 :root {
-  /* Light mode defaults */
+  /* Background Colors */
   --background: #f9fafb;
   --foreground: #15171a;
   --dark-bg: #0d0f11;
   --dark-secondary: #15171a;
   --dark-card: #1b1d21;
+
+  /* Neon Color Palette */
   --neon-green: #39ff14;
   --neon-blue: #38bdf8;
   --neon-purple: #a78bfa;
   --neon-cyan: #0ff0fc;
+
+  /* Neon Shadows */
   --shadow-neon-green: 0 0 16px #39ff14a0;
   --shadow-neon-blue: 0 0 16px #38bdf880;
   --shadow-neon-cyan: 0 0 16px #0ff0fc90;
   --shadow-neon-purple: 0 0 16px #a78bfa70;
+
+  /* Typography */
   --font-sans: 'Geist', 'Inter', 'Segoe UI', Arial, Helvetica, sans-serif;
   --font-mono: 'Fira Mono', 'Geist Mono', monospace;
 }
 
-/* --- Dark Mode --- */
+/* Dark Mode Color Scheme */
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0d0f11;
     --foreground: #ededed;
-    --dark-bg: #0d0f11;
-    --dark-secondary: #15171a;
-    --dark-card: #1b1d21;
-    --neon-green: #39ff14;
-    --neon-blue: #38bdf8;
-    --neon-purple: #a78bfa;
-    --neon-cyan: #0ff0fc;
-    --shadow-neon-green: 0 0 16px #39ff14a0;
-    --shadow-neon-blue: 0 0 16px #38bdf880;
-    --shadow-neon-cyan: 0 0 16px #0ff0fc90;
-    --shadow-neon-purple: 0 0 16px #a78bfa70;
   }
 }
 
 .dark {
   --background: #0d0f11;
   --foreground: #ededed;
-  --dark-bg: #0d0f11;
-  --dark-secondary: #15171a;
-  --dark-card: #1b1d21;
-  --neon-green: #39ff14;
-  --neon-blue: #38bdf8;
-  --neon-purple: #a78bfa;
-  --neon-cyan: #0ff0fc;
-  --shadow-neon-green: 0 0 16px #39ff14a0;
-  --shadow-neon-blue: 0 0 16px #38bdf880;
-  --shadow-neon-cyan: 0 0 16px #0ff0fc90;
-  --shadow-neon-purple: 0 0 16px #a78bfa70;
 }
 
-/* --- Base Typography and Background --- */
+/* ========================================
+   BASE STYLES
+   ======================================== */
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
   letter-spacing: 0.01em;
-}
-
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
-  font-family: var(--font-sans);
-  font-weight: 700;
-  letter-spacing: 0.015em;
-}
-
-a {
-  transition: color 0.2s;
-}
-
-/* --- Neon Text and BG Utilities --- */
-.text-neon-green {
-  color: var(--neon-green) !important;
-}
-.text-neon-blue {
-  color: var(--neon-blue) !important;
-}
-.text-neon-purple {
-  color: var(--neon-purple) !important;
-}
-.text-neon-cyan {
-  color: var(--neon-cyan) !important;
-}
-.bg-neon-green {
-  background: var(--neon-green) !important;
-}
-.bg-neon-blue {
-  background: var(--neon-blue) !important;
-}
-.bg-neon-purple {
-  background: var(--neon-purple) !important;
-}
-.bg-dark {
-  background: var(--dark-bg) !important;
-}
-.bg-dark-secondary {
-  background: var(--dark-secondary) !important;
-}
-.bg-dark-card {
-  background: var(--dark-card) !important;
-}
-.border-neon-green {
-  border-color: var(--neon-green) !important;
-}
-.border-neon-blue {
-  border-color: var(--neon-blue) !important;
-}
-
-/* --- Neon Shadows and Glows --- */
-.shadow-neon-green {
-  box-shadow: var(--shadow-neon-green) !important;
-}
-.shadow-neon-blue {
-  box-shadow: var(--shadow-neon-blue) !important;
-}
-.shadow-neon-cyan {
-  box-shadow: var(--shadow-neon-cyan) !important;
-}
-.shadow-neon-purple {
-  box-shadow: var(--shadow-neon-purple) !important;
-}
-.drop-shadow-neon {
-  filter: drop-shadow(0 0 10px #12ffb880) drop-shadow(0 0 22px #39ff14cc);
-}
-.text-glow {
-  text-shadow:
-    0 0 8px #38ffc1,
-    0 0 24px #12ffb8;
-}
-
-/* --- Neon Gradient Text Effect --- */
-.gradient-text {
-  background: linear-gradient(
-    90deg,
-    var(--neon-green),
-    var(--neon-blue),
-    var(--neon-purple)
-  );
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  filter: brightness(1.15);
-}
-
-/* --- Neon Glow Animation --- */
-.animate-glow {
-  animation: neonGlow 2.8s infinite alternate;
-}
-@keyframes neonGlow {
-  from {
-    text-shadow:
-      0 0 8px #38ffc1,
-      0 0 20px #10ffbb;
-  }
-  to {
-    text-shadow:
-      0 0 16px #3fffc7,
-      0 0 36px #14ffc9;
-  }
-}
-
-/* --- Feature Card with Neon Border --- */
-.feature-card {
-  background: var(--dark-secondary);
-  border: 1.5px solid var(--neon-green);
-  border-radius: 1.25rem;
-  transition:
-    box-shadow 0.3s,
-    transform 0.2s;
-}
-.feature-card:hover {
-  transform: translateY(-6px) scale(1.03);
-  box-shadow:
-    0 0 20px 2px var(--neon-green),
-    0 24px 34px -12px #0008;
-}
-
-/* --- Icon Container for Neon Cards --- */
-.icon-neon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 9999px;
-  width: 3rem;
-  height: 3rem;
-  background: linear-gradient(135deg, var(--neon-green), var(--neon-blue));
-  box-shadow: 0 0 14px 0 var(--neon-green);
-  color: #0f172a;
-  font-size: 1.5rem;
-}
-
-/* --- Floating Animation for Images/Objects --- */
-.animate-float {
-  animation: float 6s ease-in-out infinite;
-}
-@keyframes float {
-  0% {
-    transform: translateY(0px);
-  }
-  50% {
-    transform: translateY(-18px);
-  }
-  100% {
-    transform: translateY(0px);
-  }
-}
-
-/* --- Section Divider Line --- */
-.section-divider {
-  width: 100%;
-  height: 2px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    var(--neon-green),
-    transparent
-  );
-  opacity: 0.55;
-  margin: 2.5rem 0;
-  box-shadow: 0 0 14px 1px var(--neon-green);
-}
-
-/* --- Soft Green Border for Cards --- */
-.soft-green-border {
-  border: 1.5px solid #4ade80;
-  border-radius: 1.25rem;
-}
-
-/* --- Responsive Touchups for Cards --- */
-@media (max-width: 640px) {
-  .feature-card {
-    border-radius: 1rem;
-    padding: 1.5rem;
-  }
-}
-
-/* --- Cards / Sections in Dark Mode --- */
-@media (prefers-color-scheme: dark) {
-  section,
-  .bg-white,
-  .bg-gray-50 {
-    background: var(--dark-bg) !important;
-    color: var(--foreground) !important;
-  }
-}
-
-.dark section,
-.dark .bg-white,
-.dark .bg-gray-50 {
-  background: var(--dark-bg) !important;
-  color: var(--foreground) !important;
-}
-
-/* --- Utility for Card Borders of All Neon Colors (for reuse) --- */
-.border-neon-purple {
-  border-color: var(--neon-purple) !important;
-}
-.border-neon-cyan {
-  border-color: var(--neon-cyan) !important;
-}
-
-/* --- Misc. --- */
-/* ::-webkit-scrollbar-thumb { background: var(--neon-green); } */
-::-webkit-scrollbar {
-  background: var(--dark-bg);
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -308,29 +65,47 @@ a {
   transition: color 0.2s;
 }
 
-/* --- Neon Text and BG Utilities --- */
-.text-neon-green     { color: var(--neon-green) !important; }
-.text-neon-blue      { color: var(--neon-blue) !important; }
-.text-neon-purple    { color: var(--neon-purple) !important; }
-.text-neon-cyan      { color: var(--neon-cyan) !important; }
-.bg-neon-green       { background: var(--neon-green) !important; }
-.bg-neon-blue        { background: var(--neon-blue) !important; }
-.bg-neon-purple      { background: var(--neon-purple) !important; }
-.bg-dark             { background: var(--dark-bg) !important; }
-.bg-dark-secondary   { background: var(--dark-secondary) !important; }
-.bg-dark-card        { background: var(--dark-card) !important; }
-.border-neon-green   { border-color: var(--neon-green) !important; }
-.border-neon-blue    { border-color: var(--neon-blue) !important; }
+/* ========================================
+   NEON UTILITY CLASSES
+   ======================================== */
 
-/* --- Neon Shadows and Glows --- */
-.shadow-neon-green   { box-shadow: var(--shadow-neon-green) !important; }
-.shadow-neon-blue    { box-shadow: var(--shadow-neon-blue) !important; }
-.shadow-neon-cyan    { box-shadow: var(--shadow-neon-cyan) !important; }
-.shadow-neon-purple  { box-shadow: var(--shadow-neon-purple) !important; }
-.drop-shadow-neon    { filter: drop-shadow(0 0 10px #12ffb880) drop-shadow(0 0 22px #39ff14cc); }
-.text-glow           { text-shadow: 0 0 8px #38ffc1, 0 0 24px #12ffb8; }
+/* Text Colors */
+.text-neon-green { color: var(--neon-green) !important; }
+.text-neon-blue { color: var(--neon-blue) !important; }
+.text-neon-purple { color: var(--neon-purple) !important; }
+.text-neon-cyan { color: var(--neon-cyan) !important; }
 
-/* --- Neon Gradient Text Effect --- */
+/* Background Colors */
+.bg-neon-green { background: var(--neon-green) !important; }
+.bg-neon-blue { background: var(--neon-blue) !important; }
+.bg-neon-purple { background: var(--neon-purple) !important; }
+.bg-dark { background: var(--dark-bg) !important; }
+.bg-dark-secondary { background: var(--dark-secondary) !important; }
+.bg-dark-card { background: var(--dark-card) !important; }
+
+/* Border Colors */
+.border-neon-green { border-color: var(--neon-green) !important; }
+.border-neon-blue { border-color: var(--neon-blue) !important; }
+.border-neon-purple { border-color: var(--neon-purple) !important; }
+.border-neon-cyan { border-color: var(--neon-cyan) !important; }
+
+/* Shadows and Glows */
+.shadow-neon-green { box-shadow: var(--shadow-neon-green) !important; }
+.shadow-neon-blue { box-shadow: var(--shadow-neon-blue) !important; }
+.shadow-neon-cyan { box-shadow: var(--shadow-neon-cyan) !important; }
+.shadow-neon-purple { box-shadow: var(--shadow-neon-purple) !important; }
+
+.drop-shadow-neon {
+  filter: drop-shadow(0 0 10px #12ffb880) drop-shadow(0 0 22px #39ff14cc);
+}
+
+.text-glow {
+  text-shadow: 0 0 8px #38ffc1, 0 0 24px #12ffb8;
+}
+
+/* ========================================
+   GRADIENT TEXT EFFECT
+   ======================================== */
 .gradient-text {
   background: linear-gradient(90deg, var(--neon-green), var(--neon-blue), var(--neon-purple));
   -webkit-background-clip: text;
@@ -339,10 +114,15 @@ a {
   filter: brightness(1.15);
 }
 
-/* --- Neon Glow Animation --- */
+/* ========================================
+   ANIMATIONS
+   ======================================== */
+
+/* Neon Glow Animation */
 .animate-glow {
   animation: neonGlow 2.8s infinite alternate;
 }
+
 @keyframes neonGlow {
   from {
     text-shadow: 0 0 8px #38ffc1, 0 0 20px #10ffbb;
@@ -352,67 +132,51 @@ a {
   }
 }
 
-/* --- Feature Card with Neon Border --- */
+/* Floating Animation */
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-18px); }
+  100% { transform: translateY(0px); }
+}
+
+/* ========================================
+   CARD COMPONENTS
+   ======================================== */
+
+/* Feature Card with Neon Border */
 .feature-card {
   background: var(--dark-secondary);
   border: 1.5px solid var(--neon-green);
   border-radius: 1.25rem;
   transition: box-shadow 0.3s, transform 0.2s;
 }
+
 .feature-card:hover {
   transform: translateY(-6px) scale(1.03);
   box-shadow: 0 0 20px 2px var(--neon-green), 0 24px 34px -12px #0008;
 }
 
-/* --- Icon Container for Neon Cards --- */
-.icon-neon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 9999px;
-  width: 3rem;
-  height: 3rem;
-  background: linear-gradient(135deg, var(--neon-green), var(--neon-blue));
-  box-shadow: 0 0 14px 0 var(--neon-green);
-  color: #0f172a;
-  font-size: 1.5rem;
+/* Soft Green Border Card */
+.soft-green-border {
+  border: 1.5px solid #4ade80;
+  border-radius: 1.25rem;
 }
 
-/* --- Floating Animation for Images/Objects --- */
-.animate-float {
-  animation: float 6s ease-in-out infinite;
-}
-@keyframes float {
-  0%   { transform: translateY(0px);}
-  50%  { transform: translateY(-18px);}
-  100% { transform: translateY(0px);}
-}
+/* ========================================
+   GLASS MORPHISM EFFECTS
+   ======================================== */
 
-/* --- Section Divider Line --- */
-.section-divider {
-  width: 100%;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, var(--neon-green), transparent);
-  opacity: 0.55;
-  margin: 2.5rem 0;
-  box-shadow: 0 0 14px 1px var(--neon-green);
-}
-
-/* --- Glass UI Utilities (Frosted/Translucent) --- */
-/* Usage:
-   - Apply `.glass` to navs/headers and panels.
-   - Use `.glass-strong` for modals and overlays.
-   - Use `.glass-card` for cards/sections with subtle border and hover.
-   - Combine with Tailwind utilities (rounded-xl, p-6, etc.).
-*/
 .glass {
   position: relative;
   background: linear-gradient(
       180deg,
       rgba(255, 255, 255, 0.06),
       rgba(255, 255, 255, 0.02)
-    )
-    /* light tint overlay */,
+    ),
     rgba(17, 25, 40, 0.35);
   backdrop-filter: saturate(120%) blur(14px);
   -webkit-backdrop-filter: saturate(120%) blur(14px);
@@ -450,6 +214,7 @@ a {
   -webkit-backdrop-filter: blur(12px);
   transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
 }
+
 .glass-card:hover {
   transform: translateY(-4px);
   border-color: rgba(56, 189, 248, 0.35);
@@ -468,8 +233,48 @@ a {
   -webkit-backdrop-filter: blur(12px);
 }
 
-/* Dark scheme tuning for glass surfaces */
+/* ========================================
+   SPECIAL COMPONENTS
+   ======================================== */
+
+/* Icon Container for Neon Cards */
+.icon-neon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  width: 3rem;
+  height: 3rem;
+  background: linear-gradient(135deg, var(--neon-green), var(--neon-blue));
+  box-shadow: 0 0 14px 0 var(--neon-green);
+  color: #0f172a;
+  font-size: 1.5rem;
+}
+
+/* Section Divider Line */
+.section-divider {
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--neon-green), transparent);
+  opacity: 0.55;
+  margin: 2.5rem 0;
+  box-shadow: 0 0 14px 1px var(--neon-green);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  background: var(--dark-bg);
+}
+
+/* ========================================
+   DARK MODE OVERRIDES
+   ======================================== */
 @media (prefers-color-scheme: dark) {
+  section, .bg-white, .bg-gray-50 {
+    background: var(--dark-bg) !important;
+    color: var(--foreground) !important;
+  }
+
   .glass {
     background: linear-gradient(
         180deg,
@@ -479,6 +284,7 @@ a {
       rgba(10, 12, 16, 0.5);
     border-color: rgba(255, 255, 255, 0.1);
   }
+
   .glass-strong {
     background: linear-gradient(
         180deg,
@@ -487,6 +293,7 @@ a {
       ),
       rgba(8, 10, 14, 0.6);
   }
+
   .glass-card {
     background: linear-gradient(
         180deg,
@@ -498,63 +305,62 @@ a {
   }
 }
 
-/* Reduced motion: limit hover transforms */
+.dark section,
+.dark .bg-white,
+.dark .bg-gray-50 {
+  background: var(--dark-bg) !important;
+  color: var(--foreground) !important;
+}
+
+/* ========================================
+   RESPONSIVE DESIGN
+   ======================================== */
+@media (max-width: 640px) {
+  .feature-card {
+    border-radius: 1rem;
+    padding: 1.5rem;
+  }
+
+  p {
+    line-height: 1.625;
+  }
+}
+
+/* ========================================
+   ACCESSIBILITY
+   ======================================== */
+
+/* Reduced Motion Preference */
 @media (prefers-reduced-motion: reduce) {
   .glass-card,
   .feature-card {
     transition: none;
   }
+
   .glass-card:hover,
   .feature-card:hover {
     transform: none;
   }
-}
 
-/* --- Soft Green Border for Cards --- */
-.soft-green-border {
-  border: 1.5px solid #4ade80;
-  border-radius: 1.25rem;
-}
-
-/* --- Responsive Touchups for Cards --- */
-@media (max-width: 640px) {
-  .feature-card { border-radius: 1rem; padding: 1.5rem; }
-}
-
-/* --- Cards / Sections in Dark Mode --- */
-@media (prefers-color-scheme: dark) {
-  section, .bg-white, .bg-gray-50 {
-    background: var(--dark-bg) !important;
-    color: var(--foreground) !important;
+  .animate-float,
+  .animate-glow {
+    animation: none;
   }
 }
 
-/* --- Utility for Card Borders of All Neon Colors (for reuse) --- */
-.border-neon-purple { border-color: var(--neon-purple) !important; }
-.border-neon-cyan   { border-color: var(--neon-cyan) !important; }
-
-/* --- Misc. --- */
-/* ::-webkit-scrollbar-thumb { background: var(--neon-green); } */
-::-webkit-scrollbar { background: var(--dark-bg); }
-
-/* --- Mobile readability: standardize paragraph line-height on small screens --- */
-@media (max-width: 640px) {
-  p {
-    line-height: 1.625; /* roughly Tailwind leading-relaxed */
-  }
-}
-
-/* --- Print styles: print only the summary modal content --- */
+/* ========================================
+   PRINT STYLES
+   ======================================== */
 @media print {
-  /* Hide everything by default */
   body * {
     visibility: hidden !important;
   }
-  /* Show only the printable modal content */
-  #summary-modal-printable, #summary-modal-printable * {
+
+  #summary-modal-printable,
+  #summary-modal-printable * {
     visibility: visible !important;
   }
-  /* Position printable content at top-left for printing and neutral colors */
+
   #summary-modal-printable {
     position: absolute !important;
     inset: 0 !important;
@@ -568,12 +374,12 @@ a {
     box-shadow: none !important;
     padding: 1rem !important;
   }
+
   #summary-modal-printable * {
     background: transparent !important;
     color: black !important;
     box-shadow: none !important;
     text-shadow: none !important;
-    border-color: #000 !important; /* light borders if any */
+    border-color: #000 !important;
   }
 }
-
