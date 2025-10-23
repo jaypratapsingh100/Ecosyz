@@ -145,14 +145,14 @@ export default function KnowledgeGraph({ resources, onSelect, onSave, onClose }:
             'text-outline-color': '#000',
             'text-outline-width': 1,
             'text-wrap': 'wrap',
-            'text-max-width': 60,
-            'width': 20,
-            'height': 20,
+            'text-max-width': '60px',
+            'width': '20px',
+            'height': '20px',
             'shape': 'ellipse',
             'border-width': 2,
             'border-color': 'rgba(255, 255, 255, 0.3)',
             'transition-property': 'background-color, border-width, border-color, width, height',
-            'transition-duration': '0.2s'
+            'transition-duration': 200
           }
         },
         // Node type specific vibrant colors matching the screenshot
@@ -185,11 +185,7 @@ export default function KnowledgeGraph({ resources, onSelect, onSave, onClose }:
             'width': 28,
             'height': 28,
             'border-width': 3,
-            'border-color': 'rgba(255, 255, 255, 0.9)',
-            'shadow-blur': 10,
-            'shadow-color': 'rgba(16, 185, 129, 0.6)',
-            'shadow-opacity': 0.8,
-            'z-index': 999
+            'border-color': 'rgba(255, 255, 255, 0.9)'
           }
         },
         // Selected node style - prominent selection with emerald glow
@@ -199,13 +195,7 @@ export default function KnowledgeGraph({ resources, onSelect, onSave, onClose }:
             'width': 32,
             'height': 32,
             'border-width': 4,
-            'border-color': 'rgba(16, 185, 129, 0.9)',
-            'shadow-blur': 15,
-            'shadow-color': 'rgba(16, 185, 129, 0.8)',
-            'shadow-opacity': 1,
-            'shadow-offset-x': 0,
-            'shadow-offset-y': 3,
-            'z-index': 1000
+            'border-color': 'rgba(16, 185, 129, 0.9)'
           }
         },
         // Hidden nodes (for search)
@@ -535,8 +525,11 @@ export default function KnowledgeGraph({ resources, onSelect, onSave, onClose }:
                               <div>
                                 <span className="font-medium text-slate-200">Summary:</span>
                                 <p className="text-slate-400 mt-1 leading-relaxed">
-                                  {getResourceDetails()?.summary.substring(0, 200)}
-                                  {getResourceDetails()?.summary && getResourceDetails()?.summary.length > 200 ? '...' : ''}
+                                  {(() => {
+                                    const summary = getResourceDetails()?.summary;
+                                    const summaryStr = typeof summary === 'string' ? summary : String(summary || '');
+                                    return summaryStr.substring(0, 200) + (summaryStr.length > 200 ? '...' : '');
+                                  })()}
                                 </p>
                               </div>
                             )}
@@ -549,9 +542,10 @@ export default function KnowledgeGraph({ resources, onSelect, onSave, onClose }:
                                   rel="noopener noreferrer"
                                   className="ml-2 text-blue-400 hover:text-blue-300 underline break-all"
                                 >
-                                  {getResourceDetails()?.url.length > 40 
-                                    ? `${getResourceDetails()?.url.substring(0, 40)}...` 
-                                    : getResourceDetails()?.url}
+                                  {(() => {
+                                    const url = getResourceDetails()?.url;
+                                    return url && url.length > 40 ? `${url.substring(0, 40)}...` : url;
+                                  })()}
                                 </a>
                               </div>
                             )}

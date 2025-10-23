@@ -10,7 +10,7 @@ const ZENODO_ENDPOINT = 'https://zenodo.org/api/records';
  * @param q Query string
  * @returns Promise of Resource[]
  */
-export async function searchZenodo(q: string): Promise<Resource[]> {
+export async function searchZenodo(q: string, count: number = 30): Promise<Resource[]> {
   const url = `${ZENODO_ENDPOINT}?q=${encodeURIComponent(q)}&size=30`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);

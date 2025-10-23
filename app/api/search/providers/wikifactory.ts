@@ -20,7 +20,7 @@ const DEMO_WIKIFACTORY: Resource[] = [
   },
 ];
 
-export async function searchWikifactoryDesigns(q: string): Promise<Resource[]> {
+export async function searchWikifactoryDesigns(q: string, count: number = 30): Promise<Resource[]> {
   return DEMO_WIKIFACTORY.filter(hw =>
     hw.title.toLowerCase().includes(q.toLowerCase()) ||
     (hw.description || '').toLowerCase().includes(q.toLowerCase())

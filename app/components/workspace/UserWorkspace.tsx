@@ -473,7 +473,7 @@ export function UserWorkspace({ user, onClose }: UserWorkspaceProps) {
                         size="sm"
                         variant="outline"
                         onClick={() => handleCreateGitHubRepo(selectedProject)}
-                        disabled={isCreatingRepo || selectedProject.githubUrl}
+                        disabled={isCreatingRepo || !!selectedProject.githubUrl}
                       >
                         <GitBranch className="w-4 h-4 mr-2" />
                         {selectedProject.githubUrl ? 'Repo Created' : 'Create Repo'}
@@ -482,7 +482,7 @@ export function UserWorkspace({ user, onClose }: UserWorkspaceProps) {
                         size="sm"
                         variant="outline"
                         onClick={() => handleDeployToVercel(selectedProject)}
-                        disabled={isDeploying || selectedProject.deploymentUrl}
+                        disabled={isDeploying || !!selectedProject.deploymentUrl}
                       >
                         <Zap className="w-4 h-4 mr-2" />
                         {selectedProject.deploymentUrl ? 'Deployed' : 'Deploy'}

@@ -10,8 +10,8 @@ const OPENALEX_ENDPOINT = 'https://api.openalex.org/works';
  * @param q Query string
  * @returns Promise of Resource[]
  */
-export async function searchOpenAlex(q: string): Promise<Resource[]> {
-  const url = `${OPENALEX_ENDPOINT}?search=${encodeURIComponent(q)}&per-page=30`;
+export async function searchOpenAlex(q: string, count: number = 30): Promise<Resource[]> {
+  const url = `${OPENALEX_ENDPOINT}?search=${encodeURIComponent(q)}&per-page=${count}`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
   try {

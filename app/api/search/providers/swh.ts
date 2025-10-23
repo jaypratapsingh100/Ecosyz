@@ -10,8 +10,8 @@ const SWH_ENDPOINT = 'https://archive.softwareheritage.org/api/1/search/';
  * @param q Query string
  * @returns Promise of Resource[]
  */
-export async function searchSoftwareHeritage(q: string): Promise<Resource[]> {
-  const url = `${SWH_ENDPOINT}origin/?q=${encodeURIComponent(q)}&limit=30`;
+export async function searchSoftwareHeritage(q: string, count: number = 30): Promise<Resource[]> {
+  const url = `${SWH_ENDPOINT}origin/?q=${encodeURIComponent(q)}&limit=${count}`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
   try {

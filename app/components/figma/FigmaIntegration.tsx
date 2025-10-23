@@ -6,7 +6,7 @@ import {
   Figma,
   Download,
   Upload,
-  Sync,
+  RefreshCw,
   Eye,
   Code2,
   Palette,
@@ -17,8 +17,7 @@ import {
   Link,
   CheckCircle,
   Loader2,
-  AlertCircle,
-  RefreshCw
+  AlertCircle
 } from 'lucide-react';
 
 interface FigmaFile {
@@ -86,7 +85,7 @@ export default function FigmaIntegration({ workspaceId, onCodeGenerated }: Figma
   const [isLoading, setIsLoading] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [isRefreshCwing, setIsRefreshCwing] = useState(false);
   const [figmaUrl, setFigmaUrl] = useState('');
   const [accessToken, setAccessToken] = useState('');
   const [showUrlModal, setShowUrlModal] = useState(false);
@@ -182,7 +181,7 @@ export default function FigmaIntegration({ workspaceId, onCodeGenerated }: Figma
   const syncComponents = async (fileKey: string) => {
     if (!workspaceId) return;
 
-    setIsSyncing(true);
+    setIsRefreshCwing(true);
     try {
       const response = await fetch('/api/figma', {
         method: 'POST',
@@ -198,12 +197,12 @@ export default function FigmaIntegration({ workspaceId, onCodeGenerated }: Figma
       const data = await response.json();
       if (data.success) {
         // Show sync results
-        console.log('Sync completed:', data.sync);
+        console.log('RefreshCw completed:', data.sync);
       }
     } catch (error) {
       console.error('Failed to sync components:', error);
     } finally {
-      setIsSyncing(false);
+      setIsRefreshCwing(false);
     }
   };
 
@@ -404,15 +403,15 @@ export default function FigmaIntegration({ workspaceId, onCodeGenerated }: Figma
                             e.stopPropagation();
                             syncComponents(file.key);
                           }}
-                          disabled={isSyncing}
+                          disabled={isRefreshCwing}
                           whileHover={{ scale: 1.02 }}
                           whileTap={{ scale: 0.98 }}
                           className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          {isSyncing ? (
+                          {isRefreshCwing ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
                           ) : (
-                            <Sync className="h-4 w-4" />
+                            <RefreshCw className="h-4 w-4" />
                           )}
                         </motion.button>
                       )}

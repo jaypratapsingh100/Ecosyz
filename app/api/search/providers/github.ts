@@ -54,8 +54,8 @@ function parseGithubRepos(json: GithubResponse): Resource[] {
  * @param q Query string
  * @returns Promise of Resource[]
  */
-export async function searchGithubCode(q: string): Promise<Resource[]> {
-  const url = `${GITHUB_SEARCH_ENDPOINT}?q=${encodeURIComponent(q)}&per_page=30`;
+export async function searchGithubCode(q: string, count: number = 30): Promise<Resource[]> {
+  const url = `${GITHUB_SEARCH_ENDPOINT}?q=${encodeURIComponent(q)}&per_page=${count}`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
   try {

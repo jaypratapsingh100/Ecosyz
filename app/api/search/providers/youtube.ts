@@ -52,9 +52,9 @@ function parseYouTubeVideos(json: YouTubeResponse): Resource[] {
   });
 }
 
-export async function searchYouTubeVideos(q: string): Promise<Resource[]> {
+export async function searchYouTubeVideos(q: string, count: number = 30): Promise<Resource[]> {
   if (!YT_API_KEY) return [];
-  const url = `${YT_SEARCH_ENDPOINT}?part=snippet&type=video&maxResults=20&q=${encodeURIComponent(q)}&key=${YT_API_KEY}`;
+  const url = `${YT_SEARCH_ENDPOINT}?part=snippet&type=video&maxResults=${count}&q=${encodeURIComponent(q)}&key=${YT_API_KEY}`;
   const res = await fetch(url);
   if (!res.ok) return [];
   const json = await res.json();

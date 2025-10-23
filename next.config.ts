@@ -14,6 +14,8 @@ const nextConfig: NextConfig = {
     }
   },
   serverExternalPackages: ['@prisma/client'],
+  // Ensure Supabase routes use Node.js runtime
+  runtime: 'nodejs',
   images: {
     remotePatterns: [
       {

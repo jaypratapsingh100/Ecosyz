@@ -17,10 +17,6 @@ type Toast = ToastProps & {
 const TOAST_LIMIT = 1
 const TOAST_REMOVE_DELAY = 1000000
 
-type State = {
-  toasts: Toast[]
-}
-
 let count = 0
 
 function genId() {
@@ -145,10 +141,6 @@ function toast({ ...props }: Toast_) {
     toast: {
       ...props,
       id,
-      open: true,
-      onOpenChange: (open) => {
-        if (!open) dismiss()
-      },
     },
   })
 

@@ -73,14 +73,14 @@ function setCache(key: string, data: SearchSessionData) {
 }
 
 // Cursor helpers
-function encodeCursor(obj: { sessionId: string; offset: number; limit: number }): string {
+function encodeCursor(obj: { sessionId: string; offset: number; limit: number; sort?: string }): string {
   const json = JSON.stringify(obj);
   // base64url encoding
   const b64 = Buffer.from(json, 'utf8').toString('base64');
   return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-function decodeCursor(str: string): { sessionId: string; offset: number; limit: number } | null {
+function decodeCursor(str: string): { sessionId: string; offset: number; limit: number; sort?: string } | null {
   try {
     // Convert base64url back to base64
     let b64 = str.replace(/-/g, '+').replace(/_/g, '/');
@@ -88,7 +88,12 @@ function decodeCursor(str: string): { sessionId: string; offset: number; limit: 
     const json = Buffer.from(b64, 'base64').toString('utf8');
     const obj = JSON.parse(json);
     if (!obj || typeof obj.sessionId !== 'string') return null;
-    return { sessionId: obj.sessionId, offset: Number(obj.offset) || 0, limit: Number(obj.limit) || 30 };
+    return { 
+      sessionId: obj.sessionId, 
+      offset: Number(obj.offset) || 0, 
+      limit: Number(obj.limit) || 30,
+      sort: obj.sort || 'relevance'
+    };
   } catch {
     return null;
   }
@@ -115,7 +120,7 @@ export async function GET(req: NextRequest) {
         headers: { 'Cache-Control': 's-maxage=60, stale-while-revalidate=30' },
       });
     }
-    const sessionKey = `session:${cur.sessionId}`;
+    const sessionKey = `session:${cur.sessionId}:${cur.sort || 'relevance'}`;
     const session = getCache(sessionKey) as undefined | { items: Resource[]; total: number; coverage?: any };
     if (!session || !Array.isArray(session.items)) {
       return NextResponse.json({ results: [], total: 0, nextCursor: null }, {
@@ -142,6 +147,8 @@ export async function GET(req: NextRequest) {
   }
   const q = searchParams.get('q') || '';
   const type = searchParams.get('type') as ResourceType | 'all' | null;
+  const sort = searchParams.get('sort') as 'relevance' | 'date' | 'citations' | null;
+  const providerCount = parseInt(searchParams.get('providerCount') || '30', 10);
   // Accept new type values: model, hardware, video (even if no providers yet)
   const debug = searchParams.get('debug') === '1';
   if (!q) return NextResponse.json({ error: 'Missing q' }, { status: 400 });
@@ -149,7 +156,7 @@ export async function GET(req: NextRequest) {
   // Pagination params must be part of the cache key
   const page = parseInt(searchParams.get('page') || '1', 10);
   const limit = parseInt(searchParams.get('limit') || '30', 10);
-  const cacheKey = `${q}:${type}:${page}:${limit}`;
+  const cacheKey = `${q}:${type}:${sort || 'relevance'}:${page}:${limit}:${providerCount}`;
   const cached = getCache(cacheKey);
   if (cached) return NextResponse.json(cached, {
     headers: {
@@ -160,16 +167,16 @@ export async function GET(req: NextRequest) {
   // Fan-out to providers in parallel
   // Add new providers here as needed (see docs/specs/providers.md)
   const providerFns = [
-    { name: 'openalex', fn: () => searchOpenAlex(q) },
-    { name: 'arxiv', fn: () => searchArxiv(q) },
-    { name: 'zenodo', fn: () => searchZenodo(q) },
-    { name: 'swh', fn: () => searchSoftwareHeritage(q) },
-    { name: 'github', fn: () => searchGithubCode(q) },
-    { name: 'huggingface', fn: () => searchHuggingFaceModels(q) },
-    { name: 'youtube', fn: () => searchYouTubeVideos(q) },
-    { name: 'hardware', fn: () => searchHardware(q) },
-    { name: 'oshwa', fn: () => searchOshwaHardware(q) },
-    { name: 'wikifactory', fn: () => searchWikifactoryDesigns(q) },
+    { name: 'openalex', fn: () => searchOpenAlex(q, providerCount) },
+    { name: 'arxiv', fn: () => searchArxiv(q, providerCount) },
+    { name: 'zenodo', fn: () => searchZenodo(q, providerCount) },
+    { name: 'swh', fn: () => searchSoftwareHeritage(q, providerCount) },
+    { name: 'github', fn: () => searchGithubCode(q, providerCount) },
+    { name: 'huggingface', fn: () => searchHuggingFaceModels(q, providerCount) },
+    { name: 'youtube', fn: () => searchYouTubeVideos(q, providerCount) },
+    { name: 'hardware', fn: () => searchHardware(q, providerCount) },
+    { name: 'oshwa', fn: () => searchOshwaHardware(q, providerCount) },
+    { name: 'wikifactory', fn: () => searchWikifactoryDesigns(q, providerCount) },
   ];
   const results: Record<string, Resource[]> = {};
   await Promise.all(
@@ -185,7 +192,29 @@ export async function GET(req: NextRequest) {
   if (type && type !== 'all') all = all.filter(r => r.type === type);
   all.forEach(r => (r.score = scoreResource(r, q)));
   const dedupeResult = dedupeConservative(all);
-  const deduped = dedupeResult.items.sort((a, b) => (b.score || 0) - (a.score || 0));
+  
+  // Apply sorting based on sort parameter
+  let deduped = dedupeResult.items;
+  switch (sort) {
+    case 'date':
+      deduped = deduped.sort((a, b) => {
+        const dateA = new Date(a.publicationDate || a.createdAt || 0).getTime();
+        const dateB = new Date(b.publicationDate || b.createdAt || 0).getTime();
+        return dateB - dateA; // Newest first
+      });
+      break;
+    case 'citations':
+      deduped = deduped.sort((a, b) => {
+        const citationsA = a.citationCount || 0;
+        const citationsB = b.citationCount || 0;
+        return citationsB - citationsA; // Most cited first
+      });
+      break;
+    case 'relevance':
+    default:
+      deduped = deduped.sort((a, b) => (b.score || 0) - (a.score || 0));
+      break;
+  }
 
   // Pagination
   const start = (page - 1) * limit;
@@ -195,7 +224,7 @@ export async function GET(req: NextRequest) {
 
   // Create a session for cursor-based continuation
   const sessionId = (globalThis as any).crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-  const sessionKey = `session:${sessionId}`;
+  const sessionKey = `session:${sessionId}:${sort || 'relevance'}`;
   setCache(sessionKey, { items: deduped, total: deduped.length, coverage: {
     requestedProviders: providerFns.map(p => p.name),
     receivedCounts: Object.fromEntries(Object.entries(results).map(([k, v]) => [k, v.length])),
@@ -204,7 +233,7 @@ export async function GET(req: NextRequest) {
     merged: dedupeResult.merged,
   } });
   const nextOffset = end;
-  const nextCursor = nextOffset < deduped.length ? encodeCursor({ sessionId, offset: nextOffset, limit }) : null;
+  const nextCursor = nextOffset < deduped.length ? encodeCursor({ sessionId, offset: nextOffset, limit, sort: sort || 'relevance' }) : null;
 
   // Build response before caching so we cache the entire payload
   const resp: SearchResponse = {

@@ -20,7 +20,7 @@ const DEMO_OSHWA: Resource[] = [
   },
 ];
 
-export async function searchOshwaHardware(q: string): Promise<Resource[]> {
+export async function searchOshwaHardware(q: string, count: number = 30): Promise<Resource[]> {
   return DEMO_OSHWA.filter(hw =>
     hw.title.toLowerCase().includes(q.toLowerCase()) ||
     (hw.description || '').toLowerCase().includes(q.toLowerCase())

@@ -38,7 +38,7 @@ function parseArxivAtom(xml: string): Resource[] {
  * @param q Query string
  * @returns Promise of Resource[]
  */
-export async function searchArxiv(q: string): Promise<Resource[]> {
+export async function searchArxiv(q: string, count: number = 30): Promise<Resource[]> {
   const url = `${ARXIV_ENDPOINT}?search_query=all:${encodeURIComponent(q)}&max_results=30`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);

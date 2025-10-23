@@ -49,8 +49,8 @@ function parseHuggingFaceModels(json: HuggingFaceModel[]): Resource[] {
  * @param q Query string
  * @returns Promise of Resource[]
  */
-export async function searchHuggingFaceModels(q: string): Promise<Resource[]> {
-  const url = `${HF_MODELS_ENDPOINT}?search=${encodeURIComponent(q)}&limit=30`;
+export async function searchHuggingFaceModels(q: string, count: number = 30): Promise<Resource[]> {
+  const url = `${HF_MODELS_ENDPOINT}?search=${encodeURIComponent(q)}&limit=${count}`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
   try {

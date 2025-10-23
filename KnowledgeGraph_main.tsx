@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import cytoscape, { Core } from 'cytoscape';
-import type { Resource } from '../../src/types/resource';
+import type { Resource } from './src/types/resource';
 
 type KGNode = { id: string; label: string; type: string };
 type KGEdge = { id: string; source: string; target: string; rel: string };

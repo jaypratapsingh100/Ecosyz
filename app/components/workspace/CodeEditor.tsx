@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { 
   FileCode, 
@@ -255,7 +255,7 @@ export function CodeEditor({ project, selectedFile, onFileSelect }: CodeEditorPr
     URL.revokeObjectURL(url);
   };
 
-  const renderFileTree = (nodes: FileNode[], depth = 0): JSX.Element[] => {
+  const renderFileTree = (nodes: FileNode[], depth = 0): React.ReactElement[] => {
     return nodes
       .filter(node => {
         if (!searchQuery) return true;

@@ -540,6 +540,114 @@ export default function DataVisualizationPage() {
   return generateWebApp(resourcesJson, framework);
 }
 
+function generateResearchToolApp(resourcesJson: string, framework: string): string {
+  return `import React from 'react';
+
+export default function ResearchTool() {
+  const resources = ${resourcesJson};
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800">
+      <div className="container mx-auto px-4 py-8">
+        <header className="text-center mb-12">
+          <h1 className="text-5xl font-bold bg-gradient-to-r from-green-400 to-blue-400 bg-clip-text text-transparent mb-4">
+            Research Tool
+          </h1>
+          <p className="text-xl text-gray-300">
+            Advanced research analysis tool generated from {resources.length} resources
+          </p>
+        </header>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {resources.map((resource, index) => (
+            <div key={index} className="bg-slate-800 rounded-lg p-6 border border-slate-700 hover:border-green-400 transition-colors">
+              <h3 className="text-xl font-semibold text-white mb-2">{resource.title}</h3>
+              <p className="text-gray-300 mb-4">{resource.description || 'Research resource'}</p>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-green-400">{resource.type}</span>
+                {resource.year && <span className="text-sm text-gray-400">{resource.year}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}`;
+}
+
+function generateBlogApp(resourcesJson: string, framework: string): string {
+  return `import React from 'react';
+
+export default function Blog() {
+  const resources = ${resourcesJson};
+
+  return (
+    <div className="min-h-screen bg-white">
+      <div className="container mx-auto px-4 py-8">
+        <header className="text-center mb-12">
+          <h1 className="text-5xl font-bold text-gray-900 mb-4">
+            Research Blog
+          </h1>
+          <p className="text-xl text-gray-600">
+            Insights and analysis from {resources.length} research resources
+          </p>
+        </header>
+        
+        <div className="max-w-4xl mx-auto">
+          {resources.map((resource, index) => (
+            <article key={index} className="mb-8 p-6 border border-gray-200 rounded-lg hover:shadow-lg transition-shadow">
+              <h2 className="text-2xl font-bold text-gray-900 mb-3">{resource.title}</h2>
+              <p className="text-gray-600 mb-4">{resource.description || 'Research article'}</p>
+              <div className="flex justify-between items-center text-sm text-gray-500">
+                <span>{resource.type}</span>
+                {resource.year && <span>{resource.year}</span>}
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}`;
+}
+
+function generatePortfolioApp(resourcesJson: string, framework: string): string {
+  return `import React from 'react';
+
+export default function Portfolio() {
+  const resources = ${resourcesJson};
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-purple-900 to-blue-900">
+      <div className="container mx-auto px-4 py-8">
+        <header className="text-center mb-12">
+          <h1 className="text-5xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent mb-4">
+            Research Portfolio
+          </h1>
+          <p className="text-xl text-gray-300">
+            Showcasing {resources.length} research projects and publications
+          </p>
+        </header>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          {resources.map((resource, index) => (
+            <div key={index} className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20 hover:border-purple-400 transition-colors">
+              <h3 className="text-xl font-semibold text-white mb-3">{resource.title}</h3>
+              <p className="text-gray-300 mb-4">{resource.description || 'Research project'}</p>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-purple-400">{resource.type}</span>
+                {resource.year && <span className="text-sm text-gray-400">{resource.year}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}`;
+}
+
 function generateWebApp(resourcesJson: string, framework: string): string {
   return `import React from 'react';
 

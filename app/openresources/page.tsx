@@ -10,6 +10,10 @@ import SaveToWorkspace from '../components/workspace/SaveToWorkspace';
 import { useSupabaseUser } from '../../src/lib/useSupabaseUser';
 import KnowledgeGraph from '../components/KnowledgeGraph';
 import GenerateButtonWithAuth from '../components/GenerateButtonWithAuth';
+import { SortOptions, type SortOption } from '../components/ui/SortOptions';
+import { SearchResultSkeleton } from '../components/ui/SearchResultSkeleton';
+import { LimitSelector } from '../components/ui/LimitSelector';
+import { ProviderCountSelector } from '../components/ui/ProviderCountSelector';
 
 const TABS = [
   { label: 'All', value: 'all' },
@@ -20,6 +24,18 @@ const TABS = [
   { label: 'Hardware', value: 'hardware' },
   { label: 'Videos', value: 'video' },
 ];
+
+// Cache structure for storing search results
+const resultCache = new Map<string, {
+  timestamp: number;
+  results: any[];
+  hasMore: boolean;
+  nextCursor: string | null;
+  total: number;
+  coverage: any;
+}>();
+
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 export default function OpenResourcesPageWrapper() {
   // Wrap the client-side search params consumer in Suspense per Next.js guidance
@@ -43,7 +59,9 @@ function OpenResourcesPage() {
   const [coverage, setCoverage] = useState<any>(null);
   const [total, setTotal] = useState(0);
   const [limit, setLimit] = useState(30);
+  const [providerCount, setProviderCount] = useState(30);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [sortOption, setSortOption] = useState<SortOption>('relevance');
   const activeAbort = useRef<AbortController | null>(null);
   const [summaries, setSummaries] = useState<Record<string, any>>({});
   const [summarizingId, setSummarizingId] = useState<string | null>(null);
@@ -105,6 +123,9 @@ function OpenResourcesPage() {
     setResourceToSave(null);
   };
   const getFilteredResources = () => {
+    if (!Array.isArray(results) || results.length === 0) {
+      return [];
+    }
     const typesToShow = ['paper', 'dataset', 'code', 'model', 'hardware', 'video'];
     const filtered: any[] = [];
     typesToShow.forEach(type => {
@@ -150,11 +171,12 @@ function OpenResourcesPage() {
     return stripped.replace(/\s+/g, ' ').trim();
   }
 
-  function updateURL(nextQ: string, nextType: string, nextLimit: number) {
+  function updateURL(nextQ: string, nextType: string, nextLimit: number, nextProviderCount: number) {
     const sp = new URLSearchParams();
     if (nextQ) sp.set('q', nextQ);
     if (nextType && nextType !== 'all') sp.set('type', nextType);
     if (nextLimit && nextLimit !== 30) sp.set('limit', String(nextLimit));
+    if (nextProviderCount && nextProviderCount !== 30) sp.set('providerCount', String(nextProviderCount));
     const qs = sp.toString();
     // Use replace to avoid stacking history on every pagination
     router.replace(`/openresources${qs ? `?${qs}` : ''}` as any, { scroll: false } as any);
@@ -167,9 +189,25 @@ function OpenResourcesPage() {
   async function search(
     customQ = q,
     customType = type,
-    customLimit = limit
+    customLimit = limit,
+    customProviderCount = providerCount,
+    resetResults = true
   ) {
     if (!customQ) return; // Prevent search if query is empty
+    
+    // Check cache first
+    const cacheKey = `${customQ}:${customType}:${sortOption}:${customLimit}:${customProviderCount}`;
+    const now = Date.now();
+    const cached = resultCache.get(cacheKey);
+
+    if (cached && now - cached.timestamp < CACHE_TTL && resetResults) {
+      setResults(cached.results);
+      setCoverage(cached.coverage);
+      setTotal(cached.total);
+      setNextCursor(cached.nextCursor);
+      return;
+    }
+
     // Abort any in-flight request
     if (activeAbort.current) {
       activeAbort.current.abort();
@@ -178,15 +216,39 @@ function OpenResourcesPage() {
     activeAbort.current = controller;
     setLoading(true); setError('');
     try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(customQ)}&type=${customType}&limit=${customLimit}` , { cache: 'no-store', signal: controller.signal });
+      const params = new URLSearchParams({
+        q: customQ,
+        type: customType,
+        limit: customLimit.toString(),
+        providerCount: customProviderCount.toString(),
+        sort: sortOption,
+        ...(resetResults ? {} : { cursor: nextCursor || '' })
+      });
+      
+      const res = await fetch(`/api/search?${params}`, { cache: 'no-store', signal: controller.signal });
       if (!res.ok) throw new Error('Search failed');
       const data = await res.json();
-      setResults(Array.isArray(data.results) ? data.results : []);
+      
+      const newResults = resetResults ? data.results : [...results, ...data.results];
+      setResults(Array.isArray(newResults) ? newResults : []);
       setCoverage(data.coverage || null);
       setTotal(data.total || 0);
       setNextCursor(typeof data.nextCursor === 'string' ? data.nextCursor : null);
+      
+      // Cache the results
+      if (resetResults) {
+        resultCache.set(cacheKey, {
+          timestamp: now,
+          results: data.results,
+          hasMore: !!data.nextCursor,
+          nextCursor: data.nextCursor,
+          total: data.total,
+          coverage: data.coverage
+        });
+      }
+      
       // Sync URL
-      updateURL(customQ, customType, customLimit);
+      updateURL(customQ, customType, customLimit, customProviderCount);
     } catch (e: any) {
       if (e?.name !== 'AbortError') {
         setError(e.message || 'Search failed');
@@ -200,39 +262,39 @@ function OpenResourcesPage() {
 
   async function loadMore() {
     if (!nextCursor) return;
-    // Cancel any in-flight
-    if (activeAbort.current) activeAbort.current.abort();
-    const controller = new AbortController();
-    activeAbort.current = controller;
-    setLoading(true); setError('');
-    try {
-      const res = await fetch(`/api/search?cursor=${encodeURIComponent(nextCursor)}`, { cache: 'no-store', signal: controller.signal });
-      if (!res.ok) throw new Error('Load more failed');
-      const data = await res.json();
-      const newItems = Array.isArray(data.results) ? data.results : [];
-      setResults(prev => [...prev, ...newItems]);
-      setTotal(data.total || total);
-      setNextCursor(typeof data.nextCursor === 'string' ? data.nextCursor : null);
-      // Do not update URL during load more to avoid scrolling to top
-    } catch (e: any) {
-      if (e?.name !== 'AbortError') setError(e.message || 'Load more failed');
-    } finally {
-      setLoading(false);
-      if (activeAbort.current === controller) activeAbort.current = null;
-    }
+    await search(q, type, limit, providerCount, false);
   }
+
+  // Clear cache entries older than CACHE_TTL
+  useEffect(() => {
+    const now = Date.now();
+    for (const [key, value] of resultCache.entries()) {
+      if (now - value.timestamp > CACHE_TTL) {
+        resultCache.delete(key);
+      }
+    }
+  }, [q]); // Only run when query changes
+
+  // Handle sort changes
+  useEffect(() => {
+    if (q && Array.isArray(results) && results.length > 0) {
+      search(q, type, limit, providerCount, true);
+    }
+  }, [sortOption]); // Re-search when sort changes
 
   // Initialize state from URL on first mount
   useEffect(() => {
     const qp = params?.get('q') || '';
     const tp = (params?.get('type') as string) || 'all';
     const lm = parseInt(params?.get('limit') || '30', 10) || 30;
+    const pc = parseInt(params?.get('providerCount') || '30', 10) || 30;
     if (qp) {
       setQ(qp);
       setType(tp);
       setLimit(lm);
+      setProviderCount(pc);
       // Kick off initial search
-      search(qp, tp, lm);
+      search(qp, tp, lm, pc);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -363,6 +425,33 @@ function OpenResourcesPage() {
                   {loading ? 'Searching...' : 'Search'}
                 </button>
               </div>
+              {/* Sorting Options and Limit Selector */}
+              {q && (
+                <div className="flex justify-between items-center mt-4 flex-wrap gap-4">
+                  <SortOptions
+                    currentSort={sortOption}
+                    onSortChange={(newSort) => {
+                      setSortOption(newSort);
+                      if (q) search(q, type, limit, providerCount, true);
+                    }}
+                    disabled={loading || !Array.isArray(results) || !results.length}
+                  />
+                  <LimitSelector
+                    value={limit}
+                    onChange={(newLimit) => {
+                      setLimit(newLimit);
+                      if (q) search(q, type, newLimit, providerCount, true);
+                    }}
+                  />
+                  <ProviderCountSelector
+                    value={providerCount}
+                    onChange={(newProviderCount) => {
+                      setProviderCount(newProviderCount);
+                      if (q) search(q, type, limit, newProviderCount, true);
+                    }}
+                  />
+                </div>
+              )}
               {/* Page size selector removed per request */}
             </div>
             {/* Federated search results */}
@@ -377,7 +466,7 @@ function OpenResourcesPage() {
                   </div>
                 )}
                 {error && <div className="text-red-500 mb-4">{error}</div>}
-                {!loading && results.length > 0 && (
+                {!loading && Array.isArray(results) && results.length > 0 && (
                   <div className="mb-6 flex flex-col items-center space-y-4">
                     <div className="flex flex-wrap gap-3 justify-center">
                       <button
@@ -413,13 +502,13 @@ function OpenResourcesPage() {
                     )}
                   </div>
                 )}
-                {!loading && results.length === 0 && (
+                {!loading && Array.isArray(results) && results.length === 0 && (
                   <div className="text-gray-400 text-lg text-center">
                     No results.
                   </div>
                 )}
                 <div className="space-y-4 sm:space-y-6">
-                  {results.map((r, i) => {
+                  {Array.isArray(results) && results.map((r, i) => {
                       const resKey = String(r.id || r.url || i);
                       return (
                         <div key={r.id || i} className="rounded-xl glass-card glass-border p-4 sm:p-5 flex items-start gap-3 relative">
@@ -462,7 +551,7 @@ function OpenResourcesPage() {
                               <div className="ml-auto flex items-center gap-3 text-xs text-white/60 font-semibold">
                                 {r.year && <span>{r.year}</span>}
                                 {typeof r.score === 'number' && (
-                                  <span className="text-gray-400">Score: {r.score.toFixed(2)}</span>
+                                  <span className="text-emerald-400 font-mono">Score: {r.score.toFixed(2)}</span>
                                 )}
                               </div>
                             </div>
@@ -620,19 +709,7 @@ function OpenResourcesPage() {
                     {loading && (
                       <>
                         {Array.from({ length: Math.min(3, Math.max(1, Math.ceil(limit / 10))) }).map((_, idx) => (
-                          <div key={`skeleton-${idx}`} className="rounded-xl glass-card glass-border p-4 sm:p-5 animate-pulse">
-                            <div className="flex items-center gap-2 mb-2">
-                              <div className="h-4 w-16 bg-white/10 rounded" />
-                              <div className="h-4 w-12 bg-white/10 rounded" />
-                              <div className="ml-auto h-4 w-24 bg-white/10 rounded" />
-                            </div>
-                            <div className="h-5 w-3/4 bg-white/10 rounded mb-2" />
-                            <div className="h-4 w-1/2 bg-white/10 rounded mb-1" />
-                            <div className="flex gap-2 mt-3">
-                              <div className="h-7 w-16 bg-white/10 rounded" />
-                              <div className="h-7 w-16 bg-white/10 rounded" />
-                            </div>
-                          </div>
+                          <SearchResultSkeleton key={`skeleton-${idx}`} />
                         ))}
                       </>
                     )}
@@ -650,7 +727,7 @@ function OpenResourcesPage() {
                     </button>
                     {/* Range indicator now based on accumulated results */}
                     <span className="text-xs text-cyan-300 font-medium" aria-live="polite" aria-atomic="true">
-                      {`Showing 1–${Math.min(total, results.length).toLocaleString()} of ${total.toLocaleString()}`}
+                      {`Showing 1–${Math.min(total, Array.isArray(results) ? results.length : 0).toLocaleString()} of ${total.toLocaleString()}`}
                     </span>
                   </div>
                 )}

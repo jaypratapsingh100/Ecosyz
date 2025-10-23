@@ -21,7 +21,7 @@ const DEMO_HARDWARE: Resource[] = [
   },
 ];
 
-export async function searchHardware(q: string): Promise<Resource[]> {
+export async function searchHardware(q: string, count: number = 30): Promise<Resource[]> {
   // Simple keyword match for demo
   return DEMO_HARDWARE.filter(hw =>
     hw.title.toLowerCase().includes(q.toLowerCase()) ||
