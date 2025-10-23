@@ -371,11 +371,11 @@ function OpenResourcesPage() {
   }, [isGraphModalOpen]);
 
   return (
-  <div className="min-h-screen flex flex-col overflow-x-hidden pb-[calc(env(safe-area-inset-bottom)+16px)]">
+  <div className="min-h-screen flex flex-col overflow-x-hidden pb-[calc(env(safe-area-inset-bottom)+16px)] bg-[#0d0f11] dark">
       <Header />
       <section
         id="open-resources"
-        className="py-6 sm:py-10 bg-zinc-950 text-white relative"
+        className="py-6 sm:py-10 bg-[#0d0f11] text-white relative"
       >
         {/* Soft spot background */}
         <div className="absolute left-1/2 top-0 -translate-x-1/2 w-[900px] h-[350px] bg-gradient-radial from-emerald-400/10 to-transparent blur-2xl pointer-events-none" />

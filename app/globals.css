@@ -8,9 +8,9 @@
    CSS CUSTOM PROPERTIES (Design Tokens)
    ======================================== */
 :root {
-  /* Background Colors */
-  --background: #f9fafb;
-  --foreground: #15171a;
+  /* DARK THEME ONLY - No light mode */
+  --background: #0d0f11;
+  --foreground: #ededed;
   --dark-bg: #0d0f11;
   --dark-secondary: #15171a;
   --dark-card: #1b1d21;
@@ -32,27 +32,37 @@
   --font-mono: 'Fira Mono', 'Geist Mono', monospace;
 }
 
-/* Dark Mode Color Scheme */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0d0f11;
-    --foreground: #ededed;
-  }
-}
-
-.dark {
-  --background: #0d0f11;
-  --foreground: #ededed;
-}
+/* REMOVED: Light mode support - Dark theme always enforced */
 
 /* ========================================
    BASE STYLES
    ======================================== */
+html {
+  /* Force dark theme always */
+  background: #0d0f11;
+  color: #ededed;
+  /* Hide scrollbar but allow scrolling */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+html::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: #0d0f11 !important;
+  color: #ededed !important;
   font-family: var(--font-sans);
   letter-spacing: 0.01em;
+  overflow-x: hidden; /* Prevent horizontal scrollbar */
+  /* Hide scrollbar but allow scrolling */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+body::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -261,55 +271,53 @@ a {
   box-shadow: 0 0 14px 1px var(--neon-green);
 }
 
-/* Custom Scrollbar */
-::-webkit-scrollbar {
-  background: var(--dark-bg);
+/* Custom Scrollbar - Hidden */
+* {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+*::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+  width: 0;
+  height: 0;
 }
 
 /* ========================================
-   DARK MODE OVERRIDES
+   DARK THEME ENFORCED - NO LIGHT MODE
    ======================================== */
-@media (prefers-color-scheme: dark) {
-  section, .bg-white, .bg-gray-50 {
-    background: var(--dark-bg) !important;
-    color: var(--foreground) !important;
-  }
-
-  .glass {
-    background: linear-gradient(
-        180deg,
-        rgba(255, 255, 255, 0.05),
-        rgba(255, 255, 255, 0.02)
-      ),
-      rgba(10, 12, 16, 0.5);
-    border-color: rgba(255, 255, 255, 0.1);
-  }
-
-  .glass-strong {
-    background: linear-gradient(
-        180deg,
-        rgba(57, 255, 20, 0.08),
-        rgba(56, 189, 248, 0.06)
-      ),
-      rgba(8, 10, 14, 0.6);
-  }
-
-  .glass-card {
-    background: linear-gradient(
-        180deg,
-        rgba(255, 255, 255, 0.04),
-        rgba(255, 255, 255, 0.02)
-      ),
-      rgba(12, 14, 16, 0.5);
-    border-color: rgba(255, 255, 255, 0.08);
-  }
-}
-
-.dark section,
-.dark .bg-white,
-.dark .bg-gray-50 {
+section, .bg-white, .bg-gray-50 {
   background: var(--dark-bg) !important;
   color: var(--foreground) !important;
+}
+
+.glass {
+  background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.05),
+      rgba(255, 255, 255, 0.02)
+    ),
+    rgba(10, 12, 16, 0.5);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.glass-strong {
+  background: linear-gradient(
+      180deg,
+      rgba(57, 255, 20, 0.08),
+      rgba(56, 189, 248, 0.06)
+    ),
+    rgba(8, 10, 14, 0.6);
+}
+
+.glass-card {
+  background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.04),
+      rgba(255, 255, 255, 0.02)
+    ),
+    rgba(12, 14, 16, 0.5);
+  border-color: rgba(255, 255, 255, 0.08);
 }
 
 /* ========================================

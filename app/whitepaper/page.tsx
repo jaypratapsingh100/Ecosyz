@@ -3,10 +3,10 @@ import Footer from '../components/Footer';
 
 export default function WhitepaperPage() {
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col bg-[#0d0f11] dark overflow-x-hidden">
       <Header />
-      <main className="flex-grow p-8">
-      <div className="bg-gradient-to-br from-[#10171a] via-[#132726] to-[#091312] text-white min-h-screen pb-16">
+      <main className="flex-grow p-8 bg-[#0d0f11]">
+      <div className="bg-gradient-to-br from-[#10171a] via-[#132726] to-[#091312] text-white min-h-screen pb-16 overflow-x-hidden">
   {/* Hero Section */}
   <section className="hero-gradient py-16 sm:py-20 relative">
     <div className="absolute left-1/2 top-0 -translate-x-1/2 w-[900px] h-[300px] bg-gradient-radial from-emerald-400/10 to-transparent blur-2xl pointer-events-none"/>

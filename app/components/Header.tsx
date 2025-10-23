@@ -21,11 +21,16 @@ export default function Header() {
   const { user, loading, logout: authLogout, isAuthenticated } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
   const router = useRouter();
 
+  // Ensure hydration matches server
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   
   // Close mobile nav on route change
@@ -92,20 +97,36 @@ export default function Header() {
   // Derive active route for highlighting
   const activeRoot = pathname === "/" ? "/" : `/${pathname.split('/')[1]}`;
 
+  // Prevent hydration mismatch
+  if (!isMounted) {
+    return (
+      <header className="sticky top-0 z-[99] glass h-14 border-b glass-border">
+        <Container>
+          <div className="h-14 flex justify-between items-center gap-4 w-full">
+            <Link href="/" className="flex items-center gap-2 shrink-0">
+              <Image src="/eco.png" alt="Open Idea Logo" width={36} height={36} />
+              <span className="text-xl font-bold gradient-text ml-2">Open Idea</span>
+            </Link>
+          </div>
+        </Container>
+      </header>
+    );
+  }
+
   return (
     <header className="sticky top-0 z-[99] glass h-14 border-b glass-border">
       <Container>
         <div className="h-14 flex justify-between items-center gap-4 w-full">
           {/* Brand left */}
           <Link href="/" className="flex items-center gap-2 shrink-0 focus:outline-none focus:ring-2 focus:ring-emerald-400/60">
-            <Image src="/eco.png" alt="Open Idea Logo" width={36} height={36} />
+            <Image src="/eco.png" alt="Open Idea Logo" width={36} height={36} priority />
             <span className="text-xl font-bold gradient-text ml-2">Open Idea</span>
           </Link>
 
-          {/* Mobile menu button */}
+          {/* Mobile menu button - ALWAYS show on small screens */}
           <button
             type="button"
-            className="md:hidden p-2 text-gray-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-400/60"
+            className="lg:hidden p-2 text-gray-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-400/60 transition-colors"
             onClick={() => setMobileOpen(!mobileOpen)}
             aria-expanded={mobileOpen}
             aria-controls="mobile-menu"
@@ -123,8 +144,8 @@ export default function Header() {
             )}
           </button>
 
-          {/* Desktop nav right */}
-          <nav className="hidden md:flex items-center gap-6" aria-label="Main">
+          {/* Desktop nav right - ALWAYS show on large screens */}
+          <nav className="hidden lg:flex items-center gap-6" aria-label="Main">
             {NAV_LINKS.map(link => {
               const isActive = activeRoot === link.href;
               return (
@@ -132,7 +153,7 @@ export default function Header() {
                   key={link.href}
                   href={link.href}
                   aria-current={isActive ? 'page' : undefined}
-                  className={`focus:outline-none focus:ring-2 focus:ring-emerald-400/60 px-2 py-1 rounded transition hover:text-emerald-400/90 ${
+                  className={`focus:outline-none focus:ring-2 focus:ring-emerald-400/60 px-2 py-1 rounded transition-colors hover:text-emerald-400/90 ${
                     isActive ? 'text-emerald-400 font-semibold' : 'text-gray-300 dark:text-gray-200'
                   }`}
                 >
@@ -142,15 +163,15 @@ export default function Header() {
             })}
           </nav>
 
-          {/* User avatar, feedback, theme toggle */}
-          <div className="hidden md:flex items-center gap-4">
+          {/* User avatar, feedback, theme toggle - ALWAYS show on large screens */}
+          <div className="hidden lg:flex items-center gap-4">
             {loading ? (
               <div className="w-9 h-9 rounded-full bg-gray-700 animate-pulse"></div>
             ) : isAuthenticated && user ? (
               <div className="relative" ref={dropdownRef}>
                 <button
                   type="button"
-                  className="w-9 h-9 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700 border-2 border-emerald-400 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-emerald-400/60 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  className="w-9 h-9 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700 border-2 border-emerald-400 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-emerald-400/60 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                   aria-label="User menu"
                   aria-haspopup="true"
                   aria-expanded={dropdownOpen}
@@ -174,7 +195,7 @@ export default function Header() {
                   <div
                     role="menu"
                     aria-label="User menu"
-                    className="absolute right-0 mt-2 w-80 bg-gray-900 rounded-2xl shadow-xl border border-gray-700/50 z-[9999]"
+                    className="absolute right-0 mt-2 w-80 bg-gray-900 rounded-2xl shadow-xl border border-gray-700/50 z-[9999] animate-slide-down"
                   >
                     {/* Header section with avatar and user info */}
                     <div className="p-6 border-b border-gray-700/50">
@@ -278,7 +299,7 @@ export default function Header() {
               <div className="flex items-center gap-4">
                 <Link 
                   href="/feedback" 
-                  className="focus:outline-none focus:ring-2 focus:ring-emerald-400/60 px-2 py-1 rounded transition hover:text-emerald-400 font-medium"
+                  className="focus:outline-none focus:ring-2 focus:ring-emerald-400/60 px-2 py-1 rounded transition-colors hover:text-emerald-400 font-medium text-gray-300"
                 >
                   Feedback
                 </Link>
@@ -293,12 +314,12 @@ export default function Header() {
           </div>
         </div>
 
-        {/* Mobile menu */}
+        {/* Mobile menu - ONLY show on small screens when opened */}
         {mobileOpen && (
           <div 
             id="mobile-menu"
             ref={mobileMenuRef}
-            className="md:hidden fixed inset-0 top-14 z-50 bg-gray-900/95 backdrop-blur-sm overflow-y-auto"
+            className="lg:hidden fixed inset-0 top-14 z-50 bg-gray-900/95 backdrop-blur-sm overflow-y-auto animate-fade-in"
           >
             <div className="px-4 py-6 space-y-6">
               <nav className="space-y-4 pb-6 border-b border-gray-700/50">
@@ -309,7 +330,7 @@ export default function Header() {
                       key={link.href}
                       href={link.href}
                       aria-current={isActive ? 'page' : undefined}
-                      className={`block px-4 py-3 rounded-lg text-lg font-medium transition ${
+                      className={`block px-4 py-3 rounded-lg text-lg font-medium transition-colors ${
                         isActive ? 'bg-emerald-500/10 text-emerald-400' : 'hover:bg-gray-800/80 text-gray-200'
                       }`}
                       onClick={() => setMobileOpen(false)}
@@ -320,30 +341,82 @@ export default function Header() {
                 })}
               </nav>
 
+              {/* User section in mobile menu */}
+              {isAuthenticated && user ? (
+                <div className="space-y-4 pb-6 border-b border-gray-700/50">
+                  <div className="flex items-center gap-4 px-4 py-3">
+                    {user.avatar ? (
+                      <img
+                        src={user.avatar}
+                        alt={user.name || user.email || 'User'}
+                        className="w-12 h-12 rounded-full object-cover ring-2 ring-emerald-400"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-full bg-emerald-600 ring-2 ring-emerald-400 flex items-center justify-center text-xl font-bold text-white">
+                        {user.name ? user.name.charAt(0).toUpperCase() : user.email?.charAt(0).toUpperCase() || 'U'}
+                      </div>
+                    )}
+                    <div className="flex flex-col">
+                      <span className="text-base font-semibold text-white">{user.name || 'User'}</span>
+                      <span className="text-sm text-gray-400">{user.email}</span>
+                    </div>
+                  </div>
+                  <Link
+                    href="/dashboard"
+                    className="block px-4 py-3 rounded-lg text-lg font-medium hover:bg-gray-800/80 text-gray-200 transition-colors"
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    Workspace
+                  </Link>
+                  <Link
+                    href="/projects"
+                    className="block px-4 py-3 rounded-lg text-lg font-medium hover:bg-gray-800/80 text-gray-200 transition-colors"
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    Projects
+                  </Link>
+                </div>
+              ) : null}
+
               <div className="space-y-4 pb-6">
                 <Link
                   href="/feedback"
-                  className="block px-4 py-3 rounded-lg text-lg font-medium hover:bg-gray-800/80 text-gray-200 transition"
+                  className="block px-4 py-3 rounded-lg text-lg font-medium hover:bg-gray-800/80 text-gray-200 transition-colors"
                   onClick={() => setMobileOpen(false)}
                 >
                   Feedback
                 </Link>
                 <Link
                   href="/contact"
-                  className="block px-4 py-3 rounded-lg text-lg font-medium hover:bg-gray-800/80 text-gray-200 transition"
+                  className="block px-4 py-3 rounded-lg text-lg font-medium hover:bg-gray-800/80 text-gray-200 transition-colors"
                   onClick={() => setMobileOpen(false)}
                 >
                   Contact Us
                 </Link>
-                <div className="px-4 pt-4">
-                  <Link
-                    href="/auth"
-                    className="block w-full px-4 py-3 text-center bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 font-semibold rounded-lg hover:shadow-lg transition-all"
-                    onClick={() => setMobileOpen(false)}
-                  >
-                    Sign In
-                  </Link>
-                </div>
+                
+                {isAuthenticated && user ? (
+                  <div className="px-4 pt-4">
+                    <button
+                      onClick={() => {
+                        handleLogout();
+                        setMobileOpen(false);
+                      }}
+                      className="block w-full px-4 py-3 text-center bg-gradient-to-r from-red-500 to-red-600 text-white font-semibold rounded-lg hover:shadow-lg transition-all"
+                    >
+                      Sign Out
+                    </button>
+                  </div>
+                ) : (
+                  <div className="px-4 pt-4">
+                    <Link
+                      href="/auth"
+                      className="block w-full px-4 py-3 text-center bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 font-semibold rounded-lg hover:shadow-lg transition-all"
+                      onClick={() => setMobileOpen(false)}
+                    >
+                      Sign In
+                    </Link>
+                  </div>
+                )}
               </div>
             </div>
           </div>

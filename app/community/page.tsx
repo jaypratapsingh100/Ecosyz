@@ -5,7 +5,7 @@ import CommunityHub from '../components/workspace/CommunityHub';
 
 export default function CommunityPage() {
   return (
-    <div className="min-h-screen flex flex-col bg-zinc-950 text-white">
+    <div className="min-h-screen flex flex-col bg-[#0d0f11] text-white dark overflow-x-hidden">
       <Header />
       <Container>
         <main className="flex-grow py-16">
