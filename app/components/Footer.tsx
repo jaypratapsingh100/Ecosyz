@@ -15,11 +15,10 @@ export default function Footer() {
           {/* 🔵 Logo + Name */}
           <div className="flex items-center space-x-3 mb-6 md:mb-0">
             <Image
-              src="/eco.png"
+              src="/logo.png"
               alt="ECOSYZ logo"
               width={40}
               height={40}
-              className="rounded-full border border-gray-700 shadow-md"
             />
             <span className="text-xl font-semibold text-white tracking-wide">
               ECOSYZ

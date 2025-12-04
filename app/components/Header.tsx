@@ -8,15 +8,13 @@ import { usePathname, useRouter } from "next/navigation";
 import { Container } from "./ui/Container";
 import { toast } from "sonner";
 
-// Central nav definition; label for docs shortened to match design direction.
+// Central nav definition
 const NAV_LINKS = [
-  { href: "/about", label: "About" },
   { href: "/openresources", label: "Resources" },
   { href: "/projects", label: "Projects" },
   { href: "/community", label: "Community" },
   { href: "/whitepaper", label: "Whitepaper" },
   { href: "/pricing", label: "Pricing" },
-  { href: "/docs", label: "Docs" },
 ];
 
 export default function Header() {
@@ -152,7 +150,7 @@ export default function Header() {
         <div className="h-14 flex items-center justify-between relative">
           {/* Brand left */}
           <Link href="/" className="flex items-center gap-2 shrink-0 focus:outline-none focus:ring-2 focus:ring-emerald-400/60">
-            <Image src="/eco.png" alt="Open Idea Logo" width={36} height={36} />
+            <Image src="/logo.png" alt="Open Idea Logo" width={36} height={36} />
             <span className="text-xl font-bold gradient-text ml-2">Open Idea</span>
           </Link>
           {/* Desktop nav center */}
