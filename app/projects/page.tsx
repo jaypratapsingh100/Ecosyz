@@ -56,10 +56,11 @@ export default function Projects() {
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
-  <div className="py-16 sm:py-20  text-white relative">
-               <div className="absolute left-1/2 top-0 -translate-x-1/2 w-[900px] h-[350px] bg-gradient-radial from-emerald-400/10 to-transparent blur-2xl pointer-events-none" />
+      <main className="flex-grow">
+        <div className="py-16 sm:py-20  text-white relative">
+          <div className="absolute left-1/2 top-0 -translate-x-1/2 w-[900px] h-[350px] bg-gradient-radial from-emerald-400/10 to-transparent blur-2xl pointer-events-none" />
 
-        <div className="max-w-6xl mx-auto px-4 py-16">
+          <div className="max-w-6xl mx-auto px-4 py-16">
           <div className="text-center mb-16">
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-transparent bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400 bg-clip-text mb-4 text-center uppercase">
               Explore Open Projects
@@ -126,7 +127,8 @@ export default function Projects() {
             </button>
           </div>
         </div>
-      </div>
+        </div>
+      </main>
       <Footer />
     </div>
   );
