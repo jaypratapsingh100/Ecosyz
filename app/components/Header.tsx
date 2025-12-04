@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useTheme } from "next-themes";
 import { useEffect, useState, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Container } from "./ui/Container";
@@ -18,8 +17,6 @@ const NAV_LINKS = [
 ];
 
 export default function Header() {
-  const { theme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userData, setUserData] = useState<{ name?: string; email?: string; avatarUrl?: string } | null>(null);
@@ -29,7 +26,6 @@ export default function Header() {
   const pathname = usePathname();
   const router = useRouter();
 
-  useEffect(() => setMounted(true), []);
   // Close mobile nav on route change
   useEffect(() => { setMobileOpen(false); }, [pathname]);
 
@@ -77,8 +73,6 @@ export default function Header() {
     first?.focus();
     return () => panel.removeEventListener('keydown', trap);
   }, [mobileOpen]);
-
-  const toggleTheme = () => setTheme(theme === "dark" ? "light" : "dark");
 
   const handleLogout = async () => {
     try {
@@ -243,17 +237,6 @@ export default function Header() {
                 Sign In
               </Link>
             )}
-            <button
-              onClick={toggleTheme}
-              aria-label="Toggle Theme"
-              className="p-2 rounded focus:outline-none focus:ring-2 focus:ring-emerald-400/60 hover:bg-gray-100 dark:hover:bg-gray-700"
-            >
-              {mounted && theme === "dark" ? (
-                <i className="fas fa-sun" />
-              ) : (
-                <i className="fas fa-moon" />
-              )}
-            </button>
             <Link href="/feedback" className="focus:outline-none focus:ring-2 focus:ring-emerald-400/60 px-2 py-1 rounded transition hover:text-emerald-400 font-medium">
               Feedback
             </Link>
@@ -296,15 +279,6 @@ export default function Header() {
               </Link>
             );
           })}
-          <button
-            onClick={toggleTheme}
-            aria-label="Toggle Theme"
-            className="w-full flex items-center justify-center gap-2 p-3 rounded focus:outline-none focus:ring-2 focus:ring-emerald-400/60 hover:bg-white/10 text-white"
-            tabIndex={mobileOpen ? 0 : -1}
-          >
-            {mounted && theme === "dark" ? <i className="fas fa-sun" /> : <i className="fas fa-moon" />}
-            <span>Toggle Theme</span>
-          </button>
           <Link
             href="/feedback"
             className="w-full flex items-center justify-center gap-2 p-3 rounded focus:outline-none focus:ring-2 focus:ring-emerald-400/60 hover:bg-white/10 text-white font-medium"
