@@ -6,6 +6,13 @@ import { Providers } from './components/Providers';
 export const metadata: Metadata = {
   title: 'Open Idea',
   description: "The World&apos;s Open Innovation Infrastructure",
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+    ],
+    apple: '/favicon.svg',
+  },
 };
 
 export default function RootLayout({

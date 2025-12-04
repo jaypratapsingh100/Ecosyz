@@ -5,8 +5,8 @@
     }
   },
   "framework": "nextjs",
-  "buildCommand": "npx prisma generate && next build",
-  "installCommand": "npm ci",
+  "buildCommand": "pnpm prisma generate && pnpm next build",
+  "installCommand": "pnpm install --frozen-lockfile",
   "env": {
     "PRISMA_GENERATE": "true",
     "NODE_ENV": "production",
