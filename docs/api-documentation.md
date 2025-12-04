@@ -421,20 +421,6 @@ Health check endpoint.
 }
 ```
 
-### GET /api/debug/emailjs
-
-Debug EmailJS configuration.
-
-**Response (200):**
-```json
-{
-  "configured": true,
-  "serviceId": "service_xxx",
-  "templateId": "template_xxx",
-  "publicKey": "public_xxx"
-}
-```
-
 ## 📋 Rate Limiting
 
 API endpoints are rate limited to prevent abuse:

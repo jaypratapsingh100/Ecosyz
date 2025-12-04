@@ -22,10 +22,8 @@
     "vercel-build": "prisma generate && next build"
   },
   "dependencies": {
-    "@emailjs/browser": "^4.4.1",
     "@fortawesome/fontawesome-free": "^6.7.2",
     "@hookform/resolvers": "^5.2.2",
-    "@paypal/react-paypal-js": "^8.9.1",
     "@prisma/client": "^6.16.2",
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.57.4",
@@ -64,5 +62,5 @@
     "typescript": "^5.3.3",
     "vitest": "^3.2.4"
   },
-  "license": "MIT"
+  "license": "AGPL-3.0"
 }

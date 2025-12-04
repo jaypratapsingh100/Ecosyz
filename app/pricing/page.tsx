@@ -2,22 +2,8 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
-import dynamicImport from 'next/dynamic'
 import Header from '../components/Header'
 import Footer from '../components/Footer'
-
-export const dynamic = 'force-dynamic'
-
-// Dynamically import PaymentComponent with SSR disabled
-const PaymentComponent = dynamicImport(() => import('../components/PaymentComponent'), {
-  ssr: false,
-  loading: () => (
-    <div className="w-full text-center px-4 py-3 rounded-md font-medium bg-gray-600 text-white cursor-not-allowed">
-      Loading payment options...
-    </div>
-  )
-})
 
 
 
@@ -73,29 +59,17 @@ function Tier({ title, price, description, features, ctaHref, isPopular }: {
         >
           Get Started
         </Link>
-      ) : price === 'Custom' ? (
-        <Link 
-          href="/contact?enquiry=enterprise"
-          className="w-full text-center px-4 py-3 rounded-md font-medium bg-white text-gray-900 hover:bg-gray-100 transition-all duration-300"
-        >
-          Contact Sales
-        </Link>
       ) : (
-        <PaymentComponent
-          amount={parseInt(price.replace('₹', ''))}
-          planType={title}
-          merchantUpiId="7838832332@hdfcbank"
-          merchantName="Open Idea"
-          onSuccess={() => {
-            // Navigate to success page
-            window.location.href = '/thank-you';
-          }}
-          onError={(error: any) => {
-            console.error('Payment failed:', error);
-            // Show error message
-            alert('Payment failed. Please try again.');
-          }}
-        />
+        <Link 
+          href={ctaHref || '/auth'}
+          className={`w-full text-center px-4 py-3 rounded-md font-medium transition-all duration-300 ${
+            isPopular
+              ? 'bg-emerald-500 text-white hover:bg-emerald-600'
+              : 'bg-white text-gray-900 hover:bg-gray-100'
+          }`}
+        >
+          {ctaHref?.includes('contact') ? 'Contact Sales' : 'Get Started'}
+        </Link>
       )}
     </div>
   );
@@ -175,45 +149,10 @@ export default function PricingPage() {
           ))}
         </div>
 
-        <div className="mt-16 max-w-3xl mx-auto">
-          <div className="rounded-lg bg-gray-800 p-6">
-            <h2 className="text-lg font-medium text-white mb-4">Payment methods</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <div className="flex items-center gap-2 text-gray-300 text-sm">
-                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none">
-                  <path d="M21 5H3V19H21V5Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M3 9H21" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                </svg>
-                Credit card
-              </div>
-              <div className="flex items-center gap-2 text-gray-300 text-sm">
-                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none">
-                  <path d="M12 4V20M4 12H20" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                </svg>
-                UPI
-              </div>
-              <div className="flex items-center gap-2 text-gray-300 text-sm">
-                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none">
-                  <path d="M19 5H5V19H19V5Z" stroke="currentColor" strokeWidth="2"/>
-                  <path d="M5 9H19" stroke="currentColor" strokeWidth="2"/>
-                </svg>
-                Net banking
-              </div>
-              <div className="flex items-center gap-2 text-gray-300 text-sm">
-                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="2"/>
-                  <path d="M12 8V16M8 12H16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                </svg>
-                International
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-8 text-center">
-            <p className="text-sm text-gray-400">
-              Have questions about pricing? <Link href="/contact" className="text-emerald-500 hover:text-emerald-400">Talk to us</Link>
-            </p>
-          </div>
+        <div className="mt-16 max-w-3xl mx-auto text-center">
+          <p className="text-sm text-gray-400">
+            Have questions about pricing? <Link href="/contact" className="text-emerald-500 hover:text-emerald-400">Talk to us</Link>
+          </p>
         </div>
       </main>
 

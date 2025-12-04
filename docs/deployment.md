@@ -26,9 +26,6 @@ NEXTAUTH_URL=https://your-domain.vercel.app
 
 # External APIs
 YOUTUBE_API_KEY=your-youtube-key
-EMAILJS_SERVICE_ID=your-emailjs-id
-EMAILJS_TEMPLATE_ID=your-template-id
-EMAILJS_PUBLIC_KEY=your-public-key
 ```
 
 3. **Build Settings**
@@ -160,9 +157,6 @@ NEXTAUTH_URL=https://your-domain.com
 
 # External Services
 YOUTUBE_API_KEY=AIzaSy...
-EMAILJS_SERVICE_ID=service_...
-EMAILJS_TEMPLATE_ID=template_...
-EMAILJS_PUBLIC_KEY=public_...
 
 # Redis (Optional)
 REDIS_URL=redis://localhost:6379
