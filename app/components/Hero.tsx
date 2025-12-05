@@ -18,54 +18,6 @@ export default function Hero() {
     }
   };
 
-  const providers = [
-    { 
-      name: 'OpenAlex', 
-      logo: 'https://openalex.org/favicon.ico',
-      url: 'https://openalex.org'
-    },
-    { 
-      name: 'arXiv', 
-      logo: 'https://arxiv.org/favicon.ico',
-      url: 'https://arxiv.org'
-    },
-    { 
-      name: 'Zenodo', 
-      logo: 'https://zenodo.org/static/img/favicon.png',
-      url: 'https://zenodo.org'
-    },
-    { 
-      name: 'GitHub', 
-      logo: 'https://github.com/favicon.ico',
-      url: 'https://github.com'
-    },
-    { 
-      name: 'HuggingFace', 
-      logo: 'https://huggingface.co/favicon.ico',
-      url: 'https://huggingface.co'
-    },
-    { 
-      name: 'YouTube', 
-      logo: 'https://www.youtube.com/favicon.ico',
-      url: 'https://youtube.com'
-    },
-    { 
-      name: 'Software Heritage', 
-      logo: 'https://www.softwareheritage.org/static/img/favicon.png',
-      url: 'https://www.softwareheritage.org'
-    },
-    { 
-      name: 'OSHWA', 
-      logo: 'https://www.oshwa.org/favicon.ico',
-      url: 'https://www.oshwa.org'
-    },
-    { 
-      name: 'Wikifactory', 
-      logo: 'https://wikifactory.com/favicon.ico',
-      url: 'https://wikifactory.com'
-    },
-  ];
-
   return (
     <div>
       {/* HERO SECTION */}
@@ -119,61 +71,26 @@ export default function Hero() {
                 <div className="mt-8 sm:mt-10">
                   <form onSubmit={handleSearch} className="relative group">
                     <div className="relative flex items-center">
-                      <div className="absolute left-4 flex items-center pointer-events-none">
-                        <svg className="w-5 h-5 text-emerald-400/60 group-focus-within:text-emerald-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                      <div className="absolute left-4 flex items-center pointer-events-none z-10">
+                        <svg className="w-6 h-6 text-emerald-400 group-focus-within:text-emerald-300 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
                         </svg>
                       </div>
                       <input
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Ask anything... Search papers, code, datasets, and more"
-                        className="w-full pl-12 pr-32 py-4 bg-black/40 backdrop-blur-sm border-2 border-emerald-400/30 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20 transition-all duration-300"
+                        placeholder="Search problems, ideas, or open-source solutions."
+                        className="w-full pl-12 pr-40 py-4 bg-black/40 backdrop-blur-sm border border-emerald-400/15 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:border-emerald-400/30 focus:ring-1 focus:ring-emerald-400/10 transition-all duration-300"
                       />
                       <button
                         type="submit"
                         className="absolute right-2 px-6 py-2 bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 font-semibold rounded-lg hover:scale-105 transition-transform duration-200 shadow-lg"
                       >
-                        Search
+                        Discover
                       </button>
                     </div>
                   </form>
-                </div>
-
-                {/* Sliding Provider Logos */}
-                <div className="mt-8 relative overflow-hidden">
-                  <div className="flex items-center gap-6 animate-slide">
-                    {/* Duplicate set for seamless loop */}
-                    {[...providers, ...providers, ...providers].map((provider, idx) => (
-                      <a
-                        key={`${provider.name}-${idx}`}
-                        href={provider.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex-shrink-0 flex items-center gap-3 px-5 py-3 bg-black/40 backdrop-blur-sm border border-emerald-400/20 rounded-xl hover:border-emerald-400/60 hover:bg-black/60 transition-all duration-300 hover:scale-110 group"
-                      >
-                        <img
-                          src={provider.logo}
-                          alt={`${provider.name} logo`}
-                          className="w-8 h-8 object-contain group-hover:scale-110 transition-transform duration-300"
-                          onError={(e) => {
-                            // Fallback to a simple icon if image fails to load
-                            const target = e.target as HTMLImageElement;
-                            target.style.display = 'none';
-                            const fallback = document.createElement('span');
-                            fallback.className = 'text-xl';
-                            fallback.textContent = '🔗';
-                            target.parentElement?.prepend(fallback);
-                          }}
-                        />
-                        <span className="text-sm font-semibold text-teal-200 whitespace-nowrap group-hover:text-emerald-300 transition-colors">{provider.name}</span>
-                      </a>
-                    ))}
-                  </div>
-                  {/* Gradient overlays for fade effect */}
-                  <div className="absolute left-0 top-0 bottom-0 w-32 bg-gradient-to-r from-[#0c2321] to-transparent pointer-events-none z-10" />
-                  <div className="absolute right-0 top-0 bottom-0 w-32 bg-gradient-to-l from-[#0c2321] to-transparent pointer-events-none z-10" />
                 </div>
 
                 {/* Action Buttons */}
