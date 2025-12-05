@@ -1,7 +1,6 @@
 'use client';
 
 import Header from '../components/Header';
-import Footer from '../components/Footer';
 import ChatSearch from '../components/ChatSearch';
 
 export default function ChatPage() {
@@ -11,7 +10,6 @@ export default function ChatPage() {
       <main className="flex-grow">
         <ChatSearch />
       </main>
-      <Footer />
     </div>
   );
 }

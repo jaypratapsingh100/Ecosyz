@@ -75,7 +75,8 @@ export default function Footer() {
 
         {/* 🔚 Bottom Note */}
         <div className="mt-8 text-center text-xs text-gray-400">
-          © {currentYear} ECOSYZ. All rights reserved. Built with{' '}
+          © {currentYear} ECOSYZ. All rights reserved. Proudly built in India {' '}
+          <span className="text-lg"> 🇮🇳 </span> with {' '}
           <span className="text-emerald-400">❤️</span> for global innovation.
         </div>
       </footer>
