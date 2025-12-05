@@ -113,7 +113,7 @@ export default function ChatBot() {
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 text-sm">
+    <div className="fixed bottom-32 right-6 z-50 text-sm">
       {open ? (
         <div className="bg-white dark:bg-gray-800 shadow-lg rounded-lg w-72 flex flex-col h-80">
           <div className="p-2 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
@@ -168,7 +168,7 @@ export default function ChatBot() {
         <button
           onClick={() => setOpen(true)}
           aria-label="Open chat"
-          className="p-3 rounded-full bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 shadow-lg hover:scale-105 transition"
+          className="p-3 rounded-full bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 shadow-lg hover:scale-105 transition-all duration-200 animate-bounce-fast"
         >
           Chat
         </button>
