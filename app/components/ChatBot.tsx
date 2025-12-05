@@ -113,9 +113,9 @@ export default function ChatBot() {
   };
 
   return (
-    <div className="fixed bottom-32 right-6 z-50 text-sm">
+    <div className="fixed bottom-24 sm:bottom-32 right-4 sm:right-6 z-50 text-sm">
       {open ? (
-        <div className="bg-white dark:bg-gray-800 shadow-lg rounded-lg w-72 flex flex-col h-80 border border-teal-400/50">
+        <div className="bg-white dark:bg-gray-800 shadow-lg rounded-lg w-[calc(100vw-2rem)] sm:w-72 max-w-sm flex flex-col h-80 border border-teal-400/50">
           <div className="p-2 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
             <span className="font-semibold">Chat</span>
             <button
