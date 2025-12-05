@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Image from 'next/image';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import { Container } from '../components/ui/Container';
@@ -23,7 +24,13 @@ export default function OpenResourcesPageWrapper() {
   // Wrap the client-side search params consumer in Suspense per Next.js guidance
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center text-cyan-200">Loading search…</div>
+      <div className="min-h-screen flex flex-col bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016]">
+        <Header />
+        <main className="flex-grow flex items-center justify-center">
+          <div className="text-cyan-200">Loading search…</div>
+        </main>
+        <Footer />
+      </div>
     }>
       <OpenResourcesPage />
     </Suspense>
@@ -256,14 +263,25 @@ function OpenResourcesPage() {
   }, [summaryModal.open]);
 
   return (
-  <div className="min-h-screen flex flex-col overflow-x-hidden pb-[calc(env(safe-area-inset-bottom)+16px)]">
+  <div className="min-h-screen flex flex-col overflow-x-hidden pb-[calc(env(safe-area-inset-bottom)+16px)] bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016]">
       <Header />
       <section
         id="open-resources"
-        className="py-6 sm:py-10 bg-zinc-950 text-white relative"
+        className="py-6 sm:py-10 text-white relative"
       >
-        {/* Soft spot background */}
-        <div className="absolute left-1/2 top-0 -translate-x-1/2 w-[900px] h-[350px] bg-gradient-radial from-emerald-400/10 to-transparent blur-2xl pointer-events-none" />
+        {/* Globe background image */}
+        <div className="pointer-events-none absolute inset-0 z-0">
+          <Image
+            src="/hero-globe.png"
+            alt="Digital Globe Background"
+            fill
+            className="object-cover object-right opacity-30"
+            quality={100}
+            priority
+          />
+          <div className="absolute left-1/2 top-1/3 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] bg-gradient-radial from-cyan-400/20 to-transparent opacity-80 blur-3xl"></div>
+        </div>
+        <div className="relative z-10">
         <Container>
           <div className="text-center mb-6 sm:mb-12">
             <h2 className="text-2xl sm:text-4xl font-bold tracking-tight text-transparent bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400 bg-clip-text mb-3 sm:mb-4 text-center uppercase">
@@ -702,7 +720,7 @@ function OpenResourcesPage() {
               </div>
             </div>
             {/* Card 6 */}
-            <div className="rounded-xl border border-white/10 bg-white/5 p-4 sm:p-5 flex items-start gap-3">
+            <div className="rounded-xl glass-card glass-border p-4 sm:p-5 flex items-start gap-3">
               <i className="fas fa-brain text-2xl sm:text-3xl text-indigo-300 mt-1"></i>
               <div>
                 <h3 className="text-base sm:text-lg font-semibold text-white mb-2">AI Models & APIs</h3>
@@ -712,6 +730,7 @@ function OpenResourcesPage() {
           </div>
           {/* --- End Original Resource Cards --- */}
         </Container>
+        </div>
       </section>
 
       {/* Auth Modal */}

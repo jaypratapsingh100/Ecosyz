@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 
@@ -79,14 +80,24 @@ export default function ContributePage() {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016]">
       <Header />
-      <main className="flex-grow">
+      <main className="flex-grow relative">
+        {/* Globe background image */}
+        <div className="pointer-events-none absolute inset-0 z-0">
+          <Image
+            src="/hero-globe.png"
+            alt="Digital Globe Background"
+            fill
+            className="object-cover object-right opacity-30"
+            quality={100}
+            priority
+          />
+          <div className="absolute left-1/2 top-1/3 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] bg-gradient-radial from-cyan-400/20 to-transparent opacity-80 blur-3xl"></div>
+        </div>
+        
         {/* Hero Section */}
-        <section className="relative py-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016]">
-          <div className="absolute inset-0 overflow-hidden">
-            <div className="absolute left-1/2 top-0 -translate-x-1/2 w-[800px] h-[400px] bg-gradient-radial from-indigo-400/10 to-transparent blur-3xl opacity-50" />
-          </div>
+        <section className="relative py-20 px-4 sm:px-6 lg:px-8 z-10">
           <div className="relative max-w-4xl mx-auto text-center">
             <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight text-white mb-6">
               <span className="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
@@ -117,7 +128,7 @@ export default function ContributePage() {
         </section>
 
         {/* Ways to Contribute */}
-        <section className="py-16 px-4 sm:px-6 lg:px-8 bg-[#0a1016]">
+        <section className="relative py-16 px-4 sm:px-6 lg:px-8 z-10">
           <div className="max-w-6xl mx-auto">
             <h2 className="text-3xl sm:text-4xl font-bold text-center text-white mb-12">
               Ways to Contribute
@@ -147,7 +158,7 @@ export default function ContributePage() {
         </section>
 
         {/* Quick Start */}
-        <section className="py-16 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016]">
+        <section className="relative py-16 px-4 sm:px-6 lg:px-8 z-10">
           <div className="max-w-4xl mx-auto">
             <h2 className="text-3xl sm:text-4xl font-bold text-center text-white mb-12">
               Quick Start Guide
@@ -182,7 +193,7 @@ export default function ContributePage() {
         </section>
 
         {/* Code of Conduct & License */}
-        <section className="py-16 px-4 sm:px-6 lg:px-8 bg-[#0a1016]">
+        <section className="relative py-16 px-4 sm:px-6 lg:px-8 z-10">
           <div className="max-w-4xl mx-auto text-center">
             <h2 className="text-3xl font-bold text-white mb-6">Open Source Values</h2>
             <div className="grid md:grid-cols-2 gap-8 mb-12">

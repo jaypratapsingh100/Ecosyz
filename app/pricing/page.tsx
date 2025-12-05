@@ -2,6 +2,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import Header from '../components/Header'
 import Footer from '../components/Footer'
 
@@ -16,10 +17,10 @@ function Tier({ title, price, description, features, ctaHref, isPopular }: {
   isPopular?: boolean;
 }) {
   return (
-    <div className={`p-8 rounded-xl flex flex-col border ${
+    <div className={`relative p-8 rounded-xl flex flex-col border backdrop-blur-sm ${
       isPopular 
-        ? 'border-emerald-500 bg-emerald-500/10' 
-        : 'border-gray-700 hover:border-gray-600'
+        ? 'border-emerald-500 bg-black/60' 
+        : 'border-emerald-400/30 bg-black/50 hover:border-emerald-400/50 hover:bg-black/60'
     } transition-all duration-300`}>
       {isPopular && (
         <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
@@ -51,10 +52,10 @@ function Tier({ title, price, description, features, ctaHref, isPopular }: {
       {price === 'Free' ? (
         <Link 
           href={ctaHref || '/auth?plan=free'}
-          className={`w-full text-center px-4 py-3 rounded-md font-medium transition-all duration-300 ${
+          className={`w-full text-center px-4 py-3 rounded-lg font-semibold transition-all duration-300 ${
             isPopular
-              ? 'bg-emerald-500 text-white hover:bg-emerald-600'
-              : 'bg-white text-gray-900 hover:bg-gray-100'
+              ? 'bg-transparent border-2 border-emerald-400/50 text-emerald-400 hover:bg-emerald-400/10 hover:border-emerald-400'
+              : 'bg-transparent border-2 border-cyan-400/50 text-cyan-400 hover:bg-cyan-400/10 hover:border-cyan-400'
           }`}
         >
           Get Started
@@ -62,10 +63,10 @@ function Tier({ title, price, description, features, ctaHref, isPopular }: {
       ) : (
         <Link 
           href={ctaHref || '/auth'}
-          className={`w-full text-center px-4 py-3 rounded-md font-medium transition-all duration-300 ${
+          className={`w-full text-center px-4 py-3 rounded-lg font-semibold transition-all duration-300 ${
             isPopular
-              ? 'bg-emerald-500 text-white hover:bg-emerald-600'
-              : 'bg-white text-gray-900 hover:bg-gray-100'
+              ? 'bg-transparent border-2 border-emerald-400/50 text-emerald-400 hover:bg-emerald-400/10 hover:border-emerald-400'
+              : 'bg-transparent border-2 border-cyan-400/50 text-cyan-400 hover:bg-cyan-400/10 hover:border-cyan-400'
           }`}
         >
           {ctaHref?.includes('contact') ? 'Contact Sales' : 'Get Started'}
@@ -130,29 +131,44 @@ export default function PricingPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-900">
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016]">
       <Header />
       
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <div className="text-center mb-12">
-          <h1 className="text-3xl font-semibold text-white mb-3">
-            Get Access to Open Idea
-          </h1>
-          <p className="text-gray-400 max-w-2xl mx-auto">
-            Simple, transparent pricing that grows with you. Try any plan free for 14 days.
-          </p>
+      <main className="flex-grow relative">
+        {/* Globe background image */}
+        <div className="pointer-events-none absolute inset-0 z-0">
+          <Image
+            src="/hero-globe.png"
+            alt="Digital Globe Background"
+            fill
+            className="object-cover object-right opacity-30"
+            quality={100}
+            priority
+          />
+          <div className="absolute left-1/2 top-1/3 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] bg-gradient-radial from-cyan-400/20 to-transparent opacity-80 blur-3xl"></div>
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-8 max-w-6xl mx-auto relative">
-          {tiers.map((tier) => (
-            <Tier key={tier.title} {...tier} />
-          ))}
-        </div>
+        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+          <div className="text-center mb-12">
+            <h1 className="text-3xl font-semibold text-white mb-3">
+              Get Access to Open Idea
+            </h1>
+            <p className="text-gray-400 max-w-2xl mx-auto">
+              Simple, transparent pricing that grows with you. Try any plan free for 14 days.
+            </p>
+          </div>
 
-        <div className="mt-16 max-w-3xl mx-auto text-center">
-          <p className="text-sm text-gray-400">
-            Have questions about pricing? <Link href="/contact" className="text-emerald-500 hover:text-emerald-400">Talk to us</Link>
-          </p>
+          <div className="grid lg:grid-cols-3 gap-8 max-w-6xl mx-auto relative">
+            {tiers.map((tier) => (
+              <Tier key={tier.title} {...tier} />
+            ))}
+          </div>
+
+          <div className="mt-16 max-w-3xl mx-auto text-center">
+            <p className="text-sm text-gray-400">
+              Have questions about pricing? <Link href="/contact" className="text-emerald-500 hover:text-emerald-400">Talk to us</Link>
+            </p>
+          </div>
         </div>
       </main>
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, Suspense } from 'react';
+import Image from 'next/image';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import { supabase } from '../../src/lib/supabase';
@@ -72,10 +73,23 @@ function ContactForm() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016]">
       <Header />
-      <main className="flex-grow py-16 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-2xl mx-auto">
+      <main className="flex-grow relative py-16 px-4 sm:px-6 lg:px-8">
+        {/* Globe background image */}
+        <div className="pointer-events-none absolute inset-0 z-0">
+          <Image
+            src="/hero-globe.png"
+            alt="Digital Globe Background"
+            fill
+            className="object-cover object-right opacity-30"
+            quality={100}
+            priority
+          />
+          <div className="absolute left-1/2 top-1/3 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] bg-gradient-radial from-cyan-400/20 to-transparent opacity-80 blur-3xl"></div>
+        </div>
+
+        <div className="relative z-10 max-w-2xl mx-auto">
           <div className="text-center mb-12">
             <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-transparent bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400 bg-clip-text mb-4">
               Get in Touch
@@ -187,7 +201,7 @@ function ContactForm() {
 export default function ContactPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex flex-col">
+      <div className="min-h-screen flex flex-col bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016]">
         <Header />
         <main className="flex-grow flex items-center justify-center">
           <div className="text-center">

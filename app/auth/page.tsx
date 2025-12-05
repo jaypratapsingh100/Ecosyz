@@ -8,6 +8,8 @@ import { z } from 'zod';
 import { toast } from 'sonner';
 import Link from 'next/link';
 import Image from 'next/image';
+import Header from '../components/Header';
+import Footer from '../components/Footer';
 
 const signInSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -235,26 +237,28 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016]">
-      {/* Globe background image */}
-      <div className="pointer-events-none absolute inset-0 z-0">
-        <Image
-          src="/hero-globe.png"
-          alt="Digital Globe Background"
-          fill
-          className="object-cover object-right"
-          quality={100}
-          priority
-        />
-        <div className="absolute left-1/2 top-1/3 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] bg-gradient-radial from-emerald-400/20 to-transparent opacity-80 blur-3xl"></div>
-      </div>
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016]">
+      <Header />
+      <div className="flex-grow relative">
+        {/* Globe background image */}
+        <div className="pointer-events-none absolute inset-0 z-0">
+          <Image
+            src="/hero-globe.png"
+            alt="Digital Globe Background"
+            fill
+            className="object-cover object-right opacity-30"
+            quality={100}
+            priority
+          />
+          <div className="absolute left-1/2 top-1/3 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] bg-gradient-radial from-cyan-400/20 to-transparent opacity-80 blur-3xl"></div>
+        </div>
 
-      <div className="relative z-10 w-full min-h-screen flex items-center">
+        <div className="relative z-10 w-full min-h-screen flex items-center py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
           <div className="grid lg:grid-cols-12 gap-16 items-center min-h-[70vh]">
             {/* Auth Form - Left Side */}
             <div className="lg:col-span-6 text-center lg:text-left">
-              <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 shadow-2xl border border-white/20">
+              <div className="p-8">
                 <div className="mb-8">
                   <h2 className="text-3xl font-bold text-white mb-2">
                     {isSignUp ? 'Join the Revolution' : 'Welcome Back'}
@@ -493,6 +497,7 @@ export default function AuthPage() {
             <div className="lg:col-span-6"></div>
           </div>
         </div>
+        </div>
       </div>
 
       {/* Forgot Password Modal */}
@@ -550,6 +555,7 @@ export default function AuthPage() {
           </div>
         </div>
       )}
+      <Footer />
     </div>
   );
 }
