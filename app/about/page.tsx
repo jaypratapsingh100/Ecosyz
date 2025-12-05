@@ -1,35 +1,15 @@
-'use client';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
+import AboutHero from '../components/AboutHero';
 
-import FeatureCards from '../components/FeatureCards';
-import PurposeSection from '../components/PurposeSection';
-import UniquePoints from '../components/UniquePoints';
-import ResourcesSection from '../components/ResourcesSection';
-import ImpactSection from '../components/ImpactSection';
-import ChallengesSection from '../components/ChallengesSection';
-import TechnologySection from '../components/TechnologySection';
-import CommunitySection from '../components/CommunitySection';
-import JoinRevolution from '../components/JoinRevolution';
-import FAQSection from '../components/FAQSection';
-import FinalCTA from '../components/FinalCTA';
-
-export default function About() {
+export default function AboutPage() {
   return (
-    <div>
-     <Header/>
-      <FeatureCards />
-      <PurposeSection />
-      <UniquePoints />
-      <ResourcesSection />
-      <ImpactSection />
-      <ChallengesSection />
-      <TechnologySection />
-      <CommunitySection />
-      <JoinRevolution />
-      <FAQSection />
-      <FinalCTA />
-      <Footer/>
+    <div className="min-h-screen flex flex-col">
+      <Header />
+      <main className="flex-grow">
+        <AboutHero />
+      </main>
+      <Footer />
     </div>
   );
 }
