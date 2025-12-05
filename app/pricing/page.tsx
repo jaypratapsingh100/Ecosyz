@@ -131,24 +131,25 @@ export default function PricingPage() {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016]">
+    <div className="min-h-screen flex flex-col">
       <Header />
       
-      <main className="flex-grow relative">
-        {/* Globe background image */}
-        <div className="pointer-events-none absolute inset-0 z-0">
-          <Image
-            src="/hero-globe.png"
-            alt="Digital Globe Background"
-            fill
-            className="object-cover object-right opacity-30"
-            quality={100}
-            priority
-          />
-          <div className="absolute left-1/2 top-1/3 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] bg-gradient-radial from-cyan-400/20 to-transparent opacity-80 blur-3xl"></div>
-        </div>
+      <main className="flex-grow">
+        <section className="relative overflow-hidden bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016] min-h-screen">
+          {/* Globe background image */}
+          <div className="pointer-events-none absolute inset-0 z-0">
+            <Image
+              src="/hero-globe.png"
+              alt="Digital Globe Background"
+              fill
+              className="object-cover object-right opacity-30"
+              quality={100}
+              priority
+            />
+            <div className="absolute left-1/2 top-1/3 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] bg-gradient-radial from-cyan-400/20 to-transparent opacity-80 blur-3xl"></div>
+          </div>
 
-        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+          <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
           <div className="text-center mb-12">
             <h1 className="text-3xl font-semibold text-white mb-3">
               Get Access to Open Idea
@@ -169,7 +170,8 @@ export default function PricingPage() {
               Have questions about pricing? <Link href="/contact" className="text-emerald-500 hover:text-emerald-400">Talk to us</Link>
             </p>
           </div>
-        </div>
+          </div>
+        </section>
       </main>
 
       <Footer />

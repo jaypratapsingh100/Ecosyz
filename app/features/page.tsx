@@ -37,23 +37,24 @@ export default function FeaturesPage() {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016] text-white">
+    <div className="min-h-screen flex flex-col">
       <Header />
-      <main className="flex-grow relative">
-        {/* Globe background image */}
-        <div className="pointer-events-none absolute inset-0 z-0">
-          <Image
-            src="/hero-globe.png"
-            alt="Digital Globe Background"
-            fill
-            className="object-cover object-right opacity-30"
-            quality={100}
-            priority
-          />
-          <div className="absolute left-1/2 top-1/3 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] bg-gradient-radial from-cyan-400/20 to-transparent opacity-80 blur-3xl"></div>
-        </div>
+      <main className="flex-grow">
+        <section className="relative overflow-hidden bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016] min-h-screen">
+          {/* Globe background image */}
+          <div className="pointer-events-none absolute inset-0 z-0">
+            <Image
+              src="/hero-globe.png"
+              alt="Digital Globe Background"
+              fill
+              className="object-cover object-right opacity-30"
+              quality={100}
+              priority
+            />
+            <div className="absolute left-1/2 top-1/3 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] bg-gradient-radial from-cyan-400/20 to-transparent opacity-80 blur-3xl"></div>
+          </div>
 
-        <div className="relative z-10">
+          <div className="relative z-10 text-white">
           {/* Hero Section */}
           <section className="relative py-16 sm:py-20 px-4 sm:px-6 lg:px-8">
             <div className="max-w-7xl mx-auto text-center">
@@ -123,7 +124,8 @@ export default function FeaturesPage() {
               </div>
             </div>
           </section>
-        </div>
+          </div>
+        </section>
       </main>
       <Footer />
     </div>

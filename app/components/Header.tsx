@@ -11,7 +11,6 @@ import { toast } from "sonner";
 const NAV_LINKS = [
   { href: "/about", label: "About" },
   { href: "/features", label: "Features" },
-  { href: "/chat", label: "Chat" },
   { href: "/pricing", label: "Pricing" },
 ];
 

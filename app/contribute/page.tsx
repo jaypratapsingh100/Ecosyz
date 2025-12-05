@@ -80,25 +80,26 @@ export default function ContributePage() {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016]">
+    <div className="min-h-screen flex flex-col">
       <Header />
-      <main className="flex-grow relative">
-        {/* Globe background image */}
-        <div className="pointer-events-none absolute inset-0 z-0">
-          <Image
-            src="/hero-globe.png"
-            alt="Digital Globe Background"
-            fill
-            className="object-cover object-right opacity-30"
-            quality={100}
-            priority
-          />
-          <div className="absolute left-1/2 top-1/3 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] bg-gradient-radial from-cyan-400/20 to-transparent opacity-80 blur-3xl"></div>
-        </div>
+      <main className="flex-grow">
+        <section className="relative overflow-hidden bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016] min-h-screen">
+          {/* Globe background image */}
+          <div className="pointer-events-none absolute inset-0 z-0">
+            <Image
+              src="/hero-globe.png"
+              alt="Digital Globe Background"
+              fill
+              className="object-cover object-right opacity-30"
+              quality={100}
+              priority
+            />
+            <div className="absolute left-1/2 top-1/3 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] bg-gradient-radial from-cyan-400/20 to-transparent opacity-80 blur-3xl"></div>
+          </div>
         
-        {/* Hero Section */}
-        <section className="relative py-20 px-4 sm:px-6 lg:px-8 z-10">
-          <div className="relative max-w-4xl mx-auto text-center">
+          {/* Hero Section */}
+          <div className="relative py-20 px-4 sm:px-6 lg:px-8 z-10">
+            <div className="relative max-w-4xl mx-auto text-center">
             <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight text-white mb-6">
               <span className="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
                 Contribute to Open Idea
@@ -124,12 +125,12 @@ export default function ContributePage() {
                 Read Contributing Guide
               </Link>
             </div>
+            </div>
           </div>
-        </section>
 
-        {/* Ways to Contribute */}
-        <section className="relative py-16 px-4 sm:px-6 lg:px-8 z-10">
-          <div className="max-w-6xl mx-auto">
+          {/* Ways to Contribute */}
+          <div className="relative py-16 px-4 sm:px-6 lg:px-8 z-10">
+            <div className="max-w-6xl mx-auto">
             <h2 className="text-3xl sm:text-4xl font-bold text-center text-white mb-12">
               Ways to Contribute
             </h2>
@@ -154,12 +155,12 @@ export default function ContributePage() {
                 </div>
               ))}
             </div>
+            </div>
           </div>
-        </section>
 
-        {/* Quick Start */}
-        <section className="relative py-16 px-4 sm:px-6 lg:px-8 z-10">
-          <div className="max-w-4xl mx-auto">
+          {/* Quick Start */}
+          <div className="relative py-16 px-4 sm:px-6 lg:px-8 z-10">
+            <div className="max-w-4xl mx-auto">
             <h2 className="text-3xl sm:text-4xl font-bold text-center text-white mb-12">
               Quick Start Guide
             </h2>
@@ -189,12 +190,12 @@ export default function ContributePage() {
                 Read Full Guide
               </a>
             </div>
+            </div>
           </div>
-        </section>
 
-        {/* Code of Conduct & License */}
-        <section className="relative py-16 px-4 sm:px-6 lg:px-8 z-10">
-          <div className="max-w-4xl mx-auto text-center">
+          {/* Code of Conduct & License */}
+          <div className="relative py-16 px-4 sm:px-6 lg:px-8 z-10">
+            <div className="max-w-4xl mx-auto text-center">
             <h2 className="text-3xl font-bold text-white mb-6">Open Source Values</h2>
             <div className="grid md:grid-cols-2 gap-8 mb-12">
               <div className="glass glass-border rounded-xl p-6">
@@ -239,6 +240,7 @@ export default function ContributePage() {
               >
                 Join Discord
               </a>
+            </div>
             </div>
           </div>
         </section>

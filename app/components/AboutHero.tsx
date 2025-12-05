@@ -26,11 +26,11 @@ export default function AboutHero() {
             src="/hero-globe.png"
             alt="Digital Globe Background"
             fill
-            className="object-cover object-right"
+            className="object-cover object-right opacity-30"
             quality={100}
             priority
           />
-          <div className="absolute left-1/2 top-1/3 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] bg-gradient-radial from-emerald-400/20 to-transparent opacity-80 blur-3xl"></div>
+          <div className="absolute left-1/2 top-1/3 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] bg-gradient-radial from-cyan-400/20 to-transparent opacity-80 blur-3xl"></div>
         </div>
         {/* Contribute and GitHub - Top Right */}
         <div className="absolute top-4 right-4 sm:right-8 z-20 flex items-center gap-4">
