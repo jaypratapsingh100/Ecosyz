@@ -1,30 +1,41 @@
 import Header from '../components/Header';
 import Footer from '../components/Footer';
+import Image from 'next/image';
 
 export default function WhitepaperPage() {
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016]">
       <Header />
-      <main className="flex-grow p-8">
-      <div className="bg-gradient-to-br from-[#10171a] via-[#132726] to-[#091312] text-white min-h-screen pb-16">
-  {/* Hero Section */}
-  <section className="hero-gradient py-16 sm:py-20 relative">
-    <div className="absolute left-1/2 top-0 -translate-x-1/2 w-[900px] h-[300px] bg-gradient-radial from-emerald-400/10 to-transparent blur-2xl pointer-events-none"/>
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-transparent bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400 bg-clip-text mb-4 text-center uppercase">
-                 
+      <main className="flex-grow relative p-8">
+        {/* Globe background image */}
+        <div className="pointer-events-none absolute inset-0 z-0">
+          <Image
+            src="/hero-globe.png"
+            alt="Digital Globe Background"
+            fill
+            className="object-cover object-right opacity-30"
+            quality={100}
+            priority
+          />
+          <div className="absolute left-1/2 top-1/3 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] bg-gradient-radial from-cyan-400/20 to-transparent opacity-80 blur-3xl"></div>
+        </div>
 
-        <span className="text-3xl sm:text-4xl font-extrabold text-transparent bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400 bg-clip-text mb-2 tracking-tight text-center uppercase">Open Idea</span>
-        <span > Whitepaper</span>
+        <div className="relative z-10 text-white min-h-screen pb-16">
+  {/* Hero Section */}
+  <section className="relative py-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+      <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-transparent bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400 bg-clip-text mb-4 uppercase">
+        <span className="text-3xl sm:text-4xl font-extrabold bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400 bg-clip-text">Open Idea</span>
+        <span> Whitepaper</span>
       </h1>
-      <p className="mt-4 text-xl text-teal-100/90 sm:text-2xl sm:max-w-xl sm:mx-auto md:mt-5">
+      <p className="mt-4 text-xl text-teal-100/90 sm:text-2xl sm:max-w-xl sm:mx-auto">
         Democratizing Innovation Through Unified Open Knowledge
       </p>
-      <div className="mt-8 flex justify-center space-x-4">
+      <div className="mt-6 flex justify-center">
         <a
           href="https://github.com/Sony17/Ecosyz/blob/main/Open%20Idea.pdf?raw=true"
           download="Open_Idea_Whitepaper.pdf"
-          className="px-6 py-3 rounded-md bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 font-semibold shadow hover:scale-105 transition"
+          className="px-6 py-3 rounded-lg bg-transparent border-2 border-cyan-400/50 text-cyan-400 font-semibold shadow-lg transition hover:scale-105 hover:bg-cyan-400/10 hover:border-cyan-400"
         >
           Download PDF
         </a>
@@ -32,35 +43,38 @@ export default function WhitepaperPage() {
     </div>
   </section>
 
-  {/* Table of Contents */}
-  <section className="py-12 bg-gradient-to-br from-[#121b1a] via-[#172524] to-[#121819]">
-    <div className="max-w-3xl mx-auto px-4 sm:px-6">
-      <div className="bg-[#162322]/80 p-6 rounded-xl shadow-xl">
-        <h2 className="text-2xl font-bold text-cyan-200 mb-4">Table of Contents</h2>
-        <ol className="list-decimal list-inside space-y-2 text-lg">
+  {/* Table of Contents - Sticky Horizontal Navigation */}
+  <div className="sticky top-16 z-30 mb-6">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6">
+      <div className="bg-black/60 backdrop-blur-md border border-cyan-400/30 p-3 rounded-xl shadow-lg">
+        <div className="flex flex-wrap justify-center gap-2">
           {[
-            { href: "#mission", label: "Mission and Vision" },
-            { href: "#problem", label: "The Fragmentation Problem in Open Knowledge" },
-            { href: "#solution", label: "Open Idea: A Unified Solution" },
-            { href: "#system", label: "How the System Works" },
-            { href: "#users", label: "User Types and Use Cases" },
-            { href: "#technology", label: "Technology Stack and Architecture" },
-            { href: "#monetization", label: "Monetization Strategy" },
-            { href: "#roadmap", label: "Roadmap and Milestones" },
-            { href: "#action", label: "Call to Action" },
+            { href: "#mission", label: "Mission" },
+            { href: "#problem", label: "Problem" },
+            { href: "#solution", label: "Solution" },
+            { href: "#system", label: "System" },
+            { href: "#users", label: "Users" },
+            { href: "#technology", label: "Tech" },
+            { href: "#monetization", label: "Monetization" },
+            { href: "#roadmap", label: "Roadmap" },
+            { href: "#action", label: "CTA" },
           ].map((item) => (
-            <li key={item.href}>
-              <a href={item.href} className="text-cyan-300 hover:text-emerald-300 transition">{item.label}</a>
-            </li>
+            <a 
+              key={item.href} 
+              href={item.href} 
+              className="px-3 py-1.5 text-sm bg-cyan-400/10 border border-cyan-400/30 rounded-lg text-cyan-300 hover:text-emerald-300 hover:border-emerald-400/50 hover:bg-emerald-400/10 transition-all duration-200"
+            >
+              {item.label}
+            </a>
           ))}
-        </ol>
+        </div>
       </div>
     </div>
-  </section>
+  </div>
 
   {/* --- Sample Content Structure for Each Section --- */}
   {/* 1. Mission and Vision */}
-  <section id="mission" className="py-16">
+  <section id="mission" className="py-8">
     <div className="max-w-5xl mx-auto px-4 sm:px-6">
       <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-transparent bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400 bg-clip-text mb-4 uppercase">1. Mission and Vision</h1>
 
@@ -89,9 +103,8 @@ export default function WhitepaperPage() {
       </div>
     </div>
   </section>
-<div className="w-full h-[2px] bg-gradient-to-r from-transparent via-emerald-400 to-transparent opacity-40" />
 {/* Fragmentation Problem Section */}
-<section id="problem" className="py-16 sm:py-20 bg-gradient-to-br from-[#121b1a] via-[#172524] to-[#121819] text-white">
+<section id="problem" className="py-8 text-white">
   <div className="max-w-5xl mx-auto px-4 sm:px-6">
     <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-transparent bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400 bg-clip-text mb-8 uppercase">
       2. The Fragmentation Problem in Open Knowledge
@@ -156,10 +169,8 @@ export default function WhitepaperPage() {
     </p>
   </div>
 </section>
-<div className="w-full h-[2px] bg-gradient-to-r from-transparent via-emerald-400 to-transparent opacity-40" />
-
 {/* Solution Section */}
-<section id="solution" className="py-16 sm:py-20 bg-gradient-to-br from-[#101b1d] via-[#112124] to-[#11181c] text-white">
+<section id="solution" className="py-8 text-white">
   <div className="max-w-5xl mx-auto px-4 sm:px-6">
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-transparent bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400 bg-clip-text mb-4 uppercase"> 3. Open Idea: A Unified Solution</h1>
 
@@ -216,10 +227,8 @@ export default function WhitepaperPage() {
   </div>
 </section>
 
-<div className="w-full h-[2px] bg-gradient-to-r from-transparent via-emerald-400 to-transparent opacity-40" />
-
 {/* How the System Works */}
-<section id="system" className="py-16 sm:py-20 bg-gradient-to-br from-[#10241d] via-[#16252a] to-[#182025] text-white">
+<section id="system" className="py-8 text-white">
   <div className="max-w-5xl mx-auto px-4 sm:px-6">
   <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-transparent bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400 bg-clip-text mb-4 uppercase">        
       4. How the System Works
@@ -260,10 +269,8 @@ export default function WhitepaperPage() {
     </div>
   </div>
 </section>
-<div className="w-full h-[2px] bg-gradient-to-r from-transparent via-emerald-400 to-transparent opacity-40" />
-
 {/* User Types & Use Cases */}
-<section id="users" className="py-16 sm:py-20 bg-gradient-to-br from-[#11212a] via-[#132921] to-[#181822] text-white">
+<section id="users" className="py-8 text-white">
   <div className="max-w-7xl mx-auto px-4 sm:px-6">
   <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-transparent bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400 bg-clip-text mb-4 uppercase">        
    5. User Types and Use Cases
@@ -329,10 +336,8 @@ export default function WhitepaperPage() {
     </div>
   </div>
 </section>
-<div className="w-full h-[2px] bg-gradient-to-r from-transparent via-emerald-400 to-transparent opacity-40" />
-
 {/* Technology Stack */}
-<section id="technology" className="py-16 sm:py-20 bg-gradient-to-br from-[#132926] via-[#192129] to-[#181e24] text-white">
+<section id="technology" className="py-8 text-white">
   <div className="max-w-5xl mx-auto px-4 sm:px-6">
   <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-transparent bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400 bg-clip-text mb-4 uppercase">        
    6. Technology Stack and Architecture
@@ -367,10 +372,8 @@ export default function WhitepaperPage() {
     </div>
   </div>
 </section>
-<div className="w-full h-[2px] bg-gradient-to-r from-transparent via-emerald-400 to-transparent opacity-40" />
-
 {/* Monetization Strategy */}
-<section id="monetization" className="py-16 sm:py-20 bg-gradient-to-br from-[#131f21] via-[#152624] to-[#0f191c] text-white">
+<section id="monetization" className="py-8 text-white">
   <div className="max-w-5xl mx-auto px-4 sm:px-6">
   <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-transparent bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400 bg-clip-text mb-4 uppercase">        
    7. Monetization Strategy
@@ -417,10 +420,8 @@ export default function WhitepaperPage() {
   </div>
 </section>
 
-<div className="w-full h-[2px] bg-gradient-to-r from-transparent via-emerald-400 to-transparent opacity-40" />
-
 {/* Roadmap and Milestones */}
-<section id="roadmap" className="py-16 sm:py-20 bg-gradient-to-br from-[#12271c] via-[#152624] to-[#1a2926] text-white">
+<section id="roadmap" className="py-8 text-white">
   <div className="max-w-5xl mx-auto px-4 sm:px-6">
   <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-transparent bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400 bg-clip-text mb-4 uppercase">        
         8. Roadmap and Milestones
@@ -469,10 +470,8 @@ export default function WhitepaperPage() {
   </div>
 </section>
 
-<div className="w-full h-[2px] bg-gradient-to-r from-transparent via-emerald-400 to-transparent opacity-40" />
-
 {/* Call to Action */}
-<section id="action" className="py-16 sm:py-20 bg-gradient-to-br from-[#152624] via-[#12362f] to-[#1b2a26] text-white">
+<section id="action" className="py-8 text-white">
   <div className="max-w-7xl mx-auto px-4 sm:px-6">
   <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-transparent bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400 bg-clip-text mb-4 uppercase">        
         9. Call to Action
@@ -525,10 +524,8 @@ export default function WhitepaperPage() {
     </div>
   </div>
 </section>
-<div className="w-full h-[2px] bg-gradient-to-r from-transparent via-emerald-400 to-transparent opacity-40" />
-
   {/* Final CTA */}
-  <section className="py-16 bg-gradient-to-br from-[#12281e] via-[#162624] to-[#152620] text-white">
+  <section className="py-8 text-white">
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
   <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-transparent bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400 bg-clip-text mb-4 uppercase">        
    Ready to Join the Open Innovation Movement?
