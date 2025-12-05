@@ -238,6 +238,33 @@ a {
   }
 }
 
+@keyframes slide {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-33.333%);
+  }
+}
+
+.animate-slide {
+  animation: slide 15s linear infinite;
+}
+
+/* --- Fast Bounce Animation for ChatBot --- */
+@keyframes bounce-fast {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.animate-bounce-fast {
+  animation: bounce-fast 1s ease-in-out infinite;
+}
+
 /* --- Section Divider Line --- */
 .section-divider {
   width: 100%;
