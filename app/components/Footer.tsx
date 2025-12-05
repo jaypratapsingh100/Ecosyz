@@ -61,15 +61,6 @@ export default function Footer() {
                 <i className="fab fa-twitter" />
               </Link>
               <Link
-                href="https://github.com/openideaorg"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-emerald-400 transition-colors duration-300"
-                aria-label="GitHub"
-              >
-                <i className="fab fa-github" />
-              </Link>
-              <Link
                 href="mailto:info@openidea.world"
                 target="_blank"
                 rel="noopener noreferrer"
