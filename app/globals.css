@@ -587,3 +587,33 @@ body::-webkit-scrollbar {
   display: none; /* Chrome, Safari, Opera */
 }
 
+/* Hide scrollbar for horizontal scrolling containers */
+.hide-scrollbar {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
+/* Animated scrolling cards */
+@keyframes scroll-cards {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-scroll-cards {
+  animation: scroll-cards 30s linear infinite;
+  width: fit-content;
+}
+
+/* Pause animation on hover */
+.animate-scroll-cards:hover {
+  animation-play-state: paused;
+}
+

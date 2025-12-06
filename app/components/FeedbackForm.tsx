@@ -59,7 +59,7 @@ export default function FeedbackForm() {
   return (
     <form onSubmit={handleSubmit} className="w-full max-w-xl mx-auto" aria-label="Send us feedback">
       <textarea
-        className="w-full p-4 rounded-md glass glass-border resize-none focus:outline-none focus:ring-2 focus:ring-emerald-400"
+        className="w-full p-4 rounded-md glass glass-border border border-emerald-400/30 resize-none focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400/50 text-white placeholder-gray-400"
         rows={5}
         value={message}
         placeholder="Share your thoughts..."
