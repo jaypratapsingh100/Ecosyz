@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
           const { data: sessionData } = await supabase.auth.getSession();
           if (sessionData?.session) {
             console.log('Session established successfully from hash tokens');
-            return NextResponse.redirect(new URL('/profile', req.url));
+            return NextResponse.redirect(new URL('/app-builder', req.url));
           }
         }
       } catch (hashError) {
@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
       }
 
       // Create response with cookies
-      const response = NextResponse.redirect(new URL('/profile', req.url));
+      const response = NextResponse.redirect(new URL('/app-builder', req.url));
       
       // Set session cookies
       response.cookies.set('sb-access-token', sessionData.session.access_token, {
@@ -91,7 +91,7 @@ export async function GET(req: NextRequest) {
       });
 
       console.log('Session established successfully from code exchange');
-      return NextResponse.redirect(new URL('/profile', req.url));
+      return NextResponse.redirect(new URL('/app-builder', req.url));
     }
 
     // Try getting session directly (if cookies already exist)
@@ -100,7 +100,7 @@ export async function GET(req: NextRequest) {
     
     if (sessionData?.session) {
       console.log('Existing session found');
-      return NextResponse.redirect(new URL('/profile', req.url));
+      return NextResponse.redirect(new URL('/app-builder', req.url));
     }
 
     // No session could be established

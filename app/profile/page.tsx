@@ -15,19 +15,78 @@ async function getProfileData() {
   }
 
   try {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/profile`, {
-      cache: 'no-store',
+    // Import the profile API logic directly instead of fetching
+    const { prisma } = await import('../../src/lib/db');
+    const { ensureUserInDb } = await import('../../src/lib/auth');
+    
+    await ensureUserInDb(user);
+    
+    const prismaUser = await prisma.user.findUnique({
+      where: { supabaseId: user.id },
     });
 
-    if (!res.ok) {
-      throw new Error('Failed to fetch profile');
+    if (!prismaUser) {
+      // Return default profile if user not in DB yet
+      return {
+        user,
+        profile: {
+          displayName: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
+          bio: '',
+          avatarUrl: null,
+          preferences: {
+            theme: 'system',
+            language: 'en-IN',
+            emailNotifications: true,
+            marketingEmails: false,
+          },
+        },
+      };
     }
 
-    const data = await res.json();
-    return { user, profile: data.profile };
-  } catch (error) {
+    let profile = await prisma.profile.findUnique({
+      where: { userId: prismaUser.id },
+    });
+
+    if (!profile) {
+      // Create default profile
+      profile = await prisma.profile.create({
+        data: {
+          userId: prismaUser.id,
+          displayName: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
+          preferences: {
+            theme: 'system',
+            language: 'en-IN',
+            emailNotifications: true,
+            marketingEmails: false,
+          },
+        },
+      });
+    }
+
+    return {
+      user,
+      profile: {
+        id: profile.id,
+        displayName: profile.displayName,
+        bio: profile.bio,
+        avatarUrl: profile.avatarUrl,
+        preferences: profile.preferences,
+        createdAt: profile.createdAt,
+        updatedAt: profile.updatedAt,
+      },
+    };
+  } catch (error: any) {
     console.error('Error fetching profile:', error);
-    // Return default profile data
+    
+    // Check if it's a database connection error
+    if (error?.message?.includes('authentication failed') || 
+        error?.message?.includes('DATABASE_URL') ||
+        error?.code === 'P1001') {
+      console.error('⚠️ Database connection error. Please check your DATABASE_URL in .env.local');
+      console.error('See docs/FIX_DATABASE_CONNECTION.md for help');
+    }
+    
+    // Return default profile data on error so page doesn't crash
     return {
       user,
       profile: {

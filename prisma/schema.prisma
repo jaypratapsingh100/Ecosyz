@@ -11,21 +11,34 @@ datasource db {
 }
 
 model User {
-  id                    String      @id @default(cuid())
-  supabaseId            String      @unique
-  email                 String      @unique
+  id                    String                @id @default(cuid())
+  supabaseId            String                @unique
+  email                 String                @unique
   name                  String?
   avatarUrl             String?
-  createdAt             DateTime    @default(now())
-  updatedAt             DateTime    @updatedAt
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
   workspaces            Workspace[]
   profile               Profile?
   subscriptionPlan      String?
   subscriptionStatus    String?
   subscriptionStartDate DateTime?
-  lastPaymentAmount    Float?
-  lastPaymentId        String?
-  lastPaymentDate      DateTime?
+  lastPaymentAmount     Float?
+  lastPaymentId         String?
+  lastPaymentDate       DateTime?
+  appProjects           AppProject[]
+  // Community relations
+  groupMembers          GroupMember[]
+  createdGroups         CommunityGroup[]      @relation("GroupCreator")
+  discussions           Discussion[]
+  discussionReplies     DiscussionReply[]
+  createdEvents         Event[]
+  eventRegistrations    EventRegistration[]
+  createdChallenges     Challenge[]
+  challengeSubmissions  ChallengeSubmission[]
+  following             UserFollow[]          @relation("UserFollowing")
+  followers             UserFollow[]          @relation("UserFollowers")
+  activities            Activity[]
 }
 
 model Profile {
@@ -35,31 +48,33 @@ model Profile {
   displayName String?
   bio         String?  @db.Text
   avatarUrl   String?
-  preferences Json?    // { theme: "system"|"light"|"dark", language: "en-IN", emailNotifications: boolean, marketingEmails: boolean }
+  preferences Json? // { theme: "system"|"light"|"dark", language: "en-IN", emailNotifications: boolean, marketingEmails: boolean }
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
 
 model Workspace {
-  id        String      @id @default(cuid())
-  title     String
-  ownerId   String
-  owner     User        @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  createdAt DateTime    @default(now())
-  resources Resource[]
-  shares    ShareLink[]
+  id          String       @id @default(cuid())
+  title       String
+  ownerId     String
+  owner       User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt   DateTime     @default(now())
+  resources   Resource[]
+  shares      ShareLink[]
+  appProjects AppProject[]
+  discussions Discussion[]
 }
 
 model Resource {
-  id          String      @id @default(cuid())
-  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  id          String       @id @default(cuid())
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   workspaceId String
   title       String
   url         String?
   type        String?
   tags        Json?
   data        Json?
-  createdAt   DateTime    @default(now())
+  createdAt   DateTime     @default(now())
   annotations Annotation[]
 }
 
@@ -77,7 +92,238 @@ model ShareLink {
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   workspaceId String
   token       String    @unique
-  readOnly    Boolean  @default(true)
+  readOnly    Boolean   @default(true)
   expiresAt   DateTime?
   createdAt   DateTime  @default(now())
+}
+
+model AppProject {
+  id          String         @id @default(cuid())
+  title       String
+  description String?
+  type        String         @default("web") // web, fullstack, other
+  framework   String? // react, nextjs, python, etc.
+  ownerId     String
+  owner       User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  workspaceId String?
+  workspace   Workspace?     @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  config      Json? // Project configuration
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  files       AppFile[]
+  chats       AppChat[]
+  executions  AppExecution[]
+}
+
+model AppFile {
+  id        String     @id @default(cuid())
+  projectId String
+  project   AppProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  path      String // File path within project (e.g., "src/App.jsx")
+  name      String // File name (e.g., "App.jsx")
+  content   String     @db.Text
+  language  String? // Programming language (jsx, ts, py, etc.)
+  isMain    Boolean    @default(false) // Is this the main entry file?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@unique([projectId, path])
+}
+
+model AppChat {
+  id        String     @id @default(cuid())
+  projectId String
+  project   AppProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  messages  Json // Array of chat messages
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model AppExecution {
+  id        String     @id @default(cuid())
+  projectId String
+  project   AppProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  status    String // success, error, running
+  output    String?    @db.Text
+  error     String?    @db.Text
+  createdAt DateTime   @default(now())
+}
+
+// Community Models
+
+model CommunityGroup {
+  id          String        @id @default(cuid())
+  name        String
+  description String?       @db.Text
+  slug        String        @unique
+  isPublic    Boolean       @default(true)
+  topics      String[] // Array of topic tags
+  avatarUrl   String?
+  bannerUrl   String?
+  creatorId   String
+  creator     User          @relation("GroupCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  members     GroupMember[]
+  discussions Discussion[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([slug])
+  @@index([creatorId])
+}
+
+model GroupMember {
+  id       String         @id @default(cuid())
+  groupId  String
+  group    CommunityGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role     String         @default("member") // member, moderator, admin
+  joinedAt DateTime       @default(now())
+
+  @@unique([groupId, userId])
+  @@index([userId])
+  @@index([groupId])
+}
+
+model Discussion {
+  id          String            @id @default(cuid())
+  title       String
+  content     String            @db.Text
+  groupId     String?
+  group       CommunityGroup?   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  workspaceId String?
+  workspace   Workspace?        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  tags        String[]
+  isPinned    Boolean           @default(false)
+  isLocked    Boolean           @default(false)
+  replies     DiscussionReply[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([groupId])
+  @@index([workspaceId])
+  @@index([authorId])
+  @@index([createdAt])
+}
+
+model DiscussionReply {
+  id           String     @id @default(cuid())
+  discussionId String
+  discussion   Discussion @relation(fields: [discussionId], references: [id], onDelete: Cascade)
+  content      String     @db.Text
+  authorId     String
+  author       User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([discussionId])
+  @@index([authorId])
+}
+
+model Event {
+  id            String              @id @default(cuid())
+  title         String
+  description   String              @db.Text
+  startDate     DateTime
+  endDate       DateTime?
+  location      String? // Physical location or "Online"
+  eventUrl      String? // Link to event (Zoom, etc.)
+  imageUrl      String?
+  category      String? // workshop, webinar, hackathon, meetup, etc.
+  maxAttendees  Int?
+  isPublic      Boolean             @default(true)
+  creatorId     String
+  creator       User                @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  registrations EventRegistration[]
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@index([startDate])
+  @@index([creatorId])
+}
+
+model EventRegistration {
+  id           String   @id @default(cuid())
+  eventId      String
+  event        Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status       String   @default("registered") // registered, cancelled, attended
+  registeredAt DateTime @default(now())
+
+  @@unique([eventId, userId])
+  @@index([userId])
+  @@index([eventId])
+}
+
+model Challenge {
+  id           String                @id @default(cuid())
+  title        String
+  description  String                @db.Text
+  requirements String?               @db.Text
+  prize        String? // Prize description
+  startDate    DateTime
+  endDate      DateTime
+  imageUrl     String?
+  category     String? // innovation, coding, research, etc.
+  status       String                @default("upcoming") // upcoming, active, ended, judging, completed
+  creatorId    String
+  creator      User                  @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  submissions  ChallengeSubmission[]
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  @@index([status])
+  @@index([endDate])
+  @@index([creatorId])
+}
+
+model ChallengeSubmission {
+  id          String    @id @default(cuid())
+  challengeId String
+  challenge   Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  description String?   @db.Text
+  url         String? // Link to submission (GitHub, demo, etc.)
+  status      String    @default("submitted") // submitted, shortlisted, winner, rejected
+  submittedAt DateTime  @default(now())
+
+  @@unique([challengeId, userId])
+  @@index([userId])
+  @@index([challengeId])
+  @@index([status])
+}
+
+model UserFollow {
+  id          String   @id @default(cuid())
+  followerId  String
+  follower    User     @relation("UserFollowing", fields: [followerId], references: [id], onDelete: Cascade)
+  followingId String
+  following   User     @relation("UserFollowers", fields: [followingId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
+}
+
+model Activity {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        String // discussion_created, reply_added, group_joined, event_registered, challenge_submitted, etc.
+  entityType  String? // discussion, group, event, challenge, etc.
+  entityId    String?
+  title       String?
+  description String?  @db.Text
+  metadata    Json? // Additional data
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([type])
 }

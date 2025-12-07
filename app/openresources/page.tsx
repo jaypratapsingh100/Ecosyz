@@ -77,6 +77,8 @@ function OpenResourcesPage() {
   const [chatSearchActive, setChatSearchActive] = useState(false);
   const [chatSearchResults, setChatSearchResults] = useState<any[]>([]);
   const [chatSearchFilter, setChatSearchFilter] = useState('all');
+  // Tab state for resource cards
+  const [activeCardTabs, setActiveCardTabs] = useState<Record<string, 'overview' | 'qa' | 'mindmap'>>({});
 
   // Authentication and modal state
   const { user, loading: authLoading } = useSupabaseUser();
@@ -313,12 +315,9 @@ function OpenResourcesPage() {
               </button>
             )}
 
-            {/* Chat Sidebar - Left side (40%) */}
-            <div className={`transition-all duration-300 flex-shrink-0 h-full ${chatCollapsed ? 'w-0 hidden' : 'w-full md:w-[40%]'} ${!chatCollapsed ? 'fixed md:relative inset-0 md:inset-auto z-40 md:z-auto' : ''}`}>
-              {!chatCollapsed && (
-                <div className="md:hidden fixed inset-0 bg-black/50 z-30" onClick={() => setChatCollapsed(true)}></div>
-              )}
-              <div className="relative z-40 md:z-auto h-full">
+            {/* Chat Sidebar - Stacked above on mobile, side-by-side on desktop */}
+            {!chatCollapsed && (
+              <div className="md:hidden w-full h-[50vh] flex-shrink-0 border-b border-white/10">
                 <OpenResourcesChat 
                   searchResults={results} 
                   searchQuery={q}
@@ -331,16 +330,49 @@ function OpenResourcesPage() {
                       const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&type=all&limit=20`, { cache: 'no-store' });
                       if (!res.ok) throw new Error('Search failed');
                       const data = await res.json();
-                      setChatSearchResults(Array.isArray(data.results) ? data.results : []);
+                      const searchResults = Array.isArray(data.results) ? data.results : [];
+                      setChatSearchResults(searchResults);
+                      return searchResults; // Return results for chat analysis
                     } catch (e: any) {
                       setError(e.message || 'Search failed');
                       setChatSearchResults([]);
+                      return [];
                     } finally {
                       setLoading(false);
                     }
                   }}
                 />
               </div>
+            )}
+
+            {/* Chat Sidebar - Desktop side-by-side */}
+            <div className={`hidden md:block transition-all duration-300 flex-shrink-0 h-full ${chatCollapsed ? 'w-0' : 'w-[40%]'}`}>
+              {!chatCollapsed && (
+                <OpenResourcesChat 
+                  searchResults={results} 
+                  searchQuery={q}
+                  isCollapsed={chatCollapsed}
+                  onToggleCollapse={() => setChatCollapsed(!chatCollapsed)}
+                  onChatSearch={async (query: string) => {
+                    setChatSearchActive(true);
+                    setLoading(true);
+                    try {
+                      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&type=all&limit=20`, { cache: 'no-store' });
+                      if (!res.ok) throw new Error('Search failed');
+                      const data = await res.json();
+                      const searchResults = Array.isArray(data.results) ? data.results : [];
+                      setChatSearchResults(searchResults);
+                      return searchResults; // Return results for chat analysis
+                    } catch (e: any) {
+                      setError(e.message || 'Search failed');
+                      setChatSearchResults([]);
+                      return [];
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                />
+              )}
             </div>
             
             {/* Content - Right side (60%) */}
@@ -400,14 +432,14 @@ function OpenResourcesPage() {
                       </p>
                     </div>
                   ) : (
-                    <div className="overflow-x-auto hide-scrollbar pb-4 -mx-2 px-2">
+                    <div className="overflow-x-auto hide-scrollbar pb-4 -mx-2 px-2 snap-x snap-mandatory scroll-smooth">
                       <div className="flex gap-3 md:gap-5 pb-4" style={{ width: 'max-content' }}>
                         {chatSearchResults
                           .filter(r => chatSearchFilter === 'all' || r.type === chatSearchFilter)
                           .map((r, i) => {
                         const resKey = String(r.id || r.url || i);
                         return (
-                          <div key={r.id || i} className="flex-shrink-0 w-[85vw] sm:w-[400px] md:w-[500px] group rounded-xl glass-card glass-border p-4 sm:p-5 md:p-6 hover:border-emerald-400/30 transition-all duration-300 relative overflow-hidden">
+                          <div key={r.id || i} className="flex-shrink-0 w-[85vw] sm:w-[400px] md:w-[500px] group rounded-xl glass-card glass-border p-4 sm:p-5 md:p-6 hover:border-emerald-400/30 transition-all duration-300 relative overflow-hidden snap-start">
                             {/* Subtle gradient overlay on hover */}
                             <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/0 via-cyan-500/0 to-blue-500/0 group-hover:from-emerald-500/5 group-hover:via-cyan-500/5 group-hover:to-blue-500/5 transition-all duration-300 pointer-events-none"></div>
                             
@@ -507,10 +539,137 @@ function OpenResourcesPage() {
                                 </div>
                               )}
                               
-                              {/* Description */}
-                              <div className="text-sm text-white/70 line-clamp-4 mb-4 leading-relaxed">
-                                {sanitizeText(r.description)}
+                              {/* Tabs */}
+                              <div className="flex gap-2 mb-4 border-b border-white/10">
+                                <button
+                                  onClick={() => setActiveCardTabs(prev => ({ ...prev, [resKey]: 'overview' }))}
+                                  className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 ${
+                                    activeCardTabs[resKey] === 'overview' || !activeCardTabs[resKey]
+                                      ? 'border-emerald-400 text-emerald-300'
+                                      : 'border-transparent text-white/60 hover:text-white/80'
+                                  }`}
+                                >
+                                  Overview
+                                </button>
+                                <button
+                                  onClick={() => setActiveCardTabs(prev => ({ ...prev, [resKey]: 'qa' }))}
+                                  className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 ${
+                                    activeCardTabs[resKey] === 'qa'
+                                      ? 'border-emerald-400 text-emerald-300'
+                                      : 'border-transparent text-white/60 hover:text-white/80'
+                                  }`}
+                                >
+                                  Q&A
+                                </button>
+                                <button
+                                  onClick={() => setActiveCardTabs(prev => ({ ...prev, [resKey]: 'mindmap' }))}
+                                  className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 ${
+                                    activeCardTabs[resKey] === 'mindmap'
+                                      ? 'border-emerald-400 text-emerald-300'
+                                      : 'border-transparent text-white/60 hover:text-white/80'
+                                  }`}
+                                >
+                                  Mind Map
+                                </button>
                               </div>
+
+                              {/* Tab Content */}
+                              {(!activeCardTabs[resKey] || activeCardTabs[resKey] === 'overview') && (
+                                <div className="mb-4">
+                                  {/* Description */}
+                                  <div className="text-sm text-white/70 line-clamp-4 mb-4 leading-relaxed">
+                                    {sanitizeText(r.description)}
+                                  </div>
+                                </div>
+                              )}
+
+                              {activeCardTabs[resKey] === 'qa' && (
+                                <div className="mb-4 min-h-[200px]">
+                                  <div className="space-y-4">
+                                    <div className="text-center py-4">
+                                      <svg className="w-10 h-10 mx-auto mb-3 text-emerald-400/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                      </svg>
+                                      <h4 className="text-white font-semibold mb-2 text-sm">Q&A</h4>
+                                    </div>
+                                    <div className="space-y-3">
+                                      <div className="bg-white/5 rounded-lg p-3 border border-white/10">
+                                        <div className="flex items-start gap-2">
+                                          <div className="w-6 h-6 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                            <span className="text-emerald-400 text-xs font-bold">Q</span>
+                                          </div>
+                                          <div className="flex-1">
+                                            <p className="text-white text-xs font-medium mb-1">What is this resource about?</p>
+                                            <p className="text-white/70 text-xs leading-relaxed">{sanitizeText(r.description).substring(0, 120)}...</p>
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <div className="bg-white/5 rounded-lg p-3 border border-white/10">
+                                        <div className="flex items-start gap-2">
+                                          <div className="w-6 h-6 rounded-full bg-cyan-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                            <span className="text-cyan-400 text-xs font-bold">Q</span>
+                                          </div>
+                                          <div className="flex-1">
+                                            <p className="text-white text-xs font-medium mb-1">How can I use this resource?</p>
+                                            <p className="text-white/70 text-xs leading-relaxed">This resource can be used for research, development, or learning. Check the license for usage terms.</p>
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <button className="w-full px-3 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 rounded-lg text-emerald-300 text-xs font-medium transition-colors">
+                                        Ask a Question
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {activeCardTabs[resKey] === 'mindmap' && (
+                                <div className="mb-4 min-h-[200px]">
+                                  <div className="relative w-full h-[180px] bg-gradient-to-br from-emerald-900/20 to-cyan-900/20 rounded-lg border border-emerald-500/20 p-4 overflow-hidden">
+                                    {/* Mind Map Visualization */}
+                                    <div className="relative w-full h-full">
+                                      {/* Central Node */}
+                                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 bg-gradient-to-r from-emerald-400 to-cyan-400 rounded-full flex items-center justify-center z-10 shadow-lg">
+                                        <span className="text-gray-900 text-[10px] font-bold text-center px-1 leading-tight">{r.title.substring(0, 12)}...</span>
+                                      </div>
+                                      
+                                      {/* Connected Nodes */}
+                                      {r.tags && r.tags.slice(0, 4).map((tag: string, idx: number) => {
+                                        const angle = (idx * 90) * (Math.PI / 180);
+                                        const radius = 50;
+                                        const x = Math.cos(angle) * radius;
+                                        const y = Math.sin(angle) * radius;
+                                        return (
+                                          <div key={idx}>
+                                            {/* Connection Line */}
+                                            <svg className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full pointer-events-none" style={{ zIndex: 1 }}>
+                                              <line
+                                                x1="50%"
+                                                y1="50%"
+                                                x2={`${50 + (x / 2)}%`}
+                                                y2={`${50 + (y / 2)}%`}
+                                                stroke="rgba(16, 185, 129, 0.3)"
+                                                strokeWidth="2"
+                                              />
+                                            </svg>
+                                            {/* Node */}
+                                            <div
+                                              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-14 h-14 bg-emerald-500/30 border border-emerald-400/50 rounded-lg flex items-center justify-center shadow-md"
+                                              style={{
+                                                transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`,
+                                                zIndex: 5
+                                              }}
+                                            >
+                                              <span className="text-emerald-200 text-[10px] font-medium text-center px-1 leading-tight">{tag.substring(0, 8)}</span>
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                  <p className="text-white/60 text-xs mt-2 text-center">Interactive mind map showing relationships</p>
+                                </div>
+                              )}
                               
                               {/* Action Buttons */}
                               <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-white/10">
@@ -858,10 +1017,137 @@ function OpenResourcesPage() {
                             </div>
                           )}
                           
-                          {/* Description */}
-                          <div className="text-sm text-white/70 line-clamp-3 mb-4 leading-relaxed">
-                            {cleanDescription(r.description)}
+                          {/* Tabs */}
+                          <div className="flex gap-2 mb-4 border-b border-white/10">
+                            <button
+                              onClick={() => setActiveCardTabs(prev => ({ ...prev, [resKey]: 'overview' }))}
+                              className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 ${
+                                activeCardTabs[resKey] === 'overview' || !activeCardTabs[resKey]
+                                  ? 'border-emerald-400 text-emerald-300'
+                                  : 'border-transparent text-white/60 hover:text-white/80'
+                              }`}
+                            >
+                              Overview
+                            </button>
+                            <button
+                              onClick={() => setActiveCardTabs(prev => ({ ...prev, [resKey]: 'qa' }))}
+                              className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 ${
+                                activeCardTabs[resKey] === 'qa'
+                                  ? 'border-emerald-400 text-emerald-300'
+                                  : 'border-transparent text-white/60 hover:text-white/80'
+                              }`}
+                            >
+                              Q&A
+                            </button>
+                            <button
+                              onClick={() => setActiveCardTabs(prev => ({ ...prev, [resKey]: 'mindmap' }))}
+                              className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 ${
+                                activeCardTabs[resKey] === 'mindmap'
+                                  ? 'border-emerald-400 text-emerald-300'
+                                  : 'border-transparent text-white/60 hover:text-white/80'
+                              }`}
+                            >
+                              Mind Map
+                            </button>
                           </div>
+
+                          {/* Tab Content */}
+                          {(!activeCardTabs[resKey] || activeCardTabs[resKey] === 'overview') && (
+                            <div className="mb-4">
+                              {/* Description */}
+                              <div className="text-sm text-white/70 line-clamp-3 mb-4 leading-relaxed">
+                                {cleanDescription(r.description)}
+                              </div>
+                            </div>
+                          )}
+
+                          {activeCardTabs[resKey] === 'qa' && (
+                            <div className="mb-4 min-h-[200px]">
+                              <div className="space-y-4">
+                                <div className="text-center py-4">
+                                  <svg className="w-10 h-10 mx-auto mb-3 text-emerald-400/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                  <h4 className="text-white font-semibold mb-2 text-sm">Q&A</h4>
+                                </div>
+                                <div className="space-y-3">
+                                  <div className="bg-white/5 rounded-lg p-3 border border-white/10">
+                                    <div className="flex items-start gap-2">
+                                      <div className="w-6 h-6 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                        <span className="text-emerald-400 text-xs font-bold">Q</span>
+                                      </div>
+                                      <div className="flex-1">
+                                        <p className="text-white text-xs font-medium mb-1">What is this resource about?</p>
+                                        <p className="text-white/70 text-xs leading-relaxed">{cleanDescription(r.description).substring(0, 120)}...</p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="bg-white/5 rounded-lg p-3 border border-white/10">
+                                    <div className="flex items-start gap-2">
+                                      <div className="w-6 h-6 rounded-full bg-cyan-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                        <span className="text-cyan-400 text-xs font-bold">Q</span>
+                                      </div>
+                                      <div className="flex-1">
+                                        <p className="text-white text-xs font-medium mb-1">How can I use this resource?</p>
+                                        <p className="text-white/70 text-xs leading-relaxed">This resource can be used for research, development, or learning. Check the license for usage terms.</p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <button className="w-full px-3 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 rounded-lg text-emerald-300 text-xs font-medium transition-colors">
+                                    Ask a Question
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {activeCardTabs[resKey] === 'mindmap' && (
+                            <div className="mb-4 min-h-[200px]">
+                              <div className="relative w-full h-[180px] bg-gradient-to-br from-emerald-900/20 to-cyan-900/20 rounded-lg border border-emerald-500/20 p-4 overflow-hidden">
+                                {/* Mind Map Visualization */}
+                                <div className="relative w-full h-full">
+                                  {/* Central Node */}
+                                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 bg-gradient-to-r from-emerald-400 to-cyan-400 rounded-full flex items-center justify-center z-10 shadow-lg">
+                                    <span className="text-gray-900 text-[10px] font-bold text-center px-1 leading-tight">{r.title.substring(0, 12)}...</span>
+                                  </div>
+                                  
+                                  {/* Connected Nodes */}
+                                  {r.tags && r.tags.slice(0, 4).map((tag: string, idx: number) => {
+                                    const angle = (idx * 90) * (Math.PI / 180);
+                                    const radius = 50;
+                                    const x = Math.cos(angle) * radius;
+                                    const y = Math.sin(angle) * radius;
+                                    return (
+                                      <div key={idx}>
+                                        {/* Connection Line */}
+                                        <svg className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full pointer-events-none" style={{ zIndex: 1 }}>
+                                          <line
+                                            x1="50%"
+                                            y1="50%"
+                                            x2={`${50 + (x / 2)}%`}
+                                            y2={`${50 + (y / 2)}%`}
+                                            stroke="rgba(16, 185, 129, 0.3)"
+                                            strokeWidth="2"
+                                          />
+                                        </svg>
+                                        {/* Node */}
+                                        <div
+                                          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-14 h-14 bg-emerald-500/30 border border-emerald-400/50 rounded-lg flex items-center justify-center shadow-md"
+                                          style={{
+                                            transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`,
+                                            zIndex: 5
+                                          }}
+                                        >
+                                          <span className="text-emerald-200 text-[10px] font-medium text-center px-1 leading-tight">{tag.substring(0, 8)}</span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                              <p className="text-white/60 text-xs mt-2 text-center">Interactive mind map showing relationships</p>
+                            </div>
+                          )}
                           
                           {/* Action Buttons */}
                           <div className="flex flex-wrap gap-2.5 mt-4 pt-4 border-t border-white/10">

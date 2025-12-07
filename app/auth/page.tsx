@@ -89,7 +89,7 @@ export default function AuthPage() {
           fontWeight: '600',
         },
       });
-      router.push('/profile');
+      router.push('/app-builder');
     } catch (error) {
       console.error('Sign in error:', error);
       toast.error(error instanceof Error ? error.message : 'Sign in failed', {
@@ -125,8 +125,8 @@ export default function AuthPage() {
       }
 
       toast.success('Account created successfully!', {
-        description: 'Please check your email and click the confirmation link to complete your registration.',
-        duration: 6000,
+        description: 'Welcome! Redirecting to App Builder...',
+        duration: 4000,
         style: {
           background: 'linear-gradient(135deg, #10b981, #06b6d4)',
           color: 'white',
@@ -134,8 +134,10 @@ export default function AuthPage() {
           fontWeight: '600',
         },
       });
-      setIsSignUp(false);
-      signUpForm.reset();
+      // Redirect to app builder after successful sign up
+      setTimeout(() => {
+        router.push('/app-builder');
+      }, 1000);
     } catch (error) {
       console.error('Sign up error:', error);
       toast.error(error instanceof Error ? error.message : 'Sign up failed', {

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import ChatSettings, { getStoredApiKey, getStoredModel } from './ChatSettings';
 
 interface Message {
   id: string;
@@ -15,7 +16,7 @@ interface OpenResourcesChatProps {
   searchQuery?: string;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
-  onChatSearch?: (query: string) => Promise<void>;
+  onChatSearch?: (query: string) => Promise<any[]>; // Return search results
 }
 
 export default function OpenResourcesChat({ searchResults = [], searchQuery = '', isCollapsed: externalCollapsed, onToggleCollapse, onChatSearch }: OpenResourcesChatProps) {
@@ -26,13 +27,16 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
     {
       id: '1',
       role: 'assistant',
-      content: "I'd love to help you explore open resources! I can assist you with finding papers, datasets, code repositories, models, and more. What would you like to search for?",
+      content: searchResults.length > 0 
+        ? `Hello! I'm your Open Resources Assistant, powered by ChatGPT. I have access to ${searchResults.length} resources from your search. Ask me anything about them - I can summarize concepts, explain methodologies, suggest learning paths, or answer questions. How can I help?`
+        : "Hello! I'm your Open Resources Assistant, powered by ChatGPT. Search for resources on the main page, and I'll have context about them to help answer your questions. What would you like to know?",
       timestamp: new Date(),
     },
   ]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -45,6 +49,18 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // Update welcome message when search results change
+  useEffect(() => {
+    if (searchResults.length > 0 && messages.length === 1 && messages[0].id === '1') {
+      setMessages([{
+        id: '1',
+        role: 'assistant',
+        content: `Hello! I'm your Open Resources Assistant, powered by ChatGPT. I have access to ${searchResults.length} resources from your search for "${searchQuery}". Ask me anything about them - I can summarize concepts, explain methodologies, suggest learning paths, or answer questions. How can I help?`,
+        timestamp: new Date(),
+      }]);
+    }
+  }, [searchResults.length, searchQuery]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,16 +78,29 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
     setInputValue('');
     setIsLoading(true);
 
-    // Trigger resource search if callback is provided
-    if (onChatSearch) {
-      try {
-        await onChatSearch(currentInput);
-      } catch (error) {
-        console.error('Search failed:', error);
-      }
-    }
-
     try {
+      // Get user's API key from localStorage
+      const userApiKey = getStoredApiKey();
+      const userModel = getStoredModel();
+
+      // Always use the search results from the main page as context
+      // This gives ChatGPT access to all resources that were searched
+      const resourcesToAnalyze = searchResults || [];
+      
+      // Prepare detailed resource information for ChatGPT analysis
+      // Send all available resources (up to 20) for comprehensive context
+      const detailedResults = resourcesToAnalyze.slice(0, 20).map(r => ({
+        title: r.title,
+        type: r.type,
+        source: r.source,
+        description: r.description || '',
+        authors: r.authors || [],
+        tags: r.tags || [],
+        url: r.url || '',
+        year: r.year || null,
+        license: r.license || null,
+      }));
+
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
@@ -79,14 +108,13 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
         },
         body: JSON.stringify({
           message: currentInput,
+          apiKey: userApiKey, // Send user's API key if available
+          model: userModel,
           context: {
-            searchQuery,
-            resultsCount: searchResults.length,
-            results: searchResults.slice(0, 5).map(r => ({
-              title: r.title,
-              type: r.type,
-              source: r.source,
-            })),
+            searchQuery: searchQuery || currentInput,
+            resultsCount: resourcesToAnalyze.length,
+            results: detailedResults,
+            hasContext: resourcesToAnalyze.length > 0, // Indicate if we have search context
           },
         }),
       });
@@ -101,7 +129,8 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
         };
         setMessages((prev) => [...prev, assistantMessage]);
       } else {
-        throw new Error('Failed to get response');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to get response');
       }
     } catch (error) {
       const assistantMessage: Message = {
@@ -139,7 +168,7 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
   };
 
   return (
-    <div className="relative h-full w-full">
+    <div className="relative h-full w-full bg-[#0a0a0a] md:bg-transparent">
       <div className={`h-full w-full flex flex-col transition-all duration-300 ${isCollapsed ? 'w-0 overflow-hidden opacity-0' : 'opacity-100'}`}>
         {/* Header */}
         <div className="px-4 py-3 border-b border-white/10 flex-shrink-0">
@@ -163,15 +192,28 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
               <h3 className="text-white font-medium text-sm">Open Resources Assistant</h3>
               <p className="text-xs text-gray-400">Always here to help</p>
             </div>
-            <button
-              onClick={() => setIsCollapsed(true)}
-              className="p-1.5 rounded-md hover:bg-gray-700 text-gray-400 hover:text-gray-200 transition-colors"
-              aria-label="Collapse chat"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setSettingsOpen(true)}
+                className="p-1.5 rounded-md hover:bg-gray-700 text-gray-400 hover:text-gray-200 transition-colors"
+                aria-label="Open settings"
+                title="Settings"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </button>
+              <button
+                onClick={() => setIsCollapsed(true)}
+                className="p-1.5 rounded-md hover:bg-gray-700 text-gray-400 hover:text-gray-200 transition-colors"
+                aria-label="Collapse chat"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -317,6 +359,9 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
         </form>
       </div>
       </div>
+
+      {/* Settings Modal */}
+      <ChatSettings isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 }

@@ -9,14 +9,18 @@ import { useState, useEffect, useRef } from "react";
 export default function Hero() {
   const [open, setOpen] = useState(false);
   const [buildQuery, setBuildQuery] = useState('');
-  const [animatedPlaceholder, setAnimatedPlaceholder] = useState('');
-  const [showCursor, setShowCursor] = useState(true);
-  const [isFocused, setIsFocused] = useState(false);
-  const [selectedAction, setSelectedAction] = useState<'discover' | 'build' | 'projects' | 'network' | null>(null);
+  const [selectedAction, setSelectedAction] = useState<'discover' | 'build' | 'projects' | 'network'>('discover');
   const [showActionMenu, setShowActionMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const router = useRouter();
+
+  const placeholderTexts = {
+    discover: 'What would you like to discover?',
+    build: 'What would you like to build?',
+    projects: 'Explore projects...',
+    network: 'Connect with network...'
+  };
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -38,86 +42,9 @@ export default function Hero() {
     };
   }, [showActionMenu]);
 
-  const placeholderTexts = [
-    'Explore open source resources',
-    'Search millions of research papers',
-    'Find connections among resources',
-    'Build app and innovate',
-    'Discover open datasets',
-    'Collaborate with innovators',
-    'Explore cutting-edge projects',
-    'Find solutions to complex problems'
-  ];
-
-  useEffect(() => {
-    if (buildQuery || isFocused || selectedAction) {
-      setAnimatedPlaceholder('');
-      return;
-    }
-
-    let currentTextIndex = 0;
-    let currentIndex = 0;
-    let isDeleting = false;
-    let timeoutId: NodeJS.Timeout;
-    let cursorInterval: NodeJS.Timeout;
-
-    const animate = () => {
-      // Check if we should stop animating
-      if (buildQuery || isFocused || selectedAction) {
-        setAnimatedPlaceholder('');
-        return;
-      }
-
-      const currentText = placeholderTexts[currentTextIndex];
-
-      if (!isDeleting && currentIndex < currentText.length) {
-        // Typing
-        setAnimatedPlaceholder(currentText.slice(0, currentIndex + 1));
-        currentIndex++;
-        timeoutId = setTimeout(animate, 100);
-      } else if (!isDeleting && currentIndex === currentText.length) {
-        // Finished typing, wait then start deleting
-        timeoutId = setTimeout(() => {
-          if (!buildQuery && !isFocused && !selectedAction) {
-            isDeleting = true;
-            animate();
-          }
-        }, 2500);
-      } else if (isDeleting && currentIndex > 0) {
-        // Deleting
-        currentIndex--;
-        setAnimatedPlaceholder(currentText.slice(0, currentIndex));
-        timeoutId = setTimeout(animate, 50);
-      } else {
-        // Finished deleting, move to next text
-        isDeleting = false;
-        currentIndex = 0;
-        currentTextIndex = (currentTextIndex + 1) % placeholderTexts.length;
-        timeoutId = setTimeout(animate, 300);
-      }
-    };
-
-    // Cursor blink animation
-    cursorInterval = setInterval(() => {
-      if (!buildQuery && !isFocused && !selectedAction) {
-        setShowCursor((prev) => !prev);
-      }
-    }, 530);
-
-    // Start animation after a small delay
-    timeoutId = setTimeout(animate, 300);
-
-    return () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      if (cursorInterval) clearInterval(cursorInterval);
-    };
-  }, [buildQuery, isFocused, selectedAction]);
 
   const handleBuild = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedAction) {
-      return;
-    }
     if (buildQuery.trim()) {
       if (selectedAction === 'discover') {
         router.push(`/openresources?q=${encodeURIComponent(buildQuery.trim())}`);
@@ -196,53 +123,84 @@ export default function Hero() {
               </p>
             </div>
 
+            {/* Tabs Above Input */}
+            <div className="mb-4 flex flex-wrap items-center gap-2 justify-center px-4">
+              <button
+                type="button"
+                onClick={() => setSelectedAction('discover')}
+                className={`px-4 sm:px-6 py-2 rounded-full font-semibold text-sm sm:text-base transition-all duration-300 ${
+                  selectedAction === 'discover'
+                    ? 'bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 shadow-lg'
+                    : 'bg-black/40 backdrop-blur-sm border border-emerald-400/30 text-emerald-400 hover:bg-emerald-400/10 hover:border-emerald-400/50'
+                }`}
+              >
+                Discover
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedAction('build')}
+                className={`px-4 sm:px-6 py-2 rounded-full font-semibold text-sm sm:text-base transition-all duration-300 ${
+                  selectedAction === 'build'
+                    ? 'bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 shadow-lg'
+                    : 'bg-black/40 backdrop-blur-sm border border-cyan-400/30 text-cyan-400 hover:bg-cyan-400/10 hover:border-cyan-400/50'
+                }`}
+              >
+                Build App
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedAction('projects');
+                  router.push('/projects');
+                }}
+                className={`px-4 sm:px-6 py-2 rounded-full font-semibold text-sm sm:text-base transition-all duration-300 ${
+                  selectedAction === 'projects'
+                    ? 'bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 shadow-lg'
+                    : 'bg-black/40 backdrop-blur-sm border border-purple-400/30 text-purple-400 hover:bg-purple-400/10 hover:border-purple-400/50'
+                }`}
+              >
+                Projects
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedAction('network');
+                  router.push('/coming-soon');
+                }}
+                className={`px-4 sm:px-6 py-2 rounded-full font-semibold text-sm sm:text-base transition-all duration-300 ${
+                  selectedAction === 'network'
+                    ? 'bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 shadow-lg'
+                    : 'bg-black/40 backdrop-blur-sm border border-indigo-400/30 text-indigo-400 hover:bg-indigo-400/10 hover:border-indigo-400/50'
+                }`}
+              >
+                Network
+              </button>
+            </div>
+
             {/* Main Input Field */}
             <div className="mb-8 relative" style={{ zIndex: 1 }}>
               <form onSubmit={handleBuild} className="relative">
               <div className="relative backdrop-blur-sm border border-gray-700/50 rounded-2xl focus-within:border-gray-600 transition-all duration-300 shadow-2xl" style={{ backgroundColor: '#141618', overflow: 'visible' }}>
                 {/* Input Field - Top - Spacious */}
                 <div className="px-3 sm:px-4 py-4 sm:py-6 min-h-[80px] sm:min-h-[100px] flex items-center relative overflow-hidden">
-                  {/* Selected Action Badge */}
-                  {selectedAction && (
-                    <div className="mr-3 flex-shrink-0">
-                      <span className="px-3 py-1.5 bg-emerald-400/20 text-emerald-400 text-xs font-medium rounded-lg border border-emerald-400/30">
-                        {selectedAction === 'discover' ? 'Discover' : 
-                         selectedAction === 'build' ? 'Build' :
-                         selectedAction === 'projects' ? 'Projects' :
-                         selectedAction === 'network' ? 'Network' : ''}
-                      </span>
-                    </div>
-                  )}
                   
                   <textarea
                     value={buildQuery}
                     onChange={(e) => setBuildQuery(e.target.value)}
-                    onFocus={() => {
-                      setIsFocused(true);
-                      setAnimatedPlaceholder('');
+                    className="flex-1 bg-transparent text-white text-base sm:text-lg md:text-xl focus:outline-none resize-none overflow-hidden rounded-lg placeholder-gray-400"
+                    style={{ 
+                      minHeight: 'auto', 
+                      height: 'auto',
+                      caretColor: '#10b981'
                     }}
-                    onBlur={() => setIsFocused(false)}
-                    className="flex-1 bg-transparent text-white text-base sm:text-lg md:text-xl focus:outline-none resize-none overflow-hidden rounded-lg"
-                    style={{ minHeight: 'auto', height: 'auto' }}
                     rows={1}
-                    placeholder={selectedAction ? (
-                      selectedAction === 'discover' ? 'What would you like to discover?' : 
-                      selectedAction === 'build' ? 'What would you like to build?' :
-                      selectedAction === 'projects' ? 'Explore projects...' :
-                      selectedAction === 'network' ? 'Connect with network...' : ''
-                    ) : ''}
+                    placeholder={placeholderTexts[selectedAction]}
                     onInput={(e) => {
                       const target = e.target as HTMLTextAreaElement;
                       target.style.height = 'auto';
                       target.style.height = target.scrollHeight + 'px';
                     }}
                   />
-                  {!buildQuery && !isFocused && !selectedAction && (
-                    <div className="absolute top-4 left-3 sm:left-4 pointer-events-none text-gray-400 select-none text-base sm:text-lg md:text-xl">
-                      {animatedPlaceholder}
-                      <span className={`inline-block w-0.5 h-5 sm:h-6 md:h-7 bg-emerald-400/60 ml-1 align-middle ${showCursor ? 'opacity-100' : 'opacity-0'} transition-opacity duration-300`}>|</span>
-                    </div>
-                  )}
                 </div>
 
                 {/* Control Bar - Bottom */}
@@ -363,33 +321,6 @@ export default function Hero() {
               </form>
               </div>
 
-            {/* Action Buttons */}
-            <div className="flex flex-wrap justify-center gap-3 sm:gap-4 mb-8 sm:mb-12 px-4">
-                  <Link
-                    href="/openresources?type=paper"
-                className="px-6 sm:px-8 py-2.5 sm:py-3 bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 font-semibold rounded-full shadow-lg transition hover:scale-105 text-sm sm:text-base w-full sm:w-auto text-center"
-                  >
-                    Discover
-                  </Link>
-              <Link
-                href="/projects"
-                className="px-6 sm:px-8 py-2.5 sm:py-3 bg-black/40 backdrop-blur-sm border border-emerald-400/50 text-emerald-400 font-semibold rounded-full text-center transition hover:scale-105 hover:bg-emerald-400/10 hover:border-emerald-400 text-sm sm:text-base w-full sm:w-auto"
-              >
-                Explore Projects
-              </Link>
-              <Link
-                href="/projects"
-                className="px-6 sm:px-8 py-2.5 sm:py-3 bg-black/40 backdrop-blur-sm border border-cyan-400/50 text-cyan-400 font-semibold rounded-full text-center transition hover:scale-105 hover:bg-cyan-400/10 hover:border-cyan-400 text-sm sm:text-base w-full sm:w-auto"
-              >
-                Build App
-              </Link>
-              <Link
-                href="/coming-soon"
-                className="px-6 sm:px-8 py-2.5 sm:py-3 bg-black/40 backdrop-blur-sm border border-purple-400/50 text-purple-400 font-semibold rounded-full text-center transition hover:scale-105 hover:bg-purple-400/10 hover:border-purple-400 text-sm sm:text-base w-full sm:w-auto"
-              >
-                Smart Network
-              </Link>
-            </div>
 
           </div>
         </div>

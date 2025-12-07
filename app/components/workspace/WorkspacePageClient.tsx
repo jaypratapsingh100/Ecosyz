@@ -1,10 +1,12 @@
 'use client'
 
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import WorkspaceHeader from './WorkspaceHeader'
 import ResourceCard from './ResourceCard'
 import AddResourceForm from './AddResourceForm'
 import ShareLinksPanel from './ShareLinksPanel'
+import WorkspaceDiscussions from './WorkspaceDiscussions'
 import ToastProvider from '../ui/ToastProvider'
 
 interface Resource {
@@ -30,6 +32,8 @@ interface WorkspacePageClientProps {
 }
 
 export default function WorkspacePageClient({ workspaceData }: WorkspacePageClientProps) {
+  const [activeTab, setActiveTab] = useState<'resources' | 'discussions'>('resources')
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950">
       <ToastProvider />
@@ -42,9 +46,35 @@ export default function WorkspacePageClient({ workspaceData }: WorkspacePageClie
       >
         <WorkspaceHeader id={workspaceData.id} title={workspaceData.title} />
 
+        {/* Tabs */}
+        <div className="flex gap-4 mt-8 border-b border-zinc-800">
+          <button
+            onClick={() => setActiveTab('resources')}
+            className={`px-6 py-3 font-semibold transition ${
+              activeTab === 'resources'
+                ? 'text-cyan-400 border-b-2 border-cyan-400'
+                : 'text-zinc-400 hover:text-zinc-300'
+            }`}
+          >
+            Resources
+          </button>
+          <button
+            onClick={() => setActiveTab('discussions')}
+            className={`px-6 py-3 font-semibold transition ${
+              activeTab === 'discussions'
+                ? 'text-cyan-400 border-b-2 border-cyan-400'
+                : 'text-zinc-400 hover:text-zinc-300'
+            }`}
+          >
+            Discussions
+          </button>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-8">
-          {/* Resources Section */}
+          {/* Main Content Section */}
           <div className="lg:col-span-2 space-y-6">
+            {activeTab === 'resources' ? (
+              <>
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -115,6 +145,10 @@ export default function WorkspacePageClient({ workspaceData }: WorkspacePageClie
                   </motion.div>
                 ))}
               </motion.div>
+            )}
+              </>
+            ) : (
+              <WorkspaceDiscussions workspaceId={workspaceData.id} />
             )}
           </div>
 
