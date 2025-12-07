@@ -77,6 +77,8 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  let provider: Provider = 'openai'; // Declare outside try block for error handling
+  
   try {
     const user = await getCurrentUser();
 
@@ -155,7 +157,7 @@ export async function POST(
       detectedProvider = 'openai';
     }
     
-    const provider = detectedProvider;
+    provider = detectedProvider;
 
     if (!apiKey) {
       return NextResponse.json({
