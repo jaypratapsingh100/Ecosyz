@@ -76,6 +76,7 @@ export const CreateCommunityGroup = z.object({
 export const UpdateCommunityGroup = z.object({
   name: z.string().min(1).max(100).optional(),
   description: z.string().max(1000).optional(),
+  slug: z.string().min(1).max(100).regex(/^[a-z0-9-]+$/, "Slug must contain only lowercase letters, numbers, and hyphens").optional(),
   isPublic: z.boolean().optional(),
   topics: z.array(z.string()).max(10).optional(),
   avatarUrl: z.string().url().optional(),
