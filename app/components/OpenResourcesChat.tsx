@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import ChatSettings, { getStoredApiKey, getStoredModel } from './ChatSettings';
+import ChatSettings, { getStoredApiKey, getStoredModel, getStoredProvider } from './ChatSettings';
 
 interface Message {
   id: string;
@@ -79,9 +79,10 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
     setIsLoading(true);
 
     try {
-      // Get user's API key from localStorage
+      // Get user's API key, model, and provider from localStorage
       const userApiKey = getStoredApiKey();
       const userModel = getStoredModel();
+      const userProvider = getStoredProvider();
 
       // Always use the search results from the main page as context
       // This gives ChatGPT access to all resources that were searched
@@ -110,6 +111,7 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
           message: currentInput,
           apiKey: userApiKey, // Send user's API key if available
           model: userModel,
+          provider: userProvider, // Send user's provider preference
           context: {
             searchQuery: searchQuery || currentInput,
             resultsCount: resourcesToAnalyze.length,

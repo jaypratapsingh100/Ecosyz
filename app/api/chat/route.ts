@@ -1,10 +1,82 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 
+// Provider configuration
+type Provider = 'openai' | 'groq' | 'together' | 'huggingface';
+
+interface ProviderConfig {
+  baseURL: string;
+  defaultModel: string;
+  models: string[];
+}
+
+const PROVIDER_CONFIGS: Record<Provider, ProviderConfig> = {
+  openai: {
+    baseURL: 'https://api.openai.com/v1',
+    defaultModel: 'gpt-4o-mini',
+    models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
+  },
+  groq: {
+    baseURL: 'https://api.groq.com/openai/v1',
+    defaultModel: 'llama-3.3-70b-versatile',
+    models: [
+      'llama-3.3-70b-versatile',
+      'llama-3.1-8b-instant',
+      'mixtral-8x7b-32768',
+      'gemma2-9b-it',
+    ],
+  },
+  together: {
+    baseURL: 'https://api.together.xyz/v1',
+    defaultModel: 'meta-llama/Llama-3-8b-chat-hf',
+    models: [
+      'meta-llama/Llama-3-8b-chat-hf',
+      'meta-llama/Llama-3-70b-chat-hf',
+      'mistralai/Mixtral-8x7B-Instruct-v0.1',
+    ],
+  },
+  huggingface: {
+    baseURL: 'https://api-inference.huggingface.co/v1',
+    defaultModel: 'meta-llama/Llama-3-8b-chat-hf',
+    models: ['meta-llama/Llama-3-8b-chat-hf'],
+  },
+};
+
+// Detect provider from API key format or explicit provider
+function detectProvider(apiKey: string, explicitProvider?: string): Provider {
+  if (explicitProvider && ['openai', 'groq', 'together', 'huggingface'].includes(explicitProvider)) {
+    return explicitProvider as Provider;
+  }
+  
+  // Detect by API key prefix
+  if (apiKey.startsWith('gsk_')) return 'groq';
+  if (apiKey.startsWith('hf_')) return 'huggingface';
+  if (apiKey.length > 50 && !apiKey.startsWith('sk-')) return 'together';
+  
+  // Default to OpenAI
+  return 'openai';
+}
+
+// Get provider config and create client
+function createClient(apiKey: string, provider: Provider, model?: string) {
+  const config = PROVIDER_CONFIGS[provider];
+  const selectedModel = model || config.defaultModel;
+  
+  return {
+    client: new OpenAI({
+      apiKey,
+      baseURL: config.baseURL,
+    }),
+    model: selectedModel,
+  };
+}
+
 export async function POST(request: NextRequest) {
+  let provider: Provider = 'openai'; // Declare outside try block for error handling
+  
   try {
     const body = await request.json();
-    const { message, context, apiKey: userApiKey, model: userModel } = body;
+    const { message, context, apiKey: userApiKey, model: userModel, provider: userProvider } = body;
 
     if (!message || typeof message !== 'string') {
       return NextResponse.json(
@@ -14,21 +86,32 @@ export async function POST(request: NextRequest) {
     }
 
     // Use user-provided API key or fall back to environment variable
-    const apiKey = userApiKey || process.env.OPENAI_API_KEY;
-    const model = userModel || process.env.OPENAI_MODEL || 'gpt-5.1';
+    // Priority: user-provided key > .env.local GROQ_API_KEY > .env GROQ_API_KEY > .env.local OPENAI_API_KEY > .env OPENAI_API_KEY
+    const apiKey = userApiKey || process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY;
+    
+    // Detect provider: explicit > from API key format > default to groq if GROQ_API_KEY exists, else openai
+    let detectedProvider: Provider;
+    if (userProvider) {
+      detectedProvider = detectProvider('', userProvider);
+    } else if (userApiKey) {
+      detectedProvider = detectProvider(userApiKey);
+    } else if (process.env.GROQ_API_KEY) {
+      detectedProvider = 'groq';
+    } else {
+      detectedProvider = 'openai';
+    }
+    
+    provider = detectedProvider;
 
     // Check if any API key is configured
     if (!apiKey) {
-      console.warn('No OpenAI API key found (neither user-provided nor environment variable)');
+      console.warn('No API key found (neither user-provided nor environment variable)');
       return NextResponse.json({
-        response: `I'm your Open Resources Assistant! To enable AI-powered responses, please configure your OpenAI API key in the chat settings (click the settings icon in the chat header). This is an open-source project, so you'll need to provide your own API key.\n\nYou can get your API key from https://platform.openai.com/api-keys`
+        response: `I'm your Open Resources Assistant! To enable AI-powered responses, please configure your API key in the chat settings (click the settings icon in the chat header). This is an open-source project, so you'll need to provide your own API key.\n\n**FREE OPTIONS:**\n\n1. **Groq (Recommended - FREE & Fast)**\n   - Get API key: https://console.groq.com/keys\n   - Free tier with high limits\n   - Very fast responses\n\n2. **Together AI (FREE)**\n   - Get API key: https://api.together.xyz/\n   - Free tier available\n\n3. **Hugging Face (FREE)**\n   - Get API key: https://huggingface.co/settings/tokens\n   - Free tier available\n\n4. **OpenAI (Paid)**\n   - Get API key: https://platform.openai.com/api-keys\n\n**Setup:**\n- Add API key in chat settings (⚙️ icon)\n- Or add GROQ_API_KEY to your .env file\n\n**Recommended:** Start with Groq - it's free and fast!`
       });
     }
 
-    // Create OpenAI client with the provided API key
-    const openaiClient = new OpenAI({
-      apiKey: apiKey,
-    });
+    const { client, model } = createClient(apiKey, provider, userModel);
 
     // Build system prompt with context
     let systemPrompt = `You are ChatGPT, an expert AI assistant specializing in open resources (research papers, datasets, code repositories, AI models, hardware designs, etc.). 
@@ -88,8 +171,8 @@ Always use the search results context when answering questions. If asked about c
       systemPrompt += `\n\nNote: No search results are currently available. You can still help with general questions about open resources, but you won't have specific resource context.`;
     }
 
-    // Call OpenAI API with increased token limit for summaries and roadmaps
-    const completion = await openaiClient.chat.completions.create({
+    // Call AI API (works with OpenAI-compatible providers)
+    const completion = await client.chat.completions.create({
       model: model,
       messages: [
         { role: 'system', content: systemPrompt },
@@ -105,17 +188,20 @@ Always use the search results context when answering questions. If asked about c
   } catch (error: any) {
     console.error('Chat API error:', error);
     
-    // Handle OpenAI API errors gracefully
+    // Handle API errors gracefully
     if (error?.status === 401) {
       return NextResponse.json(
-        { error: 'Invalid OpenAI API key. Please check your OPENAI_API_KEY environment variable.' },
+        { error: 'Invalid API key. Please check your API key in chat settings.' },
         { status: 401 }
       );
     }
     
     if (error?.status === 429) {
       return NextResponse.json(
-        { error: 'Rate limit exceeded. Please try again later.' },
+        { 
+          error: 'Rate limit exceeded. Please try again later.',
+          details: `You've hit the rate limit for ${provider}. Try switching to Groq (free & fast) or wait a few minutes.`
+        },
         { status: 429 }
       );
     }
