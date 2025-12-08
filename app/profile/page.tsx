@@ -32,9 +32,9 @@ async function getProfileData() {
         profile: {
           displayName: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
           bio: '',
-          avatarUrl: null,
+          avatarUrl: undefined,
           preferences: {
-            theme: 'system',
+            theme: 'system' as const,
             language: 'en-IN',
             emailNotifications: true,
             marketingEmails: false,
@@ -66,13 +66,15 @@ async function getProfileData() {
     return {
       user,
       profile: {
-        id: profile.id,
-        displayName: profile.displayName,
-        bio: profile.bio,
-        avatarUrl: profile.avatarUrl,
-        preferences: profile.preferences,
-        createdAt: profile.createdAt,
-        updatedAt: profile.updatedAt,
+        displayName: profile.displayName || 'User',
+        bio: profile.bio ?? undefined,
+        avatarUrl: profile.avatarUrl ?? undefined,
+        preferences: {
+          theme: ((profile.preferences as any)?.theme || 'system') as 'system' | 'light' | 'dark',
+          language: (profile.preferences as any)?.language || 'en-IN',
+          emailNotifications: (profile.preferences as any)?.emailNotifications ?? true,
+          marketingEmails: (profile.preferences as any)?.marketingEmails ?? false,
+        },
       },
     };
   } catch (error: any) {
@@ -92,9 +94,9 @@ async function getProfileData() {
       profile: {
         displayName: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
         bio: '',
-        avatarUrl: null,
+        avatarUrl: undefined,
         preferences: {
-          theme: 'system',
+          theme: 'system' as const,
           language: 'en-IN',
           emailNotifications: true,
           marketingEmails: false,
