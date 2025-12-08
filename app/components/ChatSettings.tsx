@@ -12,6 +12,22 @@ const STORAGE_KEY = 'ai_api_key';
 const MODEL_STORAGE_KEY = 'ai_model';
 const PROVIDER_STORAGE_KEY = 'ai_provider';
 
+// Export utility functions to get stored values
+export function getStoredApiKey(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(STORAGE_KEY);
+}
+
+export function getStoredModel(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(MODEL_STORAGE_KEY);
+}
+
+export function getStoredProvider(): Provider {
+  if (typeof window === 'undefined') return 'groq';
+  return (localStorage.getItem(PROVIDER_STORAGE_KEY) || 'groq') as Provider;
+}
+
 const PROVIDER_MODELS: Record<Provider, string[]> = {
   openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
   groq: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it'],
