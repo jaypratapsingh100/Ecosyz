@@ -63,19 +63,21 @@ async function getProfileData() {
       });
     }
 
+    const profileData = {
+      displayName: profile.displayName || 'User',
+      bio: profile.bio ?? undefined,
+      avatarUrl: (profile.avatarUrl === null ? undefined : profile.avatarUrl) as string | undefined,
+      preferences: {
+        theme: ((profile.preferences as any)?.theme || 'system') as 'system' | 'light' | 'dark',
+        language: (profile.preferences as any)?.language || 'en-IN',
+        emailNotifications: (profile.preferences as any)?.emailNotifications ?? true,
+        marketingEmails: (profile.preferences as any)?.marketingEmails ?? false,
+      },
+    };
+
     return {
       user,
-      profile: {
-        displayName: profile.displayName || 'User',
-        bio: profile.bio ?? undefined,
-        avatarUrl: (profile.avatarUrl && profile.avatarUrl !== null) ? profile.avatarUrl : undefined,
-        preferences: {
-          theme: ((profile.preferences as any)?.theme || 'system') as 'system' | 'light' | 'dark',
-          language: (profile.preferences as any)?.language || 'en-IN',
-          emailNotifications: (profile.preferences as any)?.emailNotifications ?? true,
-          marketingEmails: (profile.preferences as any)?.marketingEmails ?? false,
-        },
-      },
+      profile: profileData,
     };
   } catch (error: any) {
     console.error('Error fetching profile:', error);
