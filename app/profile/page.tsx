@@ -68,7 +68,7 @@ async function getProfileData() {
       profile: {
         displayName: profile.displayName || 'User',
         bio: profile.bio ?? undefined,
-        avatarUrl: profile.avatarUrl ?? undefined,
+        avatarUrl: (profile.avatarUrl && profile.avatarUrl !== null) ? profile.avatarUrl : undefined,
         preferences: {
           theme: ((profile.preferences as any)?.theme || 'system') as 'system' | 'light' | 'dark',
           language: (profile.preferences as any)?.language || 'en-IN',
