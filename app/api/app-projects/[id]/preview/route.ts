@@ -539,21 +539,54 @@ export async function POST(
 
     if (project.type === 'web' || project.type === 'fullstack') {
       try {
+        console.log(`Generating preview for project ${project.id} (${project.type})`);
+        console.log(`Project has ${project.files?.length || 0} files`);
         htmlContent = generatePreview(project);
+        
+        if (!htmlContent || htmlContent.trim().length === 0) {
+          throw new Error('Generated preview HTML is empty');
+        }
+        
+        console.log(`Preview generated successfully, length: ${htmlContent.length}`);
       } catch (error: any) {
         hasError = true;
         errorMessage = error?.message || 'Failed to generate preview';
+        console.error('Error generating preview:', error);
+        console.error('Error stack:', error?.stack);
+        
         htmlContent = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Preview Error</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+      padding: 40px;
+      background: #0a0a0a;
+      color: #fff;
+    }
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    h2 { color: #ef4444; margin-bottom: 20px; }
+    p { color: #9ca3af; line-height: 1.6; }
+    code {
+      background: #1a1a1a;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: monospace;
+      color: #60a5fa;
+    }
+  </style>
 </head>
 <body>
-  <div style="padding: 20px; color: #ef4444;">
+  <div class="container">
     <h2>Preview Generation Error</h2>
-    <p>${errorMessage}</p>
+    <p><strong>Error:</strong> <code>${errorMessage.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></p>
+    <p style="margin-top: 20px; color: #6b7280;">Please check the console for more details or try refreshing the preview.</p>
   </div>
 </body>
 </html>`;
@@ -597,6 +630,16 @@ export async function POST(
     });
   } catch (error: any) {
     console.error('Preview API error:', error);
+    
+    // Extract meaningful error message
+    let errorMessage = 'Failed to generate preview';
+    if (error?.message) {
+      errorMessage = error.message;
+    } else if (typeof error === 'string') {
+      errorMessage = error;
+    } else if (error?.toString) {
+      errorMessage = error.toString();
+    }
 
     // Save error execution log
     try {
@@ -606,20 +649,29 @@ export async function POST(
           projectId: id,
           status: 'error',
           output: null,
-          error: error?.message || 'Unknown error',
+          error: errorMessage,
         },
+      }).catch((execError) => {
+        console.error('Error saving execution error:', execError);
       });
     } catch (execError) {
       console.error('Error saving execution error:', execError);
     }
 
+    // Always return a proper JSON error response
     return NextResponse.json(
       {
         status: 'error',
         output: null,
-        error: error?.message || 'Failed to generate preview',
+        error: errorMessage,
+        type: 'error',
       },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      }
     );
   }
 }

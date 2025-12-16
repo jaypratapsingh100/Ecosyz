@@ -26,17 +26,23 @@ export default function PreviewPanel({ projectId, projectType, onRefresh }: Prev
       });
 
       if (res.ok) {
-        const data = await res.json();
+        const data = await res.json().catch((parseError) => {
+          console.error('Failed to parse preview response:', parseError);
+          return { status: 'error', error: 'Invalid response from preview API' };
+        });
+        
         console.log('Preview API response:', data);
         console.log('Preview HTML length:', data.output?.length || 0);
+        
         if (data.output) {
           // Accept any output, even if status is not 'success'
           setPreviewHtml(data.output);
           setError(null);
           console.log('Preview HTML set successfully');
         } else if (data.status === 'error') {
-          console.error('Preview API error:', data.error);
-          setError(data.error || 'Failed to generate preview');
+          const errorMsg = data.error || 'Failed to generate preview';
+          console.error('Preview API error:', errorMsg);
+          setError(errorMsg);
           setPreviewHtml(null);
         } else {
           console.error('No preview output in response:', data);
@@ -44,13 +50,49 @@ export default function PreviewPanel({ projectId, projectType, onRefresh }: Prev
           setPreviewHtml(null);
         }
       } else {
-        const errorData = await res.json().catch(() => ({}));
-        console.error('Preview API error:', errorData);
-        setError(errorData.error || `Failed to generate preview (${res.status})`);
+        // Try to parse error response, but handle cases where it's not JSON
+        let errorData: any = {};
+        const contentType = res.headers.get('content-type');
+        
+        if (contentType && contentType.includes('application/json')) {
+          try {
+            errorData = await res.json();
+          } catch (parseError) {
+            console.error('Failed to parse error response as JSON:', parseError);
+            // Try to get text instead
+            try {
+              const textError = await res.text();
+              errorData = { error: textError || `HTTP ${res.status}` };
+            } catch (textError) {
+              errorData = { error: `HTTP ${res.status}: ${res.statusText}` };
+            }
+          }
+        } else {
+          // Not JSON, try to get text
+          try {
+            const textError = await res.text();
+            errorData = { error: textError || `HTTP ${res.status}: ${res.statusText}` };
+          } catch (textError) {
+            errorData = { error: `HTTP ${res.status}: ${res.statusText || 'Unknown error'}` };
+          }
+        }
+        
+        const errorMessage = errorData.error || errorData.message || `Failed to generate preview (HTTP ${res.status})`;
+        console.error('Preview API error:', {
+          status: res.status,
+          statusText: res.statusText,
+          errorData,
+          errorMessage
+        });
+        
+        setError(errorMessage);
         setPreviewHtml(null);
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to generate preview');
+      console.error('Preview generation exception:', err);
+      const errorMessage = err?.message || err?.toString() || 'Failed to generate preview';
+      setError(errorMessage);
+      setPreviewHtml(null);
     } finally {
       setLoading(false);
     }
@@ -58,20 +100,32 @@ export default function PreviewPanel({ projectId, projectType, onRefresh }: Prev
 
   useEffect(() => {
     // Auto-generate preview when project changes
-    if (projectId && (projectType === 'web' || projectType === 'fullstack')) {
+    if (projectId) {
       generatePreview();
     }
-  }, [projectId, projectType]);
+  }, [projectId]);
 
-  if (projectType !== 'web' && projectType !== 'fullstack') {
-    return (
-      <div className="h-full flex items-center justify-center bg-[#0a0a0a] text-gray-400">
-        <div className="text-center">
-          <p>Preview not available for {projectType} projects</p>
-        </div>
-      </div>
-    );
-  }
+  // Listen for files-updated event to auto-refresh preview
+  useEffect(() => {
+    const handleFilesUpdated = () => {
+      if (projectId) {
+        // Wait a bit for files to be saved, then generate preview
+        setTimeout(() => {
+          generatePreview();
+        }, 1000);
+      }
+    };
+
+    window.addEventListener('files-updated', handleFilesUpdated);
+    window.addEventListener('preview-updated', handleFilesUpdated);
+    return () => {
+      window.removeEventListener('files-updated', handleFilesUpdated);
+      window.removeEventListener('preview-updated', handleFilesUpdated);
+    };
+  }, [projectId]);
+
+  // Show preview for all project types, but warn if not web/fullstack
+  const showWarning = projectType !== 'web' && projectType !== 'fullstack';
 
   if (isFullscreen) {
     return (
@@ -140,6 +194,13 @@ export default function PreviewPanel({ projectId, projectType, onRefresh }: Prev
           </div>
         </div>
       </div>
+
+      {/* Warning for non-web projects */}
+      {showWarning && (
+        <div className="px-4 py-2 bg-yellow-500/10 border-b border-yellow-500/20 text-yellow-400 text-xs">
+          ⚠️ Preview may not work perfectly for {projectType} projects. Best results with web/fullstack projects.
+        </div>
+      )}
 
       {/* Preview Content */}
       <div className="flex-1 min-h-0 relative">

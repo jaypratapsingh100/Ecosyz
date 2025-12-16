@@ -28,6 +28,20 @@ export default function FileExplorer({ projectId, onSelectFile, selectedFileId, 
     }
   }, [projectId]);
 
+  // Listen for files-updated event to refresh files automatically
+  useEffect(() => {
+    const handleFilesUpdated = () => {
+      if (projectId) {
+        fetchFiles();
+      }
+    };
+
+    window.addEventListener('files-updated', handleFilesUpdated);
+    return () => {
+      window.removeEventListener('files-updated', handleFilesUpdated);
+    };
+  }, [projectId]);
+
   const fetchFiles = async () => {
     if (!projectId) return;
     
@@ -210,11 +224,11 @@ export default function FileExplorer({ projectId, onSelectFile, selectedFileId, 
   const tree = buildFileTree();
 
   return (
-    <div className="h-full flex flex-col bg-[#0a0a0a] border-r border-white/10">
-      <div className="p-3 border-b border-white/10">
+    <div className="h-full flex flex-col bg-[#0a0a0a] border-r border-white/10 overflow-hidden">
+      <div className="p-3 border-b border-white/10 flex-shrink-0">
         <h3 className="text-white font-semibold text-sm">Files</h3>
       </div>
-      <div className="flex-1 overflow-y-auto p-2">
+      <div className="flex-1 min-h-0 overflow-y-auto p-2">
         {files.length === 0 ? (
           <div className="text-center text-gray-400 text-sm mt-8">
             <p>No files yet</p>

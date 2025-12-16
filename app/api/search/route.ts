@@ -16,6 +16,8 @@ import { searchOshwaHardware } from './providers/oshwa';
 import { searchWikifactoryDesigns } from './providers/wikifactory';
 import type { Resource, ResourceType } from '../../../src/types/resource';
 import { dedupeConservative } from './lib/dedupe';
+import { getCurrentUser } from '../../../src/lib/auth';
+import { prisma } from '../../../src/lib/db';
 
 interface SearchCoverage {
   requestedProviders: string[];
@@ -229,6 +231,33 @@ export async function GET(req: NextRequest) {
     coverage: resp.coverage
   };
   setCache(cacheKey, sessionData);
+  
+  // Track search (non-blocking, don't wait for it)
+  try {
+    const user = await getCurrentUser();
+    const providers = providerFns.map(p => p.name);
+    
+    // Track search asynchronously - don't block the response
+    prisma.searchLog.create({
+      data: {
+        userId: user?.id || null,
+        query: q.trim(),
+        resourceType: type || null,
+        resultCount: deduped.length,
+        clicked: false, // Will be updated when user clicks a result
+        providers,
+        sessionId,
+      },
+    }).catch(err => {
+      // Silently fail tracking - don't log errors in production
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to track search:', err);
+      }
+    });
+  } catch (error) {
+    // Silently fail tracking
+  }
+  
   // See docs/specs/dedupe-pipeline.md and docs/specs/providers.md for details
   if (debug) resp.decisions = dedupeResult.decisions;
   return NextResponse.json(resp, {

@@ -1,6 +1,17 @@
 @import 'tailwindcss';
 @import '@fortawesome/fontawesome-free/css/all.min.css';
 
+/* Ensure html and body are 100% height for fixed layouts */
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+#__next {
+  height: 100%;
+  overflow: hidden;
+}
+
 .gradient-text {
   background: linear-gradient(90deg, #10ff8b, #2fd0ff 60%);
   -webkit-background-clip: text;

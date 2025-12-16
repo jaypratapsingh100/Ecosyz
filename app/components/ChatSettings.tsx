@@ -24,8 +24,8 @@ export function getStoredModel(): string | null {
 }
 
 export function getStoredProvider(): Provider {
-  if (typeof window === 'undefined') return 'groq';
-  return (localStorage.getItem(PROVIDER_STORAGE_KEY) || 'groq') as Provider;
+  if (typeof window === 'undefined') return 'openrouter';
+  return (localStorage.getItem(PROVIDER_STORAGE_KEY) || 'openrouter') as Provider;
 }
 
 const PROVIDER_MODELS: Record<Provider, string[]> = {
@@ -33,6 +33,22 @@ const PROVIDER_MODELS: Record<Provider, string[]> = {
   groq: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it'],
   together: ['meta-llama/Llama-3-8b-chat-hf', 'meta-llama/Llama-3-70b-chat-hf', 'mistralai/Mixtral-8x7B-Instruct-v0.1'],
   huggingface: ['meta-llama/Llama-3-8b-chat-hf'],
+  deepseek: ['deepseek-chat', 'deepseek-coder'],
+  ollama: ['llama3.2', 'llama3.1', 'mistral', 'codellama', 'phi3', 'gemma2', 'qwen2.5'],
+  openrouter: [
+    'meta-llama/llama-3.2-3b-instruct:free',
+    'google/gemma-2-2b-it:free',
+    'mistralai/mistral-7b-instruct:free',
+    'qwen/qwen-2.5-7b-instruct:free',
+    'huggingface/zephyr-7b-beta:free',
+  ],
+  perplexity: [
+    'llama-3.1-sonar-small-128k-online',
+    'llama-3.1-sonar-large-128k-online',
+    'llama-3.1-sonar-huge-128k-online',
+  ],
+  cohere: ['command-r-plus', 'command-r', 'command', 'command-light'],
+  anthropic: ['claude-3-haiku-20240307', 'claude-3-sonnet-20240229', 'claude-3-opus-20240229'],
 };
 
 const PROVIDER_DEFAULTS: Record<Provider, string> = {
@@ -40,19 +56,25 @@ const PROVIDER_DEFAULTS: Record<Provider, string> = {
   groq: 'llama-3.3-70b-versatile',
   together: 'meta-llama/Llama-3-8b-chat-hf',
   huggingface: 'meta-llama/Llama-3-8b-chat-hf',
+  deepseek: 'deepseek-chat',
+  ollama: 'llama3.2',
+  openrouter: 'meta-llama/llama-3.2-3b-instruct:free',
+  perplexity: 'llama-3.1-sonar-small-128k-online',
+  cohere: 'command-r-plus',
+  anthropic: 'claude-3-haiku-20240307',
 };
 
 export default function ChatSettings({ isOpen, onClose }: ChatSettingsProps) {
-  const [provider, setProvider] = useState<Provider>('groq'); // Default to Groq (free)
+  const [provider, setProvider] = useState<Provider>('openrouter'); // Default to OpenRouter (free models)
   const [apiKey, setApiKey] = useState('');
-  const [model, setModel] = useState('llama-3.3-70b-versatile');
+  const [model, setModel] = useState('meta-llama/llama-3.2-3b-instruct:free');
   const [showKey, setShowKey] = useState(false);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       // Load saved settings
-      const savedProvider = (localStorage.getItem(PROVIDER_STORAGE_KEY) || 'groq') as Provider;
+      const savedProvider = (localStorage.getItem(PROVIDER_STORAGE_KEY) || 'openrouter') as Provider;
       const savedKey = localStorage.getItem(STORAGE_KEY) || '';
       const savedModel = localStorage.getItem(MODEL_STORAGE_KEY) || PROVIDER_DEFAULTS[savedProvider];
       setProvider(savedProvider);
@@ -71,17 +93,24 @@ export default function ChatSettings({ isOpen, onClose }: ChatSettingsProps) {
   }, [provider]);
 
   const handleSave = () => {
-    if (apiKey.trim()) {
+    // Ollama doesn't need API key (uses localhost)
+    // Other providers need API key
+    if (provider === 'ollama' || apiKey.trim()) {
       localStorage.setItem(PROVIDER_STORAGE_KEY, provider);
-      localStorage.setItem(STORAGE_KEY, apiKey.trim());
       localStorage.setItem(MODEL_STORAGE_KEY, model);
+      if (provider !== 'ollama') {
+        localStorage.setItem(STORAGE_KEY, apiKey.trim());
+      } else {
+        // Clear API key for Ollama (not needed)
+        localStorage.removeItem(STORAGE_KEY);
+      }
       setSaved(true);
       setTimeout(() => {
         setSaved(false);
         onClose();
       }, 1000);
     } else {
-      // Clear if empty
+      // Clear if empty (except Ollama)
       localStorage.removeItem(PROVIDER_STORAGE_KEY);
       localStorage.removeItem(STORAGE_KEY);
       localStorage.removeItem(MODEL_STORAGE_KEY);
@@ -138,9 +167,9 @@ export default function ChatSettings({ isOpen, onClose }: ChatSettingsProps) {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <div className="flex-1">
-                <p className="text-emerald-200 text-xs font-medium mb-1">✨ Free AI Providers Available!</p>
+                <p className="text-emerald-200 text-xs font-medium mb-1">✨ Top 5 Free Open Source LLMs Available!</p>
                 <p className="text-emerald-300/80 text-xs leading-relaxed">
-                  Use <strong>Groq</strong> (recommended) or <strong>Together AI</strong> for free, fast AI responses. 
+                  Use <strong>Ollama</strong> (100% free, local), <strong>OpenRouter</strong> (multiple free models), <strong>Groq</strong> (fastest), <strong>DeepSeek</strong> (best for code), or <strong>Together AI</strong> for free AI responses. 
                   Your API key is stored locally and never sent to our servers except for API calls.
                 </p>
               </div>
@@ -157,15 +186,27 @@ export default function ChatSettings({ isOpen, onClose }: ChatSettingsProps) {
               onChange={(e) => setProvider(e.target.value as Provider)}
               className="w-full px-4 py-2.5 bg-[#0a0a0a] border border-white/10 rounded-lg text-white focus:outline-none focus:border-emerald-400/50 focus:ring-2 focus:ring-emerald-400/20 transition-all text-sm"
             >
-              <option value="groq">🆓 Groq (FREE - Recommended)</option>
+              <option value="ollama">🆓 Ollama (100% FREE - Local)</option>
+              <option value="openrouter">🆓 OpenRouter (FREE Models)</option>
+              <option value="groq">🆓 Groq (FREE - Fastest)</option>
+              <option value="deepseek">🆓 DeepSeek (FREE - Best for Code)</option>
               <option value="together">🆓 Together AI (FREE)</option>
               <option value="huggingface">🆓 Hugging Face (FREE)</option>
+              <option value="perplexity">🆓 Perplexity (FREE Tier)</option>
+              <option value="cohere">🆓 Cohere (FREE Tier)</option>
+              <option value="anthropic">🆓 Anthropic Claude (FREE Tier)</option>
               <option value="openai">💳 OpenAI (Paid)</option>
             </select>
             <p className="text-gray-500 text-xs mt-2">
+              {provider === 'ollama' && 'Install locally: https://ollama.ai/ (No API key needed - uses localhost)'}
+              {provider === 'openrouter' && 'Get free API key: https://openrouter.ai/keys'}
               {provider === 'groq' && 'Get free API key: https://console.groq.com/keys'}
+              {provider === 'deepseek' && 'Get free API key: https://platform.deepseek.com/api_keys'}
               {provider === 'together' && 'Get free API key: https://api.together.xyz/'}
               {provider === 'huggingface' && 'Get free API key: https://huggingface.co/settings/tokens'}
+              {provider === 'perplexity' && 'Get free API key: https://www.perplexity.ai/settings/api'}
+              {provider === 'cohere' && 'Get free API key: https://dashboard.cohere.com/api-keys'}
+              {provider === 'anthropic' && 'Get free API key: https://console.anthropic.com/settings/keys'}
               {provider === 'openai' && 'Get API key: https://platform.openai.com/api-keys'}
             </p>
           </div>
@@ -180,7 +221,18 @@ export default function ChatSettings({ isOpen, onClose }: ChatSettingsProps) {
                 type={showKey ? 'text' : 'password'}
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                placeholder={provider === 'groq' ? 'gsk_...' : provider === 'together' ? 'Your Together API key' : provider === 'huggingface' ? 'hf_...' : 'sk-...'}
+                placeholder={
+                  provider === 'ollama' ? 'No API key needed (uses localhost:11434)' :
+                  provider === 'openrouter' ? 'sk-or-...' :
+                  provider === 'groq' ? 'gsk_...' :
+                  provider === 'deepseek' ? 'sk-...' :
+                  provider === 'together' ? 'Your Together API key' :
+                  provider === 'huggingface' ? 'hf_...' :
+                  provider === 'perplexity' ? 'pplx-...' :
+                  provider === 'cohere' ? 'Your Cohere API key' :
+                  provider === 'anthropic' ? 'sk-ant-...' :
+                  'sk-...'
+                }
                 className="w-full px-4 py-2.5 bg-[#0a0a0a] border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-emerald-400/50 focus:ring-2 focus:ring-emerald-400/20 transition-all text-sm"
               />
               <button
@@ -220,7 +272,10 @@ export default function ChatSettings({ isOpen, onClose }: ChatSettingsProps) {
               ))}
             </select>
             <p className="text-gray-500 text-xs mt-2">
-              Select the model for {provider === 'groq' ? 'Groq' : provider === 'together' ? 'Together AI' : provider === 'huggingface' ? 'Hugging Face' : 'OpenAI'}.
+              Select the model for {provider === 'ollama' ? 'Ollama (local)' : provider === 'openrouter' ? 'OpenRouter' : provider === 'groq' ? 'Groq' : provider === 'deepseek' ? 'DeepSeek' : provider === 'together' ? 'Together AI' : provider === 'huggingface' ? 'Hugging Face' : provider === 'perplexity' ? 'Perplexity' : provider === 'cohere' ? 'Cohere' : provider === 'anthropic' ? 'Anthropic Claude' : 'OpenAI'}.
+              {provider === 'deepseek' && ' Use "deepseek-coder" for best code generation results.'}
+              {provider === 'ollama' && ' Make sure Ollama is running locally on port 11434.'}
+              {provider === 'openrouter' && ' Free models available - no credit card needed!'}
             </p>
           </div>
 
@@ -244,7 +299,8 @@ export default function ChatSettings({ isOpen, onClose }: ChatSettingsProps) {
             </button>
             <button
               onClick={handleSave}
-              className="flex-1 px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 rounded-lg text-white text-sm font-semibold transition-all shadow-lg shadow-emerald-500/20"
+              disabled={provider !== 'ollama' && !apiKey.trim()}
+              className="flex-1 px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 rounded-lg text-white text-sm font-semibold transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Save Settings
             </button>

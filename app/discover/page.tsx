@@ -251,3 +251,4 @@ function DiscoverPage() {
     </div>
   );
 }
+

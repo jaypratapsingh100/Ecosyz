@@ -113,8 +113,8 @@ export default function CodeEditor({ file, projectId, onChange }: CodeEditorProp
   }
 
   return (
-    <div className="h-full flex flex-col bg-[#1e1e1e]">
-      <div className="flex items-center justify-between px-4 py-2 bg-[#252526] border-b border-white/10">
+    <div className="h-full flex flex-col bg-[#1e1e1e] overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-2 bg-[#252526] border-b border-white/10 flex-shrink-0">
         <div className="flex items-center gap-2">
           <span className="text-white text-sm font-medium">{file.name}</span>
           {saving && (
@@ -123,7 +123,7 @@ export default function CodeEditor({ file, projectId, onChange }: CodeEditorProp
         </div>
         <div className="text-xs text-gray-500">{file.path}</div>
       </div>
-      <div className="flex-1">
+      <div className="flex-1 min-h-0 overflow-hidden">
         <Editor
           height="100%"
           language={getLanguage()}

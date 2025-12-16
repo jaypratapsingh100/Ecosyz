@@ -177,6 +177,17 @@ export async function POST(req: NextRequest) {
         workspaceId: parse.data.workspaceId,
         config: parse.data.config,
         ownerId: prismaUser.id,
+        // Questionnaire data
+        questionnaireData: parse.data.questionnaireData || null,
+        appType: parse.data.appType || null,
+        targetAudience: parse.data.targetAudience || null,
+        designStyle: parse.data.designStyle || null,
+        colorScheme: parse.data.colorScheme || null,
+        layoutStyle: parse.data.layoutStyle || null,
+        requiredFeatures: parse.data.requiredFeatures || [],
+        brandName: parse.data.brandName || null,
+        tagline: parse.data.tagline || null,
+        keyPoints: parse.data.keyPoints || null,
       },
       select: {
         id: true,

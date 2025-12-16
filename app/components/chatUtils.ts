@@ -1,6 +1,6 @@
 'use client';
 
-export type Provider = 'openai' | 'groq' | 'together' | 'huggingface';
+export type Provider = 'openai' | 'groq' | 'together' | 'huggingface' | 'deepseek' | 'ollama' | 'openrouter' | 'perplexity' | 'cohere' | 'anthropic';
 
 const STORAGE_KEY = 'ai_api_key';
 const MODEL_STORAGE_KEY = 'ai_model';
@@ -14,25 +14,25 @@ export function getStoredApiKey(): string | null {
 
 // Helper function to get model from storage
 export function getStoredModel(): string {
-  if (typeof window === 'undefined') return 'llama-3.3-70b-versatile';
+  if (typeof window === 'undefined') return 'meta-llama/llama-3.2-3b-instruct:free';
   const stored = localStorage.getItem(MODEL_STORAGE_KEY);
   
-  // Migrate old deprecated model to new one
-  if (stored === 'llama-3.1-70b-versatile') {
-    localStorage.setItem(MODEL_STORAGE_KEY, 'llama-3.3-70b-versatile');
-    return 'llama-3.3-70b-versatile';
+  // Migrate old deprecated models to new defaults
+  if (stored === 'llama-3.1-70b-versatile' || stored === 'llama-3.3-70b-versatile') {
+    localStorage.setItem(MODEL_STORAGE_KEY, 'meta-llama/llama-3.2-3b-instruct:free');
+    return 'meta-llama/llama-3.2-3b-instruct:free';
   }
   
-  return stored || 'llama-3.3-70b-versatile';
+  return stored || 'meta-llama/llama-3.2-3b-instruct:free';
 }
 
 // Helper function to get provider from storage
 export function getStoredProvider(): Provider {
-  if (typeof window === 'undefined') return 'groq';
+  if (typeof window === 'undefined') return 'openrouter';
   const stored = localStorage.getItem(PROVIDER_STORAGE_KEY);
-  if (stored && ['openai', 'groq', 'together', 'huggingface'].includes(stored)) {
+  if (stored && ['openai', 'groq', 'together', 'huggingface', 'deepseek', 'ollama', 'openrouter', 'perplexity', 'cohere', 'anthropic'].includes(stored)) {
     return stored as Provider;
   }
-  return 'groq';
+  return 'openrouter';
 }
 

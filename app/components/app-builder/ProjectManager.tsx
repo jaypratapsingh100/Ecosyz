@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import QuestionnaireWizard from './QuestionnaireWizard';
 
 interface Project {
   id: string;
@@ -144,20 +145,109 @@ if __name__ == "__main__":
   },
 ];
 
+// Generate comprehensive build prompt from questionnaire data
+function generateBuildPrompt(questionnaireData: any, projectTitle: string): string {
+  const sections = questionnaireData.requiredSections || [];
+  const features = questionnaireData.specialFeatures || [];
+  const designStyle = questionnaireData.designStyle || 'modern-minimal';
+  const colorScheme = questionnaireData.colorScheme || 'auto';
+  const layoutStyle = questionnaireData.layoutStyle || 'single-page';
+  const brandName = questionnaireData.brandName || projectTitle;
+  const tagline = questionnaireData.tagline || '';
+  const keyPoints = questionnaireData.keyPoints || '';
+  const appType = questionnaireData.appType || 'web app';
+  const targetAudience = questionnaireData.targetAudience || 'general';
+  
+  let prompt = `Create a complete, production-ready ${appType} application with the following specifications:\n\n`;
+  
+  // Branding
+  prompt += `**Brand & Content:**\n`;
+  prompt += `- Brand Name: ${brandName}\n`;
+  if (tagline) prompt += `- Tagline: ${tagline}\n`;
+  if (keyPoints) prompt += `- Key Points to Highlight: ${keyPoints}\n`;
+  prompt += `- Target Audience: ${targetAudience}\n\n`;
+  
+  // Design Requirements
+  prompt += `**Design Requirements:**\n`;
+  prompt += `- Design Style: ${designStyle}\n`;
+  prompt += `- Color Scheme: ${colorScheme}\n`;
+  prompt += `- Layout Style: ${layoutStyle}\n\n`;
+  
+  // Required Sections
+  if (sections.length > 0) {
+    prompt += `**Required Sections (create components for ALL of these):**\n`;
+    sections.forEach((section: string) => {
+      prompt += `- ${section}\n`;
+    });
+    prompt += `\n`;
+  }
+  
+  // Special Features
+  if (features.length > 0) {
+    prompt += `**Special Features (implement ALL of these):**\n`;
+    features.forEach((feature: string) => {
+      prompt += `- ${feature}\n`;
+    });
+    prompt += `\n`;
+  }
+  
+  // Instructions
+  prompt += `**CRITICAL INSTRUCTIONS - FOLLOW EXACTLY:**\n`;
+  prompt += `1. Create ALL required sections as separate React component files\n`;
+  prompt += `2. Use the EXACT design style "${designStyle}" throughout\n`;
+  prompt += `3. Use the EXACT color scheme "${colorScheme}" - apply these colors in CSS\n`;
+  prompt += `4. Implement the "${layoutStyle}" layout style\n`;
+  prompt += `5. Implement ALL special features listed above\n`;
+  prompt += `6. Make it fully responsive and mobile-friendly\n`;
+  prompt += `7. Use modern, professional code with proper structure\n`;
+  prompt += `8. Include proper styling (create CSS files or use inline styles)\n`;
+  prompt += `9. Create a complete App.jsx that imports and renders ALL components\n`;
+  prompt += `10. Create index.js that renders the App component\n`;
+  prompt += `11. Make it production-ready and polished\n\n`;
+  
+  prompt += `**FILE GENERATION REQUIREMENTS - CRITICAL:**\n`;
+  prompt += `- Generate ALL files in ONE response - do not split across multiple messages\n`;
+  prompt += `- Use the \`\`\`file:path/to/file.jsx\` format for EACH file\n`;
+  prompt += `- Create separate component files for: ${sections.length > 0 ? sections.map((s: string) => s.charAt(0).toUpperCase() + s.slice(1)).join('.jsx, ') + '.jsx' : 'Hero, About, Services, Contact, etc.'}\n`;
+  prompt += `- MUST include: App.jsx (imports ALL components), index.js (renders App), App.css (or component CSS files)\n`;
+  prompt += `- Each component should be a complete, functional React component\n`;
+  prompt += `- DO NOT ask questions - generate ALL files immediately in this response\n`;
+  prompt += `- Use the exact file format: \`\`\`file:src/ComponentName.jsx\`\n\n`;
+  
+  prompt += `🚨 START GENERATING NOW - Create the complete application with ALL files in ONE response! 🚨\n`;
+  prompt += `Remember: Generate ALL components, App.jsx, index.js, and CSS files NOW.`;
+  
+  return prompt;
+}
+
 export default function ProjectManager({ onSelectProject, selectedProjectId }: ProjectManagerProps) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showQuestionnaire, setShowQuestionnaire] = useState(false);
   const [newProjectTitle, setNewProjectTitle] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState<string>('react');
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>('');
   const [creating, setCreating] = useState(false);
   const [creatingSample, setCreatingSample] = useState(false);
+  const [questionnaireData, setQuestionnaireData] = useState<any>(null);
 
   useEffect(() => {
     fetchProjects();
     fetchWorkspaces();
+  }, []);
+
+  // Listen for trigger-new-project event from welcome screen
+  useEffect(() => {
+    const handleTriggerNewProject = () => {
+      setShowQuestionnaire(true); // Show questionnaire directly
+    };
+    
+    window.addEventListener('trigger-new-project', handleTriggerNewProject);
+    return () => {
+      window.removeEventListener('trigger-new-project', handleTriggerNewProject);
+    };
   }, []);
 
   const fetchWorkspaces = async () => {
@@ -215,24 +305,59 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
     }
   };
 
-  const handleCreateProject = async () => {
-    if (!newProjectTitle.trim()) return;
+  const handleQuestionnaireComplete = async (questionnaireData: any) => {
+    setQuestionnaireData(questionnaireData);
+    setShowQuestionnaire(false);
+    
+    // Determine framework from questionnaire
+    const framework = questionnaireData.frameworkPreference === 'auto' 
+      ? undefined 
+      : questionnaireData.frameworkPreference === 'nextjs' 
+        ? 'nextjs' 
+        : questionnaireData.frameworkPreference || 'react';
+    
+    // Project type must be "web", "fullstack", or "other" (not the questionnaire appType)
+    // Questionnaire appType (portfolio, business, etc.) is stored separately as metadata
+    const projectType = 'web'; // Always "web" for web apps, questionnaire appType is separate
+    
+    // Create project with questionnaire data
+    await createProjectWithQuestionnaire(questionnaireData, framework, projectType);
+  };
+
+  const createProjectWithQuestionnaire = async (
+    questionnaireData: any,
+    framework: string | undefined,
+    projectType: string
+  ) => {
+    if (!newProjectTitle.trim()) {
+      setNewProjectTitle(questionnaireData.brandName || 'My App');
+    }
 
     setCreating(true);
     try {
-      const template = PROJECT_TEMPLATES.find((t) => t.id === selectedTemplate);
-      if (!template) return;
-
-      // Create project
+      // Create project with questionnaire data
+      // Note: type must be "web" | "fullstack" | "other"
+      // questionnaireData.appType (portfolio, business, etc.) is stored separately
       const projectRes = await fetch('/api/app-projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: newProjectTitle,
-          type: template.type,
-          framework: template.framework,
-          description: template.description,
+          title: newProjectTitle || questionnaireData.brandName || 'My App',
+          type: projectType, // Must be "web", "fullstack", or "other"
+          framework: framework,
+          description: questionnaireData.tagline || `A ${questionnaireData.appType || 'web'} application`,
           workspaceId: selectedWorkspaceId || undefined,
+          // Questionnaire data (appType here is portfolio/business/etc., stored as metadata)
+          questionnaireData: questionnaireData,
+          appType: questionnaireData.appType, // This is portfolio/business/ecommerce/etc.
+          targetAudience: questionnaireData.targetAudience,
+          designStyle: questionnaireData.designStyle,
+          colorScheme: questionnaireData.colorScheme,
+          layoutStyle: questionnaireData.layoutStyle,
+          requiredFeatures: questionnaireData.specialFeatures || [],
+          brandName: questionnaireData.brandName,
+          tagline: questionnaireData.tagline,
+          keyPoints: questionnaireData.keyPoints,
         }),
       });
 
@@ -243,22 +368,247 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
 
       const project = await projectRes.json();
 
-      // Create template files
-      if (template.files.length > 0) {
-        for (const file of template.files) {
-          await fetch(`/api/app-projects/${project.id}/files`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(file),
-          });
-        }
-      }
-
       setShowCreateModal(false);
       setNewProjectTitle('');
       setSelectedWorkspaceId('');
+      setQuestionnaireData(null);
       await fetchProjects();
+      
+      // Select project first, then trigger AI generation
       onSelectProject(project.id);
+      
+      // Wait a bit for project to be selected and chat to initialize
+      setTimeout(() => {
+        // Generate comprehensive prompt from questionnaire data
+        const buildPrompt = generateBuildPrompt(questionnaireData, project.title);
+        console.log('📝 Generated build prompt from questionnaire:', buildPrompt);
+        
+        // Store prompt in sessionStorage so AppChat can pick it up
+        sessionStorage.setItem(`auto-prompt-${project.id}`, buildPrompt);
+        sessionStorage.setItem(`auto-prompt-timestamp-${project.id}`, Date.now().toString());
+        
+        // Automatically send prompt to AI chat to generate files
+        // Use DeepSeek by default (best for code generation)
+        const userProvider = typeof window !== 'undefined' 
+          ? localStorage.getItem('ai_provider')
+          : null;
+        const userApiKey = typeof window !== 'undefined'
+          ? localStorage.getItem('ai_api_key')
+          : null;
+        const userModel = typeof window !== 'undefined'
+          ? localStorage.getItem('ai_model')
+          : null;
+        
+        // Default to Groq (fastest, free tier available)
+        // If user has set a provider, use it; otherwise default to Groq for speed
+        const provider = userProvider || 'groq';
+        const model = userModel || (provider === 'groq' ? 'llama-3.3-70b-versatile' : provider === 'openrouter' ? 'meta-llama/llama-3.2-3b-instruct:free' : undefined);
+        
+        const requestBody: any = {
+          message: buildPrompt,
+          provider: provider,
+        };
+        
+        // Always include API key if available (required for DeepSeek)
+        if (userApiKey) {
+          requestBody.apiKey = userApiKey;
+        }
+        if (model) {
+          requestBody.model = model;
+        }
+        
+        console.log('🤖 Using AI provider:', provider, 'with model:', model);
+        
+        fetch(`/api/app-projects/${project.id}/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+        }).then(async (chatResponse) => {
+          // Safety check: ensure chatResponse exists
+          if (!chatResponse) {
+            throw new Error('No response received from server');
+          }
+          
+          if (chatResponse.ok) {
+            const chatData = await chatResponse.json();
+            console.log('✅ AI response received:', chatData);
+            
+            // Store response in sessionStorage for chat UI
+            sessionStorage.setItem(`auto-response-${project.id}`, JSON.stringify(chatData));
+            
+            // Trigger files refresh multiple times to ensure files appear
+            // Files might take a moment to be saved to database
+            setTimeout(() => {
+              window.dispatchEvent(new CustomEvent('files-updated'));
+            }, 500);
+            setTimeout(() => {
+              window.dispatchEvent(new CustomEvent('files-updated'));
+            }, 1500);
+            setTimeout(() => {
+              window.dispatchEvent(new CustomEvent('files-updated'));
+            }, 3000);
+            
+            // Also trigger preview refresh
+            setTimeout(() => {
+              window.dispatchEvent(new CustomEvent('preview-updated'));
+            }, 2000);
+          } else {
+            // Handle error response with better error parsing
+            let errorData: any = null;
+            let errorMessage = `Server error (${chatResponse.status})`;
+            let responseText = '';
+            
+            try {
+              // Try to read response as text first
+              responseText = await chatResponse.text();
+              
+              if (responseText && responseText.trim()) {
+                // Try to parse as JSON
+                try {
+                  errorData = JSON.parse(responseText);
+                  errorMessage = errorData.error || errorData.message || errorData.details || errorMessage;
+                } catch (jsonError) {
+                  // Not JSON, treat as plain text
+                  errorMessage = responseText.substring(0, 200); // Limit length
+                  errorData = { 
+                    error: responseText.substring(0, 200),
+                    raw: responseText,
+                    status: chatResponse.status 
+                  };
+                }
+              }
+            } catch (readError: any) {
+              console.error('Failed to read error response:', readError);
+              responseText = '';
+            }
+            
+            // Build error data object - ensure it's never empty
+            if (!errorData || typeof errorData !== 'object' || Object.keys(errorData).length === 0) {
+              errorData = {
+                error: errorMessage,
+                status: chatResponse.status,
+                statusText: chatResponse.statusText || 'Unknown',
+                httpStatus: chatResponse.status,
+                responseBody: responseText || '(empty)',
+                note: responseText ? 'Response received but could not parse' : 'No response body received'
+              };
+            } else {
+              // Ensure errorData has at least basic fields
+              if (!errorData.status) errorData.status = chatResponse.status;
+              if (!errorData.statusText) errorData.statusText = chatResponse.statusText || 'Unknown';
+              if (!errorData.error && !errorData.message) {
+                errorData.error = errorMessage;
+              }
+            }
+            
+            // Final check - ensure errorData is never empty before logging
+            const finalErrorData = (errorData && typeof errorData === 'object' && Object.keys(errorData).length > 0) 
+              ? errorData 
+              : {
+                  error: errorMessage,
+                  status: chatResponse.status,
+                  statusText: chatResponse.statusText || 'Unknown',
+                  httpStatus: chatResponse.status,
+                  responseBody: responseText || '(empty)',
+                  note: 'Error data was empty, using fallback values'
+                };
+            
+            // Log comprehensive error information - ensure all values are defined
+            const errorLogInfo: Record<string, any> = {
+              status: chatResponse?.status ?? 'unknown',
+              statusText: chatResponse?.statusText ?? 'unknown',
+              url: chatResponse?.url ?? 'unknown',
+              statusCode: chatResponse?.status ?? 'unknown',
+              errorData: finalErrorData,
+              responseText: responseText ? responseText.substring(0, 500) : '(no response text)',
+              projectId: project.id,
+              provider: provider,
+              model: model,
+              timestamp: new Date().toISOString(),
+            };
+            
+            // Safely extract headers if available
+            if (chatResponse?.headers) {
+              try {
+                errorLogInfo.headers = Array.from(chatResponse.headers.entries()).reduce((acc, [key, value]) => {
+                  acc[key] = value;
+                  return acc;
+                }, {} as Record<string, string>);
+              } catch (headerError) {
+                errorLogInfo.headersError = 'Could not extract headers';
+              }
+            } else {
+              errorLogInfo.headers = 'Not available';
+            }
+            
+            console.error('❌ AI chat request failed:', errorLogInfo);
+            
+            sessionStorage.setItem(`auto-error-${project.id}`, JSON.stringify({
+              error: errorMessage,
+              status: chatResponse.status,
+              statusText: chatResponse.statusText,
+              details: finalErrorData
+            }));
+          }
+        }).catch((chatError) => {
+          // Handle network errors or other fetch failures
+          let errorMessage = 'Connection error';
+          let errorDetails = '';
+          let errorType = 'unknown';
+          
+          // Safely extract error information
+          if (chatError instanceof Error) {
+            errorMessage = chatError.message || 'Unknown error';
+            errorDetails = chatError.stack || '';
+            errorType = 'Error';
+            
+            // Provide more specific error messages
+            if (chatError.message.includes('fetch failed') || chatError.message.includes('network')) {
+              errorMessage = 'Connection error: Unable to reach the AI service. Please check your internet connection and API key settings.';
+            } else if (chatError.message.includes('Failed to fetch')) {
+              errorMessage = 'Connection error: The AI service is not reachable. Please verify your API key is correct.';
+            }
+          } else if (chatError && typeof chatError === 'object') {
+            // Try to extract meaningful information from error object
+            errorMessage = (chatError as any).message || (chatError as any).error || 'Network error: Unable to connect to AI service';
+            errorDetails = JSON.stringify(chatError, null, 2);
+            errorType = 'Object';
+          } else {
+            errorMessage = 'Network error: Unable to connect to AI service';
+            errorDetails = String(chatError || 'Unknown error');
+            errorType = typeof chatError;
+          }
+          
+          // Ensure we always log meaningful information
+          const errorInfo = {
+            errorType,
+            errorMessage,
+            errorDetails: errorDetails || 'No additional details',
+            projectId: project.id,
+            provider: provider,
+            model: model,
+            hasApiKey: !!userApiKey,
+            errorObject: chatError ? (chatError instanceof Error ? {
+              name: chatError.name,
+              message: chatError.message,
+              stack: chatError.stack
+            } : chatError) : null,
+            timestamp: new Date().toISOString(),
+          };
+          
+          console.error('❌ Error calling AI chat:', errorInfo);
+          
+          sessionStorage.setItem(`auto-error-${project.id}`, JSON.stringify({ 
+            error: errorMessage,
+            type: 'network_error',
+            details: errorDetails,
+            suggestion: 'Please check your API key settings (⚙️ icon) and ensure your internet connection is working.'
+          }));
+        });
+      }, 1500);
+      
+      // Show success message
+      alert(`✅ Project created successfully!\n\n🤖 AI is now generating your ${questionnaireData.appType} app with ${questionnaireData.designStyle} design based on your questionnaire!\n\nCheck the Chat tab to see the prompt and progress.`);
     } catch (error: any) {
       console.error('Failed to create project:', error);
       const errorMessage = error?.message || 'Failed to create project. Please try again.';
@@ -266,6 +616,11 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
     } finally {
       setCreating(false);
     }
+  };
+
+  const handleCreateProject = () => {
+    // Show questionnaire first (title can be set in questionnaire)
+    setShowQuestionnaire(true);
   };
 
   const handleDeleteProject = async (projectId: string) => {
@@ -294,8 +649,8 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
   }
 
   return (
-    <div className="h-full flex flex-col bg-[#0a0a0a] border-r border-white/10">
-      <div className="p-4 border-b border-white/10">
+    <div className="h-full flex flex-col bg-[#0a0a0a] border-r border-white/10 overflow-hidden">
+      <div className="p-4 border-b border-white/10 flex-shrink-0">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-white font-semibold text-lg">Projects</h2>
           <div className="flex gap-2">
@@ -317,7 +672,7 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2">
+      <div className="flex-1 min-h-0 overflow-y-auto p-2">
         {projects.length === 0 ? (
           <div className="text-center text-gray-400 text-sm mt-8">
             <p>No projects yet</p>
@@ -471,7 +826,70 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
           </div>
         </div>
       )}
+
+      {/* Questionnaire Wizard */}
+      {showQuestionnaire && (
+        <QuestionnaireWizard
+          onComplete={handleQuestionnaireComplete}
+          onSkip={() => {
+            setShowQuestionnaire(false);
+            // Create project without questionnaire
+            handleCreateProjectWithoutQuestionnaire();
+          }}
+          initialData={questionnaireData}
+        />
+      )}
     </div>
   );
+
+  async function handleCreateProjectWithoutQuestionnaire() {
+    if (!newProjectTitle.trim()) return;
+
+    setCreating(true);
+    try {
+      const template = PROJECT_TEMPLATES.find((t) => t.id === selectedTemplate);
+      if (!template) return;
+
+      const projectRes = await fetch('/api/app-projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: newProjectTitle,
+          type: template.type,
+          framework: template.framework,
+          description: template.description,
+          workspaceId: selectedWorkspaceId || undefined,
+        }),
+      });
+
+      if (!projectRes.ok) {
+        const errorData = await projectRes.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `Failed to create project (${projectRes.status})`);
+      }
+
+      const project = await projectRes.json();
+
+      if (template.files.length > 0) {
+        for (const file of template.files) {
+          await fetch(`/api/app-projects/${project.id}/files`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(file),
+          });
+        }
+      }
+
+      setShowCreateModal(false);
+      setNewProjectTitle('');
+      setSelectedWorkspaceId('');
+      await fetchProjects();
+      onSelectProject(project.id);
+    } catch (error: any) {
+      console.error('Failed to create project:', error);
+      alert(error?.message || 'Failed to create project. Please try again.');
+    } finally {
+      setCreating(false);
+    }
+  }
 }
 

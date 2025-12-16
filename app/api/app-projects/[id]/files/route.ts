@@ -17,10 +17,34 @@ export async function GET(
       );
     }
 
-    await ensureUserInDb(user);
-    const prismaUser = await prisma.user.findUnique({
-      where: { supabaseId: user.id },
-    });
+    try {
+      await ensureUserInDb(user);
+    } catch (dbError: any) {
+      console.error('Database connection error in GET files:', dbError);
+      return NextResponse.json(
+        { 
+          error: 'Database connection failed. Please check your DATABASE_URL.',
+          code: 'DATABASE_CONNECTION_ERROR'
+        },
+        { status: 503 }
+      );
+    }
+
+    let prismaUser;
+    try {
+      prismaUser = await prisma.user.findUnique({
+        where: { supabaseId: user.id },
+      });
+    } catch (dbError: any) {
+      console.error('Database query error in GET files:', dbError);
+      return NextResponse.json(
+        { 
+          error: 'Database query failed. Please check your DATABASE_URL.',
+          code: 'DATABASE_QUERY_ERROR'
+        },
+        { status: 503 }
+      );
+    }
 
     if (!prismaUser) {
       return NextResponse.json(
@@ -48,16 +72,33 @@ export async function GET(
       );
     }
 
-    const files = await prisma.appFile.findMany({
-      where: { projectId: id },
-      orderBy: { path: 'asc' },
-    });
+    let files;
+    try {
+      files = await prisma.appFile.findMany({
+        where: { projectId: id },
+        orderBy: { path: 'asc' },
+      });
+    } catch (dbError: any) {
+      console.error('Database query error fetching files:', dbError);
+      return NextResponse.json(
+        { 
+          error: 'Database query failed. Please check your DATABASE_URL.',
+          code: 'DATABASE_QUERY_ERROR',
+          details: dbError?.message
+        },
+        { status: 503 }
+      );
+    }
 
     return NextResponse.json(files);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching files:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { 
+        error: 'Internal server error',
+        message: error?.message || 'Unknown error',
+        code: 'INTERNAL_ERROR'
+      },
       { status: 500 }
     );
   }
@@ -167,4 +208,5 @@ export async function POST(
     );
   }
 }
+
 

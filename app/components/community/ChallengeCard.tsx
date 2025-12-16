@@ -75,3 +75,4 @@ export default function ChallengeCard({ challenge }: ChallengeCardProps) {
   );
 }
 
+

@@ -65,18 +65,66 @@ export default function AuthPage() {
   const handleSignIn = async (data: SignInForm) => {
     setLoading(true);
     try {
-      const response = await fetch('/api/auth/signin', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
-      });
+      let response: Response;
+      try {
+        // Add timeout to fetch request
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
-      const result = await response.json();
+        response = await fetch('/api/auth/signin', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+      } catch (fetchError: any) {
+        // Handle network errors (fetch failed)
+        console.error('Network error during sign in:', fetchError);
+        
+        let errorMessage = 'Unable to connect to the server.';
+        if (fetchError.name === 'AbortError') {
+          errorMessage = 'Request timed out. Please check your internet connection and try again.';
+        } else if (fetchError.message?.includes('Failed to fetch') || fetchError.message?.includes('fetch failed')) {
+          errorMessage = 'Unable to reach the server. Please ensure the server is running and check your internet connection.';
+        } else if (fetchError.message) {
+          errorMessage = `Connection error: ${fetchError.message}`;
+        }
+        
+        throw new Error(errorMessage);
+      }
+
+      // Check if response exists
+      if (!response) {
+        throw new Error('No response received from server. Please try again.');
+      }
+
+      // Check if response is ok before trying to parse JSON
+      let result: any;
+      try {
+        const text = await response.text();
+        if (!text) {
+          throw new Error('Empty response from server');
+        }
+        result = JSON.parse(text);
+      } catch (jsonError) {
+        // If response is not JSON, it might be an HTML error page
+        console.error('Failed to parse response:', jsonError);
+        console.error('Response status:', response.status);
+        console.error('Response headers:', Object.fromEntries(response.headers.entries()));
+        
+        throw new Error(
+          `Server error (${response.status} ${response.statusText}). The server may be experiencing issues. Please try again later.`
+        );
+      }
 
       if (!response.ok) {
-        throw new Error(result.error || 'Sign in failed');
+        // Use the error message from the API, or provide a default
+        const errorMessage = result?.error || result?.message || `Sign in failed (${response.status})`;
+        throw new Error(errorMessage);
       }
 
       toast.success('Welcome back!', {
@@ -92,9 +140,23 @@ export default function AuthPage() {
       router.push('/app-builder');
     } catch (error) {
       console.error('Sign in error:', error);
-      toast.error(error instanceof Error ? error.message : 'Sign in failed', {
-        description: 'Please check your credentials and try again.',
-        duration: 5000,
+      const errorMessage = error instanceof Error ? error.message : 'Sign in failed';
+      
+      // Provide helpful suggestions based on error message
+      let description = 'Please check your credentials and try again.';
+      if (errorMessage.includes('connect') || errorMessage.includes('network') || errorMessage.includes('server')) {
+        description = 'Unable to reach the server. Please check your internet connection and ensure the server is running.';
+      } else if (errorMessage.includes('email')) {
+        description = 'Make sure you\'re using the correct email address. If you don\'t have an account, please sign up first.';
+      } else if (errorMessage.includes('password')) {
+        description = 'Make sure you\'re using the correct password. You can reset it using "Forgot password" below.';
+      } else if (errorMessage.includes('verify') || errorMessage.includes('confirmation')) {
+        description = 'Please check your email inbox and click the confirmation link before signing in.';
+      }
+      
+      toast.error(errorMessage, {
+        description,
+        duration: 6000,
         style: {
           background: 'linear-gradient(135deg, #ef4444, #dc2626)',
           color: 'white',
@@ -110,18 +172,37 @@ export default function AuthPage() {
   const handleSignUp = async (data: SignUpForm) => {
     setLoading(true);
     try {
-      const response = await fetch('/api/auth/signup', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
-      });
+      let response: Response;
+      try {
+        response = await fetch('/api/auth/signup', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data),
+        });
+      } catch (fetchError) {
+        // Handle network errors (fetch failed)
+        console.error('Network error during sign up:', fetchError);
+        throw new Error(
+          'Unable to connect to the server. Please check your internet connection and try again.'
+        );
+      }
 
-      const result = await response.json();
+      // Check if response is ok before trying to parse JSON
+      let result: any;
+      try {
+        result = await response.json();
+      } catch (jsonError) {
+        // If response is not JSON, it might be an HTML error page
+        console.error('Failed to parse response:', jsonError);
+        throw new Error(
+          `Server error (${response.status}). Please try again later.`
+        );
+      }
 
       if (!response.ok) {
-        throw new Error(result.error || 'Sign up failed');
+        throw new Error(result.error || result.message || 'Sign up failed');
       }
 
       toast.success('Account created successfully!', {
@@ -140,8 +221,20 @@ export default function AuthPage() {
       }, 1000);
     } catch (error) {
       console.error('Sign up error:', error);
-      toast.error(error instanceof Error ? error.message : 'Sign up failed', {
-        description: 'Please try again or contact support if the problem persists.',
+      const errorMessage = error instanceof Error ? error.message : 'Sign up failed';
+      
+      // Provide helpful suggestions based on error message
+      let description = 'Please try again or contact support if the problem persists.';
+      if (errorMessage.includes('connect') || errorMessage.includes('network') || errorMessage.includes('server')) {
+        description = 'Unable to reach the server. Please check your internet connection and ensure the server is running.';
+      } else if (errorMessage.includes('email') && errorMessage.includes('already')) {
+        description = 'An account with this email already exists. Please sign in instead.';
+      } else if (errorMessage.includes('password')) {
+        description = 'Password must be at least 6 characters long.';
+      }
+      
+      toast.error(errorMessage, {
+        description,
         duration: 5000,
         style: {
           background: 'linear-gradient(135deg, #ef4444, #dc2626)',

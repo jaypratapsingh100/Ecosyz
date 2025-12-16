@@ -40,6 +40,17 @@ export const CreateAppProject = z.object({
   framework: z.string().optional(),
   workspaceId: z.string().optional(),
   config: z.any().optional(),
+  // Questionnaire fields
+  questionnaireData: z.any().optional(),
+  appType: z.string().optional(),
+  targetAudience: z.string().optional(),
+  designStyle: z.string().optional(),
+  colorScheme: z.string().optional(),
+  layoutStyle: z.string().optional(),
+  requiredFeatures: z.array(z.string()).optional(),
+  brandName: z.string().optional(),
+  tagline: z.string().optional(),
+  keyPoints: z.string().optional(),
 });
 
 export const UpdateAppProject = z.object({

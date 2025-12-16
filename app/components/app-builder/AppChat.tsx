@@ -23,7 +23,7 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
     {
       id: '1',
       role: 'assistant',
-      content: "Hello! I'm your AI Code Assistant. I can help you generate, modify, and explain code. What would you like to build?\n\n🆓 **FREE OPTIONS AVAILABLE:**\n- **Groq** (Recommended - Fast & Free)\n- **Together AI** (Free tier)\n- **Hugging Face** (Free tier)\n\n💡 Click ⚙️ in chat settings to configure your free API key!\n\n✅ Or use OPENAI_API_KEY/GROQ_API_KEY from .env file automatically.",
+      content: "Hello! I'm your AI Code Assistant. I can help you generate, modify, and explain code. What would you like to build?\n\n🆓 **TOP 5 FREE OPEN SOURCE LLMs:**\n1. **Ollama** (100% FREE - Runs locally, no API key!)\n2. **OpenRouter** (Multiple free models)\n3. **Groq** (Fastest - Free & Fast)\n4. **DeepSeek** (Best for Code - Free)\n5. **Together AI** (Free tier)\n\n**Also Available:** Hugging Face, Perplexity, Cohere, Anthropic Claude\n\n💡 Click ⚙️ in chat settings to configure!\n\n✅ Or use DEEPSEEK_API_KEY/GROQ_API_KEY/OPENROUTER_API_KEY from .env file automatically.",
       timestamp: new Date(),
     },
   ]);
@@ -31,18 +31,114 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
   const [isLoading, setIsLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     // Auto-scroll to bottom when new messages arrive
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    if (messagesContainerRef.current && messagesEndRef.current) {
+      // Scroll container to bottom smoothly
+      messagesContainerRef.current.scrollTo({
+        top: messagesContainerRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
     }
   }, [messages.length, isLoading]);
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // Check for auto-generated prompt from questionnaire
+  useEffect(() => {
+    const autoPrompt = sessionStorage.getItem(`auto-prompt-${projectId}`);
+    const autoPromptTimestamp = sessionStorage.getItem(`auto-prompt-timestamp-${projectId}`);
+    const autoResponse = sessionStorage.getItem(`auto-response-${projectId}`);
+    const autoError = sessionStorage.getItem(`auto-error-${projectId}`);
+    
+    if (autoPrompt && autoPromptTimestamp) {
+      // Check if this is a recent prompt (within last 30 seconds)
+      const timestamp = parseInt(autoPromptTimestamp);
+      const now = Date.now();
+      if (now - timestamp < 30000) {
+        // Add user message with prompt
+        const userMessage: Message = {
+          id: `auto-prompt-${timestamp}`,
+          role: 'user',
+          content: autoPrompt,
+          timestamp: new Date(timestamp),
+        };
+        
+        setMessages((prev) => {
+          // Check if already added
+          if (prev.some(m => m.id === userMessage.id)) {
+            return prev;
+          }
+          return [...prev, userMessage];
+        });
+        
+        // Add AI response if available
+        if (autoResponse) {
+          try {
+            const responseData = JSON.parse(autoResponse);
+            const assistantMessage: Message = {
+              id: `auto-response-${timestamp}`,
+              role: 'assistant',
+              content: responseData.response || 'Files are being generated...',
+              timestamp: new Date(),
+            };
+            
+            setMessages((prev) => {
+              if (prev.some(m => m.id === assistantMessage.id)) {
+                return prev;
+              }
+              return [...prev, assistantMessage];
+            });
+            
+            // Trigger files refresh
+            if (onFilesCreated) {
+              setTimeout(() => {
+                onFilesCreated();
+              }, 2000);
+            }
+            
+            // Clear sessionStorage
+            sessionStorage.removeItem(`auto-prompt-${projectId}`);
+            sessionStorage.removeItem(`auto-prompt-timestamp-${projectId}`);
+            sessionStorage.removeItem(`auto-response-${projectId}`);
+          } catch (e) {
+            console.error('Error parsing auto-response:', e);
+          }
+        } else if (autoError) {
+          // Show error message
+          try {
+            const errorData = JSON.parse(autoError);
+            const errorMessage: Message = {
+              id: `auto-error-${timestamp}`,
+              role: 'assistant',
+              content: `❌ Error: ${errorData.error || 'Failed to generate files'}\n\nPlease try asking the AI manually to create your app.`,
+              timestamp: new Date(),
+            };
+            
+            setMessages((prev) => {
+              if (prev.some(m => m.id === errorMessage.id)) {
+                return prev;
+              }
+              return [...prev, errorMessage];
+            });
+            
+            sessionStorage.removeItem(`auto-error-${projectId}`);
+          } catch (e) {
+            console.error('Error parsing auto-error:', e);
+          }
+        }
+      } else {
+        // Old prompt, clear it
+        sessionStorage.removeItem(`auto-prompt-${projectId}`);
+        sessionStorage.removeItem(`auto-prompt-timestamp-${projectId}`);
+      }
+    }
+  }, [projectId, onFilesCreated]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,20 +161,29 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
       const userModel = getStoredModel();
       const userProvider = getStoredProvider();
 
-      // Only send API key if user has one set (otherwise backend will use .env)
+      console.log('💬 Chat request:', {
+        provider: userProvider,
+        model: userModel,
+        hasApiKey: !!userApiKey,
+        messageLength: currentInput.length
+      });
+
+      // Build request body - backend will use .env API key if user key not provided
       const requestBody: any = {
         message: currentInput,
         currentFile: currentFile?.path,
+        provider: userProvider, // Always send provider
       };
 
-      // Only include API key, model, and provider if user has set them
-      // Otherwise, backend will use OPENAI_API_KEY/GROQ_API_KEY from .env
-      if (userApiKey) {
-        requestBody.apiKey = userApiKey;
-        requestBody.provider = userProvider;
-      }
+      // Always include model (backend will use default if not provided)
       if (userModel) {
         requestBody.model = userModel;
+      }
+      
+      // Include API key if user has one set (otherwise backend uses .env)
+      // Ollama doesn't need API key
+      if (userApiKey && userProvider !== 'ollama') {
+        requestBody.apiKey = userApiKey;
       }
 
       const response = await fetch(`/api/app-projects/${projectId}/chat`, {
@@ -91,6 +196,15 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
 
       if (response.ok) {
         const data = await response.json();
+        
+        // Show load balancer info if available
+        if (data.loadBalancerStats) {
+          console.log('Load Balancer Stats:', {
+            provider: data.provider,
+            usage: data.loadBalancerStats.currentUsage,
+            handled: data.loadBalancerStats.requestsHandled,
+          });
+        }
         
         // Handle file creation results
         let responseContent = data.response || 'I apologize, but I could not generate a response.';
@@ -187,7 +301,9 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
       
       // Handle rate limit errors with helpful message
       if (error.message?.includes('Rate limit') || error.message?.includes('429')) {
-        errorMessage = `⚠️ Rate Limit Exceeded\n\nYou've hit OpenAI's rate limit. Here are quick fixes:\n\n1. Wait 1-3 minutes and try again\n2. Switch to a faster model in .env:\n   OPENAI_MODEL=gpt-4o-mini\n   (Higher rate limits, faster responses)\n3. Upgrade your OpenAI plan for higher limits\n\nYou can continue editing code manually while waiting.`;
+        errorMessage = `⚠️ Rate Limit Exceeded\n\nYou've hit the rate limit. Here are quick fixes:\n\n1. Wait 1-3 minutes and try again\n2. Switch to a different provider (Groq, OpenRouter) in chat settings\n3. Upgrade your plan for higher limits\n\nYou can continue editing code manually while waiting.`;
+      } else if (error.message?.includes('Insufficient Balance') || error.message?.includes('402') || error.message?.includes('insufficient balance')) {
+        errorMessage = `⚠️ Insufficient Balance\n\nYour DeepSeek account has insufficient balance. Please:\n\n1. Add credits at https://platform.deepseek.com/account\n2. Or switch to a free provider:\n   - Groq (free & fast)\n   - OpenRouter (free models)\n   - Ollama (100% free, local)\n\nClick ⚙️ in chat settings to change provider.`;
       } else if (error.message?.includes('Failed to fetch') || error.message?.includes('network')) {
         errorMessage = `⚠️ Network Error\n\nConnection failed. Please check your internet connection and try again.`;
       } else if (error.message?.includes('API key') || error.message?.includes('401') || error.message?.includes('403')) {
@@ -260,9 +376,9 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
   };
 
   return (
-    <div className="h-full flex flex-col bg-[#0a0a0a] border-l border-white/10 overflow-hidden">
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }} className="bg-[#0a0a0a] border-l border-white/10">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-white/10 flex-shrink-0">
+      <div className="px-4 py-3 border-b border-white/10 flex-shrink-0 bg-[#0a0a0a]">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-gradient-to-r from-emerald-400 to-cyan-400 flex items-center justify-center flex-shrink-0">
             <svg className="w-5 h-5 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -287,14 +403,19 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
         </div>
       </div>
 
-      {/* Messages */}
+      {/* Messages - Scrollable area that takes remaining space */}
       <div 
-        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 py-6 space-y-6" 
+        ref={messagesContainerRef}
+        className="px-4 py-6 space-y-6"
         style={{ 
-          scrollBehavior: 'smooth', 
-          maxHeight: '100%',
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          scrollBehavior: 'smooth',
           scrollbarWidth: 'thin',
-          scrollbarColor: 'rgba(156, 163, 175, 0.3) transparent'
+          scrollbarColor: 'rgba(156, 163, 175, 0.5) rgba(10, 10, 10, 0.5)',
+          WebkitOverflowScrolling: 'touch',
         }}
       >
         {messages.map((message) => (
@@ -346,8 +467,8 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
-      <div className="border-t border-white/10 p-4 flex-shrink-0 bg-[#0a0a0a]/80 backdrop-blur-sm">
+      {/* Input - Fixed at bottom */}
+      <div className="border-t border-white/10 p-4 flex-shrink-0 bg-[#0a0a0a] z-10">
         <form onSubmit={handleSend} className="relative">
           <div className="flex items-center gap-0 w-full">
             <div className="flex-1 flex items-center gap-3 bg-[#1a1a1a] rounded-l-full border border-gray-500/30 focus-within:border-gray-400/50 transition-all px-4 py-3.5">

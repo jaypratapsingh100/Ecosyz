@@ -8,7 +8,10 @@ const SESSION_COOKIE = 'sb-access-token';
 const REFRESH_COOKIE = 'sb-refresh-token';
 
 export async function getCurrentUser(): Promise<SupabaseUser | null> {
-  if (!supabase) return null;
+  if (!supabase) {
+    console.warn('Supabase client not initialized. Check NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables.');
+    return null;
+  }
 
   try {
     const cookieStore = await cookies();
@@ -29,7 +32,16 @@ export async function getCurrentUser(): Promise<SupabaseUser | null> {
     });
 
     if (error) {
-      console.error('Error setting session:', error);
+      // Check for network/DNS errors
+      if (error.message?.includes('fetch failed') || error.message?.includes('ENOTFOUND') || error.message?.includes('getaddrinfo')) {
+        console.error('Supabase connection error - DNS/Network issue:', error.message);
+        console.error('Please check:');
+        console.error('1. NEXT_PUBLIC_SUPABASE_URL is correct');
+        console.error('2. Supabase project is active (not paused)');
+        console.error('3. Network connectivity is available');
+      } else {
+        console.error('Error setting session:', error);
+      }
       return null;
     }
 
@@ -39,8 +51,14 @@ export async function getCurrentUser(): Promise<SupabaseUser | null> {
     }
 
     return user;
-  } catch (error) {
-    console.error('Error getting current user:', error);
+  } catch (error: any) {
+    // Handle network/DNS errors specifically
+    if (error?.cause?.code === 'ENOTFOUND' || error?.message?.includes('fetch failed') || error?.message?.includes('getaddrinfo')) {
+      console.error('Supabase DNS/Network error:', error.cause || error.message);
+      console.error('Cannot resolve Supabase hostname. Check NEXT_PUBLIC_SUPABASE_URL environment variable.');
+    } else {
+      console.error('Error getting current user:', error);
+    }
     return null;
   }
 }
