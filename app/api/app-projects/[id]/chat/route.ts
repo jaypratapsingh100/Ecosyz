@@ -1951,12 +1951,29 @@ Current file being edited: ${currentFile || 'none'}`;
         }
       }
       
-      console.log('📊 File creation summary:', {
+      const summary = {
         totalFound: createdFiles.length,
         successful: createdFiles.filter(f => f.success).length,
         failed: createdFiles.filter(f => !f.success).length,
         files: createdFiles.map(f => ({ path: f.path, success: f.success, error: f.error }))
-      });
+      };
+
+      console.log('📊 File creation summary:', summary);
+
+      // If no files were created, log warning with more details
+      if (createdFiles.length === 0) {
+        console.warn('⚠️ No files were created from the response!');
+        console.warn('Response length:', responseText.length);
+        console.warn('Response sample (first 2000 chars):', responseText.substring(0, 2000));
+        console.warn('Looking for code blocks with pattern: /```(?:file:)?\\s*([^\\n`]+?)(?:\\n|$)([\\s\\S]*?)```/g');
+
+        // Check if there are any code blocks at all
+        const codeBlocks = responseText.match(/```[\s\S]*?```/g);
+        console.warn('Total code blocks found in response:', codeBlocks?.length || 0);
+        if (codeBlocks) {
+          console.warn('First few code blocks:', codeBlocks.slice(0, 3).map(block => block.substring(0, 100) + '...'));
+        }
+      }
 
       // Fallback: If no files were created, create basic test files
       if (createdFiles.length === 0) {

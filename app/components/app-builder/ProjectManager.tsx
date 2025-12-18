@@ -446,27 +446,39 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
         window.dispatchEvent(new CustomEvent('generation-started', { detail: { projectId: project.id } }));
         
         let requestCompleted = false;
+        console.log('🚀 Starting AI request for project:', project.id);
         fetch(`/api/app-projects/${project.id}/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(requestBody),
         }).then(async (chatResponse) => {
+          console.log('📡 Chat API response received:', {
+            status: chatResponse.status,
+            statusText: chatResponse.statusText,
+            ok: chatResponse.ok,
+            url: chatResponse.url
+          });
+
           // Safety check: ensure chatResponse exists
           if (!chatResponse) {
             throw new Error('No response received from server');
           }
-          
+
           // Clone response for error handling (response body can only be read once)
           const responseClone = chatResponse.clone();
-          
+
           if (chatResponse.ok) {
+            console.log('✅ Request successful, processing response...');
             requestCompleted = true; // Mark as successful before parsing
             const chatData = await chatResponse.json();
-            console.log('✅ AI response received:', {
+            console.log('✅ AI response data:', {
+              hasResponse: !!chatData.response,
+              responseLength: chatData.response?.length || 0,
+              hasFilesCreated: !!chatData.filesCreated,
+              filesCreatedCount: chatData.filesCreated?.length || 0,
               provider: chatData.provider,
               model: chatData.model,
-              filesCreated: chatData.filesCreated?.length || 0,
-              responseLength: chatData.response?.length || 0,
+              keys: Object.keys(chatData)
             });
             
             // Store response in sessionStorage for chat UI
@@ -505,6 +517,7 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
               }));
             }, 3500);
           } else {
+            console.log('❌ Request failed with status:', chatResponse.status, chatResponse.statusText);
             // Only process error if request hasn't already completed successfully
             if (requestCompleted) {
               console.warn('⚠️ Error block reached but request was already marked as successful - skipping error handling');
@@ -583,111 +596,20 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
                   note: 'Error data was empty, using fallback values'
                 };
             
-            // Log comprehensive error information - ensure all values are serializable
-            // Only log if this is a real error (status >= 400) and request hasn't completed successfully
+            // Only log errors for actual HTTP errors (4xx, 5xx) and when request hasn't completed
             if (chatResponse.status >= 400 && !requestCompleted) {
-              const errorLogInfo: Record<string, any> = {
-                status: chatResponse?.status ?? 'unknown',
-                statusText: chatResponse?.statusText ?? 'unknown',
-                statusCode: chatResponse?.status ?? 'unknown',
-                errorData: finalErrorData,
-                responseText: responseText ? responseText.substring(0, 500) : '(no response text)',
-                projectId: project.id,
-                provider: provider || 'unknown',
-                model: model || 'unknown',
-                timestamp: new Date().toISOString(),
-              };
-              
-              // Safely extract headers if available
-              if (chatResponse?.headers) {
-                try {
-                  const headersObj: Record<string, string> = {};
-                  chatResponse.headers.forEach((value, key) => {
-                    headersObj[key] = value;
-                  });
-                  errorLogInfo.headers = headersObj;
-                } catch (headerError) {
-                  errorLogInfo.headersError = 'Could not extract headers';
-                }
-              } else {
-                errorLogInfo.headers = 'Not available';
-              }
-              
-              // Log error with proper serialization - ensure all values are serializable
-              // Safely serialize finalErrorData to avoid circular references
-              let serializedErrorDetails: any = {};
-              try {
-                // Try to serialize and parse to ensure it's safe
-                const errorDetailsStr = JSON.stringify(finalErrorData);
-                serializedErrorDetails = JSON.parse(errorDetailsStr);
-              } catch (serializeError) {
-                // If serialization fails, create a safe version
-                serializedErrorDetails = {
-                  error: String(finalErrorData?.error || finalErrorData?.message || 'Unknown error'),
-                  status: String(finalErrorData?.status || chatResponse?.status || 'unknown'),
-                  statusText: String(finalErrorData?.statusText || chatResponse?.statusText || 'Unknown'),
-                  note: 'Error details could not be fully serialized'
-                };
-              }
-              
-              // Build logData with explicit fallbacks to ensure no empty values
-              const logData: Record<string, any> = {};
-              
-              // Ensure all values are non-empty strings or valid objects
-              logData.status = String(errorLogInfo?.status ?? chatResponse?.status ?? 'unknown').trim() || 'unknown';
-              logData.statusText = String(errorLogInfo?.statusText ?? chatResponse?.statusText ?? 'unknown').trim() || 'unknown';
-              logData.statusCode = String(errorLogInfo?.statusCode ?? chatResponse?.status ?? 'unknown').trim() || 'unknown';
-              logData.error = String(finalErrorData?.error || finalErrorData?.message || errorMessage || 'Unknown error').trim() || 'Unknown error';
-              logData.errorDetails = serializedErrorDetails && Object.keys(serializedErrorDetails).length > 0 ? serializedErrorDetails : { error: logData.error };
-              logData.responseText = String(errorLogInfo?.responseText || responseText || '(no response text)').trim() || '(no response text)';
-              logData.provider = String(errorLogInfo?.provider || provider || 'unknown').trim() || 'unknown';
-              logData.model = String(errorLogInfo?.model || model || 'unknown').trim() || 'unknown';
-              logData.projectId = String(errorLogInfo?.projectId || project?.id || 'unknown').trim() || 'unknown';
-              logData.timestamp = String(errorLogInfo?.timestamp || new Date().toISOString()).trim() || new Date().toISOString();
-              
-              // Final validation - ensure logData has meaningful content
-              const hasValidData = Object.values(logData).some(val => {
-                if (typeof val === 'string') return val !== 'unknown' && val !== '(no response text)';
-                if (typeof val === 'object' && val !== null) return Object.keys(val).length > 0;
-                return val !== null && val !== undefined;
-              });
-              
-              if (!hasValidData || Object.keys(logData).length === 0) {
-                // Fallback: create minimal but valid error log
-                logData.error = String(errorMessage || 'AI chat request failed');
-                logData.status = String(chatResponse?.status || 'unknown');
-                logData.statusText = String(chatResponse?.statusText || 'unknown');
-                logData.provider = String(provider || 'unknown');
-                logData.model = String(model || 'unknown');
-                logData.projectId = String(project?.id || 'unknown');
-                logData.timestamp = new Date().toISOString();
-                logData.note = 'Error log data was empty or invalid - using fallback values';
-              }
-              
-              // Log with validation
-              try {
-                // Test serialization before logging
-                JSON.stringify(logData);
-                console.error('❌ AI chat request failed:', logData);
-              } catch (serializeError) {
-                // If serialization fails, log minimal safe data
-                console.error('❌ AI chat request failed:', {
-                  error: String(errorMessage || 'Unknown error'),
-                  status: String(chatResponse?.status || 'unknown'),
-                  statusText: String(chatResponse?.statusText || 'unknown'),
-                  provider: String(provider || 'unknown'),
-                  model: String(model || 'unknown'),
-                  projectId: String(project?.id || 'unknown'),
-                  note: 'Full error details could not be serialized'
-                });
-              }
-            } else if (chatResponse.status < 400 && !requestCompleted) {
-              // Log warning for non-error status codes (shouldn't happen, but log for debugging)
-              console.warn('⚠️ Unexpected response status (not an error):', {
+              // Create minimal error log - avoid complex serialization that might fail
+              const errorLog = {
                 status: chatResponse.status,
                 statusText: chatResponse.statusText,
+                error: errorMessage || 'Unknown error',
+                provider: provider || 'unknown',
+                model: model || 'unknown',
                 projectId: project.id,
-              });
+                timestamp: new Date().toISOString()
+              };
+
+              console.error('❌ AI chat request failed:', errorLog);
             }
             
             sessionStorage.setItem(`auto-error-${project.id}`, JSON.stringify({
