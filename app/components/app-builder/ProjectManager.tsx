@@ -419,6 +419,12 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
         
         console.log('🤖 Using AI provider:', provider, 'with model:', model);
         
+        // Store generation start time and trigger loading overlay
+        const generationStartTime = Date.now();
+        sessionStorage.setItem(`generation-start-${project.id}`, generationStartTime.toString());
+        window.dispatchEvent(new CustomEvent('generation-started', { detail: { projectId: project.id } }));
+        
+        let requestCompleted = false;
         fetch(`/api/app-projects/${project.id}/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -429,12 +435,26 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
             throw new Error('No response received from server');
           }
           
+          // Clone response for error handling (response body can only be read once)
+          const responseClone = chatResponse.clone();
+          
           if (chatResponse.ok) {
+            requestCompleted = true; // Mark as successful before parsing
             const chatData = await chatResponse.json();
-            console.log('✅ AI response received:', chatData);
+            console.log('✅ AI response received:', {
+              provider: chatData.provider,
+              model: chatData.model,
+              filesCreated: chatData.filesCreated?.length || 0,
+              responseLength: chatData.response?.length || 0,
+            });
             
             // Store response in sessionStorage for chat UI
             sessionStorage.setItem(`auto-response-${project.id}`, JSON.stringify(chatData));
+            
+            // Calculate generation time
+            const generationEndTime = Date.now();
+            const generationDuration = ((generationEndTime - generationStartTime) / 1000).toFixed(1);
+            sessionStorage.setItem(`generation-duration-${project.id}`, generationDuration);
             
             // Trigger files refresh multiple times to ensure files appear
             // Files might take a moment to be saved to database
@@ -448,19 +468,48 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
               window.dispatchEvent(new CustomEvent('files-updated'));
             }, 3000);
             
-            // Also trigger preview refresh
+            // Also trigger preview refresh after files are created
             setTimeout(() => {
               window.dispatchEvent(new CustomEvent('preview-updated'));
             }, 2000);
+            
+            // Stop generation loader after preview is triggered
+            setTimeout(() => {
+              window.dispatchEvent(new CustomEvent('generation-complete', { 
+                detail: { 
+                  projectId: project.id,
+                  duration: generationDuration,
+                  filesCreated: chatData.filesCreated?.length || 0
+                } 
+              }));
+            }, 3500);
           } else {
+            // Only process error if request hasn't already completed successfully
+            if (requestCompleted) {
+              console.warn('⚠️ Error block reached but request was already marked as successful - skipping error handling');
+              return;
+            }
+            
+            // Stop loader on error
+            const errorDuration = ((Date.now() - generationStartTime) / 1000).toFixed(1);
+            window.dispatchEvent(new CustomEvent('generation-complete', { 
+              detail: { 
+                projectId: project.id,
+                duration: errorDuration,
+                filesCreated: 0,
+                error: true
+              } 
+            }));
+            
             // Handle error response with better error parsing
+            // Use cloned response to avoid consuming the original response body
             let errorData: any = null;
             let errorMessage = `Server error (${chatResponse.status})`;
             let responseText = '';
             
             try {
-              // Try to read response as text first
-              responseText = await chatResponse.text();
+              // Try to read response as text first (use clone to avoid consuming original)
+              responseText = await responseClone.text();
               
               if (responseText && responseText.trim()) {
                 // Try to parse as JSON
@@ -513,35 +562,59 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
                   note: 'Error data was empty, using fallback values'
                 };
             
-            // Log comprehensive error information - ensure all values are defined
-            const errorLogInfo: Record<string, any> = {
-              status: chatResponse?.status ?? 'unknown',
-              statusText: chatResponse?.statusText ?? 'unknown',
-              url: chatResponse?.url ?? 'unknown',
-              statusCode: chatResponse?.status ?? 'unknown',
-              errorData: finalErrorData,
-              responseText: responseText ? responseText.substring(0, 500) : '(no response text)',
-              projectId: project.id,
-              provider: provider,
-              model: model,
-              timestamp: new Date().toISOString(),
-            };
-            
-            // Safely extract headers if available
-            if (chatResponse?.headers) {
-              try {
-                errorLogInfo.headers = Array.from(chatResponse.headers.entries()).reduce((acc, [key, value]) => {
-                  acc[key] = value;
-                  return acc;
-                }, {} as Record<string, string>);
-              } catch (headerError) {
-                errorLogInfo.headersError = 'Could not extract headers';
+            // Log comprehensive error information - ensure all values are serializable
+            // Only log if this is a real error (status >= 400) and request hasn't completed successfully
+            if (chatResponse.status >= 400 && !requestCompleted) {
+              const errorLogInfo: Record<string, any> = {
+                status: chatResponse?.status ?? 'unknown',
+                statusText: chatResponse?.statusText ?? 'unknown',
+                statusCode: chatResponse?.status ?? 'unknown',
+                errorData: finalErrorData,
+                responseText: responseText ? responseText.substring(0, 500) : '(no response text)',
+                projectId: project.id,
+                provider: provider || 'unknown',
+                model: model || 'unknown',
+                timestamp: new Date().toISOString(),
+              };
+              
+              // Safely extract headers if available
+              if (chatResponse?.headers) {
+                try {
+                  const headersObj: Record<string, string> = {};
+                  chatResponse.headers.forEach((value, key) => {
+                    headersObj[key] = value;
+                  });
+                  errorLogInfo.headers = headersObj;
+                } catch (headerError) {
+                  errorLogInfo.headersError = 'Could not extract headers';
+                }
+              } else {
+                errorLogInfo.headers = 'Not available';
               }
-            } else {
-              errorLogInfo.headers = 'Not available';
+              
+              // Log error with proper serialization - ensure all values are serializable
+              const logData: Record<string, any> = {
+                status: String(errorLogInfo.status),
+                statusText: String(errorLogInfo.statusText),
+                statusCode: String(errorLogInfo.statusCode),
+                error: String(finalErrorData.error || finalErrorData.message || 'Unknown error'),
+                errorDetails: finalErrorData,
+                responseText: String(errorLogInfo.responseText || '(no response text)'),
+                provider: String(errorLogInfo.provider),
+                model: String(errorLogInfo.model),
+                projectId: String(errorLogInfo.projectId),
+                timestamp: String(errorLogInfo.timestamp),
+              };
+              
+              console.error('❌ AI chat request failed:', logData);
+            } else if (chatResponse.status < 400 && !requestCompleted) {
+              // Log warning for non-error status codes (shouldn't happen, but log for debugging)
+              console.warn('⚠️ Unexpected response status (not an error):', {
+                status: chatResponse.status,
+                statusText: chatResponse.statusText,
+                projectId: project.id,
+              });
             }
-            
-            console.error('❌ AI chat request failed:', errorLogInfo);
             
             sessionStorage.setItem(`auto-error-${project.id}`, JSON.stringify({
               error: errorMessage,
@@ -597,6 +670,21 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
           };
           
           console.error('❌ Error calling AI chat:', errorInfo);
+          
+          // Stop loader on network error
+          const generationStartTimeStr = sessionStorage.getItem(`generation-start-${project.id}`);
+          if (generationStartTimeStr) {
+            const generationStartTime = parseInt(generationStartTimeStr);
+            const generationDuration = ((Date.now() - generationStartTime) / 1000).toFixed(1);
+            window.dispatchEvent(new CustomEvent('generation-complete', { 
+              detail: { 
+                projectId: project.id,
+                duration: generationDuration,
+                filesCreated: 0,
+                error: true
+              } 
+            }));
+          }
           
           sessionStorage.setItem(`auto-error-${project.id}`, JSON.stringify({ 
             error: errorMessage,

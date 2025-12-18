@@ -81,10 +81,29 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
         if (autoResponse) {
           try {
             const responseData = JSON.parse(autoResponse);
+            let responseContent = responseData.response || 'Files are being generated...';
+            
+            // Add provider/model info if available
+            if (responseData.provider || responseData.model) {
+              const providerInfo = [];
+              if (responseData.provider) {
+                providerInfo.push(`**Provider:** ${responseData.provider}`);
+              }
+              if (responseData.model) {
+                providerInfo.push(`**Model:** ${responseData.model}`);
+              }
+              if (responseData.usedFallback) {
+                providerInfo.push(`⚠️ *Using fallback model*`);
+              }
+              if (providerInfo.length > 0) {
+                responseContent = `🤖 ${providerInfo.join(' | ')}\n\n---\n\n${responseContent}`;
+              }
+            }
+            
             const assistantMessage: Message = {
               id: `auto-response-${timestamp}`,
               role: 'assistant',
-              content: responseData.response || 'Files are being generated...',
+              content: responseContent,
               timestamp: new Date(),
             };
             
@@ -208,6 +227,24 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
         
         // Handle file creation results
         let responseContent = data.response || 'I apologize, but I could not generate a response.';
+        
+        // Add provider/model info at the top of the response
+        if (data.provider || data.model) {
+          const providerInfo = [];
+          if (data.provider) {
+            providerInfo.push(`**Provider:** ${data.provider}`);
+          }
+          if (data.model) {
+            providerInfo.push(`**Model:** ${data.model}`);
+          }
+          if (data.usedFallback) {
+            providerInfo.push(`⚠️ *Using fallback model*`);
+          }
+          if (providerInfo.length > 0) {
+            responseContent = `🤖 ${providerInfo.join(' | ')}\n\n---\n\n${responseContent}`;
+          }
+        }
+        
         if (data.filesCreated && data.filesCreated.length > 0) {
           const successfulFiles = data.filesCreated.filter((f: any) => f.success);
           const failedFiles = data.filesCreated.filter((f: any) => !f.success);

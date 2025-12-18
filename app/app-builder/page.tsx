@@ -11,6 +11,7 @@ import CodeEditor from '../components/app-builder/CodeEditor';
 import AppChat from '../components/app-builder/AppChat';
 import PreviewPanel from '../components/app-builder/PreviewPanel';
 import DeploymentPanel from '../components/app-builder/DeploymentPanel';
+import GenerationLoader from '../components/app-builder/GenerationLoader';
 
 interface Project {
   id: string;
@@ -36,6 +37,8 @@ export default function AppBuilderPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [rightPanelMode, setRightPanelMode] = useState<'chat' | 'preview' | 'deploy'>('chat');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationProjectId, setGenerationProjectId] = useState<string | null>(null);
 
   // Check authentication on mount
   useEffect(() => {
@@ -54,6 +57,37 @@ export default function AppBuilderPage() {
     };
     checkAuth();
   }, []);
+
+  // Listen for generation events
+  useEffect(() => {
+    const handleGenerationStarted = (event: CustomEvent) => {
+      const { projectId } = event.detail;
+      setIsGenerating(true);
+      setGenerationProjectId(projectId);
+    };
+
+    const handleGenerationComplete = (event: CustomEvent) => {
+      const { projectId, duration, filesCreated } = event.detail;
+      console.log(`✅ Generation complete in ${duration}s, ${filesCreated} files created`);
+      // Small delay before hiding loader to show completion
+      setTimeout(() => {
+        setIsGenerating(false);
+        setGenerationProjectId(null);
+        // Switch to preview panel automatically after generation
+        if (selectedProjectId === projectId) {
+          setRightPanelMode('preview');
+        }
+      }, 1000);
+    };
+
+    window.addEventListener('generation-started', handleGenerationStarted as EventListener);
+    window.addEventListener('generation-complete', handleGenerationComplete as EventListener);
+
+    return () => {
+      window.removeEventListener('generation-started', handleGenerationStarted as EventListener);
+      window.removeEventListener('generation-complete', handleGenerationComplete as EventListener);
+    };
+  }, [selectedProjectId]);
 
   useEffect(() => {
     if (selectedProjectId) {
@@ -398,6 +432,16 @@ export default function AppBuilderPage() {
           </div>
         </div>
       )}
+
+      {/* Generation Loader Overlay */}
+      <GenerationLoader
+        isActive={isGenerating}
+        message={`Generating ${project?.title || 'your app'}...`}
+        onComplete={() => {
+          // Optional: Show completion message
+          console.log('Generation complete!');
+        }}
+      />
     </div>
   );
 }

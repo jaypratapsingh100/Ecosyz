@@ -303,6 +303,7 @@ export async function POST(
 ) {
   let provider: Provider = 'groq'; // Default to Groq (fastest, free tier available)
   let apiKey: string | undefined; // Declare outside try block for error handling
+  let requestedModel: string | undefined; // Store requested model for error handling
   
   try {
     const user = await getCurrentUser();
@@ -407,6 +408,9 @@ export async function POST(
       provider: userProvider,
       currentFile 
     } = body;
+    
+    // Store userModel for error handling (before it might be overwritten)
+    requestedModel = userModel; // Assign to outer scope variable
 
     if (!message || typeof message !== 'string') {
       return NextResponse.json(
@@ -443,106 +447,260 @@ export async function POST(
       const requiredSections = questionnaireData?.requiredSections || ['hero', 'features', 'about', 'testimonials', 'pricing', 'contact'];
       const specialFeatures = questionnaireData?.specialFeatures || ['responsive-design', 'modern-ui', 'animations'];
 
-      // Build comprehensive internal prompt
-      message = `Create a complete, production-ready, market-grade ${project.appType || 'web'} application with the following specifications:
+      // Build comprehensive internal prompt with Lovable/Cursor-quality standards
+      const colorPalette = colorScheme === 'purple' 
+        ? { primary: '#8B5CF6', secondary: '#7C3AED', accent: '#EC4899', bg: '#F5F3FF', text: '#4C1D95' }
+        : colorScheme === 'blue'
+        ? { primary: '#3B82F6', secondary: '#2563EB', accent: '#10B981', bg: '#F8FAFC', text: '#0F172A' }
+        : colorScheme === 'orange-red'
+        ? { primary: '#F97316', secondary: '#EF4444', accent: '#F59E0B', bg: '#FFF7ED', text: '#1C1917' }
+        : colorScheme === 'green-teal'
+        ? { primary: '#10B981', secondary: '#14B8A6', accent: '#06B6D4', bg: '#ECFDF5', text: '#064E3B' }
+        : { primary: '#8B5CF6', secondary: '#7C3AED', accent: '#EC4899', bg: '#F5F3FF', text: '#4C1D95' };
 
-**Brand & Content:**
+      message = `You are building a production-ready, market-grade ${project.appType || 'web'} application that MUST match the quality of Lovable.dev, Cursor, Stripe, Linear, Vercel, and Notion. This is NOT a template - it's a professional SaaS product.
+
+**BRAND & CONTENT:**
 - Brand Name: ${brandName}
 - Tagline: ${tagline}
-- Key Points to Highlight: ${keyPoints}
+- Key Points: ${keyPoints}
 - Target Audience: ${targetAudience}
 
-**Design Requirements:**
-- Design Style: ${designStyle} (use creative, unique layouts with professional styling)
-- Color Scheme: ${colorScheme} (use professional purple palette: #8B5CF6, #7C3AED, #A78BFA with gradients)
-- Layout Style: ${layoutStyle} (implement proper multi-page navigation)
+**DESIGN SYSTEM (STRICT REQUIREMENTS):**
+- Design Style: ${designStyle}
+- Color Scheme: ${colorScheme}
+  * Primary: ${colorPalette.primary}
+  * Secondary: ${colorPalette.secondary}
+  * Accent: ${colorPalette.accent}
+  * Background: ${colorPalette.bg}
+  * Text: ${colorPalette.text}
+- Layout: ${layoutStyle}
 
-**Required Sections (create components for ALL of these):**
-${requiredSections.map((s: string) => `- ${s}`).join('\n')}
+**REQUIRED SECTIONS (CREATE ALL AS SEPARATE COMPONENTS):**
+${requiredSections.map((s: string) => `- ${s.charAt(0).toUpperCase() + s.slice(1)}`).join('\n')}
 
-**Special Features (implement ALL of these):**
-${specialFeatures.map((f: string) => `- ${f}`).join('\n')}
+**SPECIAL FEATURES (IMPLEMENT ALL):**
+${specialFeatures.map((f: string) => `- ${f.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}`).join('\n')}
 
-**CRITICAL INSTRUCTIONS - FOLLOW EXACTLY:**
-1. Create ALL required sections as separate React component files with professional styling
-2. Use the EXACT design style "${designStyle}" throughout - make it creative and unique
-3. Use the EXACT color scheme "${colorScheme}" - apply purple colors professionally with gradients (bg-gradient-to-r from-violet-500 to-purple-600)
-4. Implement the "${layoutStyle}" layout style with proper React Router navigation
-5. Implement ALL special features listed above
-6. Make it fully responsive and mobile-friendly (mobile-first approach)
-7. Use modern, professional code with proper structure
-8. Use Tailwind CSS for all styling (no separate CSS files needed)
-9. Create a complete App.jsx that imports and renders ALL components with routing
-10. Create index.js that renders the App component
-11. Make it production-ready, polished, and market-grade like Lovable - use gradients, shadows, modern effects
+**🚨 QUALITY STANDARD: LOVABLE/CURSOR LEVEL (NON-NEGOTIABLE) 🚨**
 
-**QUALITY BAR (NON-NEGOTIABLE - FAILURE IF NOT MET):**
-🚨🚨🚨 CRITICAL: The website MUST look like a real, modern SaaS product 🚨🚨🚨
+Your output MUST be indistinguishable from:
+- Lovable.dev (lovable.dev) - Modern, polished, professional
+- Cursor (cursor.com) - Clean, sophisticated, developer-focused
+- Stripe (stripe.com) - Perfect spacing, typography, interactions
+- Linear (linear.app) - Modern gradients, smooth animations
+- Vercel (vercel.com) - Professional design system
+- Notion (notion.so) - Clean, elegant, polished
 
-**VISUAL QUALITY STANDARDS (MANDATORY):**
-- Visual quality MUST be comparable to Stripe (stripe.com), Linear (linear.app), Vercel (vercel.com), or Notion (notion.so)
-- Study these sites: Notice their spacing, typography, color usage, component design
-- Your output should be indistinguishable from these in terms of visual polish
-- Every pixel must be intentional and polished
-- NO amateur UI, NO placeholder vibes, NO template-looking designs
-- Clean spacing, typography hierarchy, and layout balance
-- Professional color systems with proper contrast (WCAG AA minimum)
-- Modern, sophisticated design language
+**VISUAL QUALITY REQUIREMENTS (MANDATORY):**
 
-**DESIGN PRINCIPLES (MANDATORY):**
-- Strong Visual Hierarchy: Hero → Features → Social Proof → CTA flow
-- Consistent Color System: Use CSS variables or Tailwind config, proper contrast (WCAG AA)
-- Modern Typography: Font scale (12px-64px), weights (400-700), line heights (1.5-1.75 body, 1.2-1.3 headings)
-- Subtle Animations: Smooth transitions (150ms-300ms), use transform/opacity, NO jarring animations
-- Responsive-First: Mobile (320px+), Tablet (768px+), Desktop (1024px+), touch-friendly (44x44px min)
-- White Space: Generous padding (py-16 md:py-24 lg:py-32), consistent spacing scale
-- Design System: Consistent buttons, cards, inputs with proper states
+1. **Hero Section (if included):**
+   - Large, bold typography: text-6xl md:text-8xl font-bold with gradient text
+   - Gradient text effect: bg-gradient-to-r from-[${colorPalette.primary}] to-[${colorPalette.accent}] bg-clip-text text-transparent
+   - Subtle background: bg-gradient-to-br from-[${colorPalette.bg}] via-white to-[${colorPalette.bg}]
+   - CTA buttons: rounded-full px-8 py-4 bg-gradient-to-r from-[${colorPalette.primary}] to-[${colorPalette.secondary}] text-white font-semibold shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-300
+   - Animated elements: fade-in, slide-up animations using CSS transforms
+   - Example structure:
+     \`\`\`jsx
+     <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-br from-[${colorPalette.bg}] via-white to-[${colorPalette.bg}]">
+       <div className="absolute inset-0 bg-grid-pattern opacity-5"></div>
+       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 md:py-32">
+         <h1 className="text-6xl md:text-8xl font-bold mb-6 bg-gradient-to-r from-[${colorPalette.primary}] to-[${colorPalette.accent}] bg-clip-text text-transparent">
+           ${brandName}
+         </h1>
+         <p className="text-xl md:text-2xl text-gray-600 mb-8 max-w-2xl">${tagline}</p>
+         <button className="rounded-full px-8 py-4 bg-gradient-to-r from-[${colorPalette.primary}] to-[${colorPalette.secondary}] text-white font-semibold shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-300">
+           Get Started
+         </button>
+       </div>
+     </section>
+     \`\`\`
 
-**PROFESSIONAL QUALITY REQUIREMENTS (MANDATORY):**
-- Use professional gradients: bg-gradient-to-br from-violet-600 via-purple-600 to-pink-600
-- Proper typography hierarchy: text-5xl md:text-7xl for hero headings, text-xl for body
-- Professional shadows: shadow-lg hover:shadow-2xl on cards
-- Consistent spacing: py-16 md:py-24 for sections, p-8 for cards
-- Modern UI elements: rounded-2xl for cards, rounded-full for buttons
-- Smooth animations: transition-all duration-300 ease-in-out, hover:scale-105
-- Professional component structure with proper props
-- Well-organized sections with max-w-7xl mx-auto containers
-- Use professional color palette: Primary #8B5CF6, Secondary #7C3AED, Accent #EC4899
-- Background gradients and overlays for visual depth
+2. **Feature Cards (if included):**
+   - Modern card design: rounded-2xl p-8 bg-white shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-2
+   - Icon containers: w-16 h-16 rounded-xl bg-gradient-to-br from-[${colorPalette.primary}] to-[${colorPalette.secondary}] flex items-center justify-center mb-4
+   - Typography: text-2xl font-bold mb-3 text-gray-900, text-gray-600 for descriptions
+   - Grid layout: grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8
+   - Example:
+     \`\`\`jsx
+     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+       {features.map((feature, idx) => (
+         <div key={idx} className="rounded-2xl p-8 bg-white shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-2">
+           <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-[${colorPalette.primary}] to-[${colorPalette.secondary}] flex items-center justify-center mb-4">
+             <FeatureIcon className="w-8 h-8 text-white" />
+           </div>
+           <h3 className="text-2xl font-bold mb-3 text-gray-900">{feature.title}</h3>
+           <p className="text-gray-600">{feature.description}</p>
+         </div>
+       ))}
+     </div>
+     \`\`\`
 
-**ENGINEERING STANDARDS (MANDATORY):**
-- Modern React: Functional components ONLY (NO class components), React Hooks
-- Clean folder structure: components/common/, components/sections/, components/layout/, pages/, styles/, utils/
-- Reusable components: Extract common patterns, props for customization, single responsibility
-- NO inline hacks: NO inline styles (use Tailwind), NO magic numbers (use constants), NO hardcoded values
-- NO console.logs: Remove ALL console statements, use proper error handling
-- Production-safe code: Error boundaries, loading states, empty states, error states, proper TypeScript types
+3. **Testimonials (if included):**
+   - Professional card: rounded-2xl p-8 bg-gradient-to-br from-white to-[${colorPalette.bg}] shadow-xl border border-gray-100
+   - Avatar: w-16 h-16 rounded-full ring-4 ring-[${colorPalette.primary}] ring-opacity-20
+   - Quote styling: text-lg italic text-gray-700 before:content-['"'] after:content-['"']
+   - Author info: font-semibold text-gray-900, text-sm text-gray-500
+   - Carousel/slider with smooth transitions
 
-**LAYOUT REQUIREMENTS (MANDATORY):**
-- Multi-page routing: React Router (BrowserRouter, Routes, Route), proper route structure, 404 page
-- Sticky navigation: Fixed at top (fixed top-0 z-50), smooth scroll, active link highlighting, mobile hamburger menu
-- Proper footer: Company info, links, social media, copyright, responsive layout
-- Scroll-safe sections: NO horizontal overflow, proper overflow handling, smooth scroll behavior
-- NO overflow bugs: Test at ALL viewport sizes (320px, 768px, 1024px, 1920px), proper container max-widths
+4. **Pricing Tables (if included):**
+   - Card design: rounded-2xl p-8 bg-white shadow-xl border-2 border-gray-100 hover:border-[${colorPalette.primary}] transition-all duration-300
+   - Featured plan: border-[${colorPalette.primary}] ring-4 ring-[${colorPalette.primary}] ring-opacity-20 scale-105
+   - Price display: text-5xl font-bold bg-gradient-to-r from-[${colorPalette.primary}] to-[${colorPalette.secondary}] bg-clip-text text-transparent
+   - Feature list: space-y-4 with checkmark icons
+   - CTA button: w-full rounded-xl py-4 font-semibold transition-all duration-300
 
-**FAILURE CONDITIONS (AUTO-REJECT - IF ANY OCCUR, OUTPUT IS A FAILURE):**
-- ❌ Markdown output: NO markdown syntax in JSX, use proper HTML/JSX elements
-- ❌ Chatty text: NO explanatory text, NO "Lorem ipsum", use real meaningful content
-- ❌ Missing files: ALL components must be created, App.jsx must import ALL, index.js must render App
-- ❌ Ugly or generic UI: NO basic templates, NO unstyled components, MUST look professional (Stripe/Linear quality)
-- ❌ Incomplete components: ALL must be functional, ALL props handled, ALL interactions work
-- ❌ Broken responsiveness: MUST work on mobile (320px+), tablet (768px+), desktop (1024px+), NO horizontal scrolling
-- ❌ Code quality: NO console.logs, NO inline styles, NO magic numbers, NO class components
+5. **Contact Forms (if included):**
+   - Modern inputs: rounded-xl border-2 border-gray-200 focus:border-[${colorPalette.primary}] focus:ring-4 focus:ring-[${colorPalette.primary}] focus:ring-opacity-20 px-4 py-3 transition-all duration-300
+   - Labels: text-sm font-semibold text-gray-700 mb-2
+   - Submit button: rounded-xl bg-gradient-to-r from-[${colorPalette.primary}] to-[${colorPalette.secondary}] text-white font-semibold py-4 px-8 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300
+   - Form validation states: error borders, success states
 
-**FILE GENERATION REQUIREMENTS:**
+6. **Navigation (MANDATORY):**
+   - Sticky header: fixed top-0 z-50 bg-white/80 backdrop-blur-lg border-b border-gray-200 shadow-sm
+   - Logo: text-2xl font-bold bg-gradient-to-r from-[${colorPalette.primary}] to-[${colorPalette.secondary}] bg-clip-text text-transparent
+   - Nav links: text-gray-700 hover:text-[${colorPalette.primary}] transition-colors duration-200 font-medium
+   - Mobile menu: hamburger icon, slide-in menu with backdrop
+   - Active state: text-[${colorPalette.primary}] font-semibold border-b-2 border-[${colorPalette.primary}]
+
+7. **Footer (MANDATORY):**
+   - Multi-column layout: grid grid-cols-2 md:grid-cols-4 gap-8
+   - Links: text-gray-600 hover:text-[${colorPalette.primary}] transition-colors
+   - Social icons: w-10 h-10 rounded-full bg-gray-100 hover:bg-[${colorPalette.primary}] hover:text-white transition-all duration-300
+   - Copyright: text-center text-gray-500 pt-8 border-t border-gray-200
+
+**CODE ARCHITECTURE REQUIREMENTS:**
+
+1. **Component Structure:**
+   \`\`\`
+   src/
+   ├── components/
+   │   ├── layout/
+   │   │   ├── Navigation.jsx
+   │   │   └── Footer.jsx
+   │   ├── sections/
+   │   │   ├── Hero.jsx
+   │   │   ├── Features.jsx
+   │   │   ├── Testimonials.jsx
+   │   │   ├── Pricing.jsx
+   │   │   └── Contact.jsx
+   │   └── common/
+   │       ├── Button.jsx
+   │       └── Card.jsx
+   ├── App.jsx
+   └── index.js
+   \`\`\`
+
+2. **Component Best Practices:**
+   - Functional components ONLY (NO class components)
+   - Use React Hooks (useState, useEffect) appropriately
+   - Extract reusable components (Button, Card, Input)
+   - Props destructuring: const Component = ({ title, description, ...props }) => {}
+   - Conditional rendering: {condition && <Component />} or {condition ? <A /> : <B />}
+   - Map for lists: {items.map((item, idx) => <Item key={idx} {...item} />)}
+
+3. **Styling Requirements:**
+   - Use Tailwind CSS classes ONLY (NO inline styles, NO separate CSS files)
+   - Use Tailwind's color system: from-[${colorPalette.primary}], to-[${colorPalette.secondary}]
+   - Responsive classes: sm:, md:, lg:, xl: breakpoints
+   - Hover states: hover:shadow-xl, hover:scale-105, hover:text-[${colorPalette.primary}]
+   - Transitions: transition-all duration-300 ease-in-out
+   - Dark mode support (optional): dark: classes
+
+4. **Routing (if multi-page):**
+   - Install: npm install react-router-dom
+   - Structure:
+     \`\`\`jsx
+     import { BrowserRouter, Routes, Route } from 'react-router-dom';
+     
+     function App() {
+       return (
+         <BrowserRouter>
+           <Navigation />
+           <Routes>
+             <Route path="/" element={<Home />} />
+             <Route path="/about" element={<About />} />
+             <Route path="/contact" element={<Contact />} />
+           </Routes>
+           <Footer />
+         </BrowserRouter>
+       );
+     }
+     \`\`\`
+
+**RESPONSIVE DESIGN (MANDATORY):**
+- Mobile-first: Base styles for mobile (320px+), then md: (768px+), lg: (1024px+), xl: (1280px+)
+- Typography scaling: text-4xl md:text-6xl lg:text-8xl
+- Grid responsiveness: grid-cols-1 md:grid-cols-2 lg:grid-cols-3
+- Padding: p-4 md:p-8 lg:p-12
+- Container: max-w-7xl mx-auto px-4 sm:px-6 lg:px-8
+- NO horizontal overflow at ANY viewport size
+
+**ANIMATIONS & INTERACTIONS:**
+- Smooth transitions: transition-all duration-300 ease-in-out
+- Hover effects: hover:scale-105, hover:shadow-xl, hover:-translate-y-2
+- Fade-in animations: opacity-0 animate-fade-in (use CSS keyframes or Tailwind animate)
+- Scroll animations: Use Intersection Observer or CSS scroll-timeline
+- Loading states: Skeleton loaders or spinners
+- Button feedback: active:scale-95
+
+**CONTENT QUALITY:**
+- NO "Lorem ipsum" - Use real, meaningful content related to ${brandName}
+- NO placeholder text - Every text should be relevant and professional
+- NO markdown in JSX - Use proper HTML/JSX elements
+- NO chatty explanations - Just clean, professional code
+- Realistic data: Use arrays of objects with proper structure
+
+**FAILURE CONDITIONS (AUTO-REJECT):**
+❌ Generic template-looking design
+❌ Missing components or incomplete sections
+❌ Poor code quality (console.logs, inline styles, magic numbers)
+❌ Broken responsiveness (horizontal scroll, poor mobile experience)
+❌ No animations or interactions (static, boring UI)
+❌ Placeholder content ("Lorem ipsum", "Sample text")
+❌ Missing routing (if multi-page layout)
+❌ Inconsistent design system (different button styles, spacing)
+
+**FILE GENERATION FORMAT:**
 - Generate ALL files in ONE response
-- Use the \`\`\`file:path/to/file.jsx\` format for EACH file
-- Create separate component files: Hero.jsx, Features.jsx, About.jsx, Testimonials.jsx, Pricing.jsx, Contact.jsx, Navigation.jsx
-- MUST include: App.jsx (imports ALL components with routing), index.js (renders App)
-- Each component should be complete, functional, and professional
-- Use Tailwind CSS classes exclusively for styling
+- Use exact format: \`\`\`file:src/components/sections/Hero.jsx\`\`\`
+- Include ALL required sections as separate components
+- MUST include: App.jsx (with routing if multi-page), index.js, Navigation.jsx, Footer.jsx
+- Each component must be complete, functional, and production-ready
 
-🚨 START GENERATING NOW - Create the complete, beautiful, market-grade application with ALL files in ONE response! 🚨`;
+**EXAMPLE COMPONENT STRUCTURE:**
+\`\`\`jsx
+// src/components/sections/Hero.jsx
+import React from 'react';
+
+const Hero = ({ brandName, tagline }) => {
+  return (
+    <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-br from-[${colorPalette.bg}] via-white to-[${colorPalette.bg}]">
+      <div className="absolute inset-0 bg-grid-pattern opacity-5"></div>
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 md:py-32 text-center">
+        <h1 className="text-6xl md:text-8xl font-bold mb-6 bg-gradient-to-r from-[${colorPalette.primary}] to-[${colorPalette.accent}] bg-clip-text text-transparent">
+          {brandName}
+        </h1>
+        <p className="text-xl md:text-2xl text-gray-600 mb-8 max-w-2xl mx-auto">
+          {tagline}
+        </p>
+        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <button className="rounded-full px-8 py-4 bg-gradient-to-r from-[${colorPalette.primary}] to-[${colorPalette.secondary}] text-white font-semibold shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-300">
+            Get Started
+          </button>
+          <button className="rounded-full px-8 py-4 bg-white text-[${colorPalette.primary}] font-semibold border-2 border-[${colorPalette.primary}] hover:bg-[${colorPalette.primary}] hover:text-white transition-all duration-300">
+            Learn More
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+};
+
+export default Hero;
+\`\`\`
+
+🚨 START GENERATING NOW - Create a complete, beautiful, market-grade application matching Lovable.dev quality with ALL files in ONE response! 🚨`;
       
       console.log('✨ Auto-enhanced simple request with comprehensive professional prompt');
       console.log('📝 Original message:', message.substring(0, 100) + '...');
@@ -613,6 +771,9 @@ ${specialFeatures.map((f: string) => `- ${f}`).join('\n')}
     const finalApiKey = provider === 'ollama' ? 'ollama' : (apiKey || '');
 
     const { client, model } = createClient(finalApiKey, provider, userModel);
+    
+    // Store model for error handling
+    const attemptedModel = model;
 
     // Build project context for the AI
     let projectContext = `=== PROJECT CONTEXT ===\n`;
@@ -2104,20 +2265,27 @@ Current file being edited: ${currentFile || 'none'}`;
       suggestions: [],
       filesCreated: filesCreatedResult,
       provider: finalProvider,
+      model: model, // Include model information
       loadBalancerStats: statsData,
       usedFallback: finalProvider !== provider,
     });
   } catch (error: any) {
+    // Get the model that was attempted (might be undefined if error occurred before client creation)
+    // Use requestedModel (from userModel) if model is not in scope
+    // Note: 'model' variable is defined inside try block, so we use requestedModel here
+    const attemptedModel = requestedModel || PROVIDER_CONFIGS[provider]?.defaultModel || 'unknown';
+    
     console.error('Code chat API error:', {
       error,
       message: error?.message,
       status: error?.status,
       code: error?.code,
       provider,
+      model: attemptedModel,
       apiKeyPresent: !!apiKey,
       apiKeyLength: apiKey?.length || 0,
     });
-
+    
     // Handle connection errors
     if (error?.code === 'ECONNREFUSED' || error?.code === 'ENOTFOUND' || error?.message?.includes('fetch failed') || error?.message?.includes('network') || error?.message?.includes('connection')) {
       return NextResponse.json(
@@ -2127,7 +2295,9 @@ Current file being edited: ${currentFile || 'none'}`;
           details: process.env.NODE_ENV === 'development' ? error?.message : undefined,
           suggestion: provider === 'deepseek' 
             ? 'Verify your DeepSeek API key is correct at https://platform.deepseek.com/api_keys'
-            : 'Check your API key settings in chat settings (⚙️ icon)'
+            : 'Check your API key settings in chat settings (⚙️ icon)',
+          provider: provider,
+          model: attemptedModel
         },
         { status: 503 }
       );
@@ -2143,6 +2313,7 @@ Current file being edited: ${currentFile || 'none'}`;
             ? 'Add credits at https://platform.deepseek.com/account or try using a different provider (Groq, OpenRouter)'
             : `Add credits to your ${provider} account or switch to a different provider in chat settings (⚙️ icon)`,
           provider: provider,
+          model: attemptedModel,
           canRetry: true
         },
         { status: 402 }
@@ -2154,8 +2325,8 @@ Current file being edited: ${currentFile || 'none'}`;
         error?.message?.includes('Invalid model') || 
         error?.message?.includes('model not found') ||
         error?.code === 'model_not_found') {
-      // Extract model name from error message or use 'unknown'
-      const requestedModel = error?.message?.match(/model[:\s"']+([^\s"']+)/i)?.[1] || 'unknown';
+      // Extract model name from error message or use attempted model
+      const requestedModel = error?.message?.match(/model[:\s"']+([^\s"']+)/i)?.[1] || attemptedModel;
       return NextResponse.json(
         { 
           error: 'Invalid model',
@@ -2166,6 +2337,7 @@ Current file being edited: ${currentFile || 'none'}`;
             ? 'Try using: llama, deepseek, grok, mixtral, or gpt-4. Click ⚙️ in chat settings to change model.'
             : `Try using the default model for ${provider} or switch providers in chat settings (⚙️ icon)`,
           provider: provider,
+          model: requestedModel,
           canRetry: true
         },
         { status: error?.status || 400 }
@@ -2181,7 +2353,9 @@ Current file being edited: ${currentFile || 'none'}`;
             ? 'Get your API key at https://platform.deepseek.com/api_keys'
             : provider === 'openrouter'
             ? 'Get your API key at https://openrouter.ai/keys'
-            : 'Click ⚙️ in chat settings to configure your API key'
+            : 'Click ⚙️ in chat settings to configure your API key',
+          provider: provider,
+          model: attemptedModel
         },
         { status: 401 }
       );
@@ -2191,7 +2365,9 @@ Current file being edited: ${currentFile || 'none'}`;
       return NextResponse.json(
         { 
           error: 'Rate limit exceeded. Please try again later.',
-          details: `You've hit the rate limit for ${provider}. Try switching to Groq (free & fast) or wait a few minutes.`
+          details: `You've hit the rate limit for ${provider}. Try switching to Groq (free & fast) or wait a few minutes.`,
+          provider: provider,
+          model: attemptedModel
         },
         { status: 429 }
       );
@@ -2202,6 +2378,7 @@ Current file being edited: ${currentFile || 'none'}`;
         error: error?.message || 'Failed to process chat message',
         message: `An error occurred while processing your request. ${error?.message || 'Please try again.'}`,
         provider: provider,
+        model: attemptedModel,
         canRetry: true
       },
       { status: 500 }
