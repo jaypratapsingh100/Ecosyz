@@ -6,7 +6,7 @@ import { validateResetToken } from '../reset-password/utils';
 
 const UpdatePasswordSchema = z.object({
   email: z.string().email(),
-  token: z.string(),
+  token: z.string().optional(),
   password: z.string().min(8),
 });
 
@@ -23,8 +23,13 @@ export async function POST(req: NextRequest) {
     const parse = UpdatePasswordSchema.safeParse(body);
 
     if (!parse.success) {
+      const errorMessages = parse.error.errors.map(err => {
+        const field = err.path.join('.');
+        return `${field}: ${err.message}`;
+      }).join(', ');
+      
       return NextResponse.json(
-        { error: 'Invalid input' },
+        { error: `Invalid input: ${errorMessages}` },
         { status: 400 }
       );
     }

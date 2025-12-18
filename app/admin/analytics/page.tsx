@@ -68,14 +68,6 @@ interface AnalyticsData {
   deployments: Record<string, number>;
   frameworks: Record<string, number>;
   appTypes: Record<string, number>;
-  community: {
-    totalActivityLast30Days: number;
-    totalGroups: number;
-    totalDiscussions: number;
-    totalEvents: number;
-    totalChallenges: number;
-    totalSubmissions: number;
-  };
   search?: {
     totalSearches: number;
     dailySearches: number;
@@ -771,7 +763,7 @@ export default function AdminAnalyticsPage() {
     );
   }
 
-  if (error && isAuthenticated !== false) {
+  if (error && isAuthenticated === true) {
     // Only show error if user is authenticated (not showing login prompt)
     return (
       <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016] p-8">

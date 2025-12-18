@@ -26,13 +26,10 @@ export function getStoredModel(): string {
   return stored || 'meta-llama/llama-3.2-3b-instruct:free';
 }
 
-// Helper function to get provider from storage
+// Helper function to get provider from storage - Force Groq for connection testing
 export function getStoredProvider(): Provider {
-  if (typeof window === 'undefined') return 'openrouter';
-  const stored = localStorage.getItem(PROVIDER_STORAGE_KEY);
-  if (stored && ['openai', 'groq', 'together', 'huggingface', 'deepseek', 'ollama', 'openrouter', 'perplexity', 'cohere', 'anthropic'].includes(stored)) {
-    return stored as Provider;
-  }
-  return 'openrouter';
+  if (typeof window === 'undefined') return 'groq';
+  // Force Groq for connection testing - ignore stored value
+  return 'groq';
 }
 

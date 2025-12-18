@@ -12,7 +12,7 @@ import Image from 'next/image';
 // Enhanced schema with email for direct reset
 const resetPasswordSchema = z.object({
   email: z.string().email('Valid email is required'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
   confirmPassword: z.string(),
   token: z.string().optional(),
 }).refine((data) => data.password === data.confirmPassword, {

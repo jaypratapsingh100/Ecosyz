@@ -24,8 +24,8 @@ export function getStoredModel(): string | null {
 }
 
 export function getStoredProvider(): Provider {
-  if (typeof window === 'undefined') return 'openrouter';
-  return (localStorage.getItem(PROVIDER_STORAGE_KEY) || 'openrouter') as Provider;
+  if (typeof window === 'undefined') return 'groq';
+  return (localStorage.getItem(PROVIDER_STORAGE_KEY) || 'groq') as Provider;
 }
 
 const PROVIDER_MODELS: Record<Provider, string[]> = {
@@ -65,55 +65,48 @@ const PROVIDER_DEFAULTS: Record<Provider, string> = {
 };
 
 export default function ChatSettings({ isOpen, onClose }: ChatSettingsProps) {
-  const [provider, setProvider] = useState<Provider>('openrouter'); // Default to OpenRouter (free models)
+  // Force Groq as the only provider for connection testing
+  const [provider, setProvider] = useState<Provider>('groq'); // Default to Groq
   const [apiKey, setApiKey] = useState('');
-  const [model, setModel] = useState('meta-llama/llama-3.2-3b-instruct:free');
+  const [model, setModel] = useState('llama-3.3-70b-versatile'); // Default Groq model
   const [showKey, setShowKey] = useState(false);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
-      // Load saved settings
-      const savedProvider = (localStorage.getItem(PROVIDER_STORAGE_KEY) || 'openrouter') as Provider;
+      // Force Groq - ignore saved provider for connection testing
       const savedKey = localStorage.getItem(STORAGE_KEY) || '';
-      const savedModel = localStorage.getItem(MODEL_STORAGE_KEY) || PROVIDER_DEFAULTS[savedProvider];
-      setProvider(savedProvider);
+      const savedModel = localStorage.getItem(MODEL_STORAGE_KEY) || 'llama-3.3-70b-versatile';
+      setProvider('groq'); // Always use Groq
       setApiKey(savedKey);
-      setModel(savedModel);
+      setModel(savedModel || 'llama-3.3-70b-versatile');
       setSaved(false);
     }
   }, [isOpen]);
 
   useEffect(() => {
-    // Update model when provider changes
-    const defaultModel = PROVIDER_DEFAULTS[provider];
-    if (!PROVIDER_MODELS[provider].includes(model)) {
-      setModel(defaultModel);
+    // Force Groq model - no need to update on provider change since provider is always Groq
+    if (model !== 'llama-3.3-70b-versatile' && !PROVIDER_MODELS.groq.includes(model)) {
+      setModel('llama-3.3-70b-versatile');
     }
-  }, [provider]);
+  }, [model]);
 
   const handleSave = () => {
-    // Ollama doesn't need API key (uses localhost)
-    // Other providers need API key
-    if (provider === 'ollama' || apiKey.trim()) {
-      localStorage.setItem(PROVIDER_STORAGE_KEY, provider);
-      localStorage.setItem(MODEL_STORAGE_KEY, model);
-      if (provider !== 'ollama') {
-        localStorage.setItem(STORAGE_KEY, apiKey.trim());
-      } else {
-        // Clear API key for Ollama (not needed)
-        localStorage.removeItem(STORAGE_KEY);
-      }
+    // Always save Groq settings
+    if (apiKey.trim()) {
+      localStorage.setItem(PROVIDER_STORAGE_KEY, 'groq'); // Force Groq
+      localStorage.setItem(MODEL_STORAGE_KEY, model || 'llama-3.3-70b-versatile');
+      localStorage.setItem(STORAGE_KEY, apiKey.trim());
       setSaved(true);
       setTimeout(() => {
         setSaved(false);
         onClose();
       }, 1000);
     } else {
-      // Clear if empty (except Ollama)
-      localStorage.removeItem(PROVIDER_STORAGE_KEY);
+      // Clear if empty
       localStorage.removeItem(STORAGE_KEY);
-      localStorage.removeItem(MODEL_STORAGE_KEY);
+      localStorage.setItem(PROVIDER_STORAGE_KEY, 'groq'); // Still set Groq as provider
+      localStorage.setItem(MODEL_STORAGE_KEY, 'llama-3.3-70b-versatile');
       setSaved(true);
       setTimeout(() => {
         setSaved(false);
@@ -167,47 +160,29 @@ export default function ChatSettings({ isOpen, onClose }: ChatSettingsProps) {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <div className="flex-1">
-                <p className="text-emerald-200 text-xs font-medium mb-1">✨ Top 5 Free Open Source LLMs Available!</p>
+                <p className="text-emerald-200 text-xs font-medium mb-1">🔧 Connection Testing Mode</p>
                 <p className="text-emerald-300/80 text-xs leading-relaxed">
-                  Use <strong>Ollama</strong> (100% free, local), <strong>OpenRouter</strong> (multiple free models), <strong>Groq</strong> (fastest), <strong>DeepSeek</strong> (best for code), or <strong>Together AI</strong> for free AI responses. 
+                  Currently using <strong>Groq</strong> only for connection testing. Get your free API key at <strong>https://console.groq.com/keys</strong>. 
                   Your API key is stored locally and never sent to our servers except for API calls.
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Provider Selection */}
+          {/* Provider Selection - Hidden/Disabled for connection testing */}
           <div>
             <label className="block text-white text-sm font-medium mb-2">
-              AI Provider
+              AI Provider (Fixed for Testing)
             </label>
             <select
-              value={provider}
-              onChange={(e) => setProvider(e.target.value as Provider)}
-              className="w-full px-4 py-2.5 bg-[#0a0a0a] border border-white/10 rounded-lg text-white focus:outline-none focus:border-emerald-400/50 focus:ring-2 focus:ring-emerald-400/20 transition-all text-sm"
+              value="groq"
+              disabled
+              className="w-full px-4 py-2.5 bg-[#0a0a0a] border border-white/10 rounded-lg text-gray-400 cursor-not-allowed text-sm opacity-60"
             >
-              <option value="ollama">🆓 Ollama (100% FREE - Local)</option>
-              <option value="openrouter">🆓 OpenRouter (FREE Models)</option>
               <option value="groq">🆓 Groq (FREE - Fastest)</option>
-              <option value="deepseek">🆓 DeepSeek (FREE - Best for Code)</option>
-              <option value="together">🆓 Together AI (FREE)</option>
-              <option value="huggingface">🆓 Hugging Face (FREE)</option>
-              <option value="perplexity">🆓 Perplexity (FREE Tier)</option>
-              <option value="cohere">🆓 Cohere (FREE Tier)</option>
-              <option value="anthropic">🆓 Anthropic Claude (FREE Tier)</option>
-              <option value="openai">💳 OpenAI (Paid)</option>
             </select>
             <p className="text-gray-500 text-xs mt-2">
-              {provider === 'ollama' && 'Install locally: https://ollama.ai/ (No API key needed - uses localhost)'}
-              {provider === 'openrouter' && 'Get free API key: https://openrouter.ai/keys'}
-              {provider === 'groq' && 'Get free API key: https://console.groq.com/keys'}
-              {provider === 'deepseek' && 'Get free API key: https://platform.deepseek.com/api_keys'}
-              {provider === 'together' && 'Get free API key: https://api.together.xyz/'}
-              {provider === 'huggingface' && 'Get free API key: https://huggingface.co/settings/tokens'}
-              {provider === 'perplexity' && 'Get free API key: https://www.perplexity.ai/settings/api'}
-              {provider === 'cohere' && 'Get free API key: https://dashboard.cohere.com/api-keys'}
-              {provider === 'anthropic' && 'Get free API key: https://console.anthropic.com/settings/keys'}
-              {provider === 'openai' && 'Get API key: https://platform.openai.com/api-keys'}
+              Get free API key: https://console.groq.com/keys
             </p>
           </div>
 
@@ -221,18 +196,7 @@ export default function ChatSettings({ isOpen, onClose }: ChatSettingsProps) {
                 type={showKey ? 'text' : 'password'}
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                placeholder={
-                  provider === 'ollama' ? 'No API key needed (uses localhost:11434)' :
-                  provider === 'openrouter' ? 'sk-or-...' :
-                  provider === 'groq' ? 'gsk_...' :
-                  provider === 'deepseek' ? 'sk-...' :
-                  provider === 'together' ? 'Your Together API key' :
-                  provider === 'huggingface' ? 'hf_...' :
-                  provider === 'perplexity' ? 'pplx-...' :
-                  provider === 'cohere' ? 'Your Cohere API key' :
-                  provider === 'anthropic' ? 'sk-ant-...' :
-                  'sk-...'
-                }
+                placeholder="gsk_... (Get your Groq API key at https://console.groq.com/keys)"
                 className="w-full px-4 py-2.5 bg-[#0a0a0a] border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-emerald-400/50 focus:ring-2 focus:ring-emerald-400/20 transition-all text-sm"
               />
               <button
@@ -255,27 +219,20 @@ export default function ChatSettings({ isOpen, onClose }: ChatSettingsProps) {
             </div>
           </div>
 
-          {/* Model Selection */}
+          {/* Model Selection - Hidden/Disabled for connection testing */}
           <div>
             <label className="block text-white text-sm font-medium mb-2">
-              Model
+              Model (Fixed for Testing)
             </label>
             <select
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              className="w-full px-4 py-2.5 bg-[#0a0a0a] border border-white/10 rounded-lg text-white focus:outline-none focus:border-emerald-400/50 focus:ring-2 focus:ring-emerald-400/20 transition-all text-sm"
+              value="llama-3.3-70b-versatile"
+              disabled
+              className="w-full px-4 py-2.5 bg-[#0a0a0a] border border-white/10 rounded-lg text-gray-400 cursor-not-allowed text-sm opacity-60"
             >
-              {PROVIDER_MODELS[provider].map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
+              <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile</option>
             </select>
             <p className="text-gray-500 text-xs mt-2">
-              Select the model for {provider === 'ollama' ? 'Ollama (local)' : provider === 'openrouter' ? 'OpenRouter' : provider === 'groq' ? 'Groq' : provider === 'deepseek' ? 'DeepSeek' : provider === 'together' ? 'Together AI' : provider === 'huggingface' ? 'Hugging Face' : provider === 'perplexity' ? 'Perplexity' : provider === 'cohere' ? 'Cohere' : provider === 'anthropic' ? 'Anthropic Claude' : 'OpenAI'}.
-              {provider === 'deepseek' && ' Use "deepseek-coder" for best code generation results.'}
-              {provider === 'ollama' && ' Make sure Ollama is running locally on port 11434.'}
-              {provider === 'openrouter' && ' Free models available - no credit card needed!'}
+              Using default Groq model for connection testing.
             </p>
           </div>
 
@@ -299,7 +256,7 @@ export default function ChatSettings({ isOpen, onClose }: ChatSettingsProps) {
             </button>
             <button
               onClick={handleSave}
-              disabled={provider !== 'ollama' && !apiKey.trim()}
+              disabled={!apiKey.trim()}
               className="flex-1 px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 rounded-lg text-white text-sm font-semibold transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Save Settings

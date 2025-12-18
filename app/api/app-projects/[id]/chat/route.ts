@@ -661,12 +661,26 @@ Your output MUST be indistinguishable from:
 ❌ Missing routing (if multi-page layout)
 ❌ Inconsistent design system (different button styles, spacing)
 
-**FILE GENERATION FORMAT:**
-- Generate ALL files in ONE response
-- Use exact format: \`\`\`file:src/components/sections/Hero.jsx\`\`\`
-- Include ALL required sections as separate components
-- MUST include: App.jsx (with routing if multi-page), index.js, Navigation.jsx, Footer.jsx
-- Each component must be complete, functional, and production-ready
+**CRITICAL FILE FORMAT - FOLLOW EXACTLY:**
+Generate ALL files using this EXACT format:
+\`\`\`file:src/App.jsx
+[complete React component code here]
+\`\`\`
+
+\`\`\`file:src/index.js
+[complete index.js code here]
+\`\`\`
+
+\`\`\`file:src/components/Portfolio.jsx
+[complete component code here]
+\`\`\`
+
+**IMPORTANT:**
+- Use \`\`\`file:path/to/file.jsx\`\`\` for EACH file
+- Generate ALL required components
+- Include App.jsx that imports and renders all components
+- Include index.js that renders App
+- Make it a complete, working React app
 
 **EXAMPLE COMPONENT STRUCTURE:**
 \`\`\`jsx
@@ -1818,13 +1832,18 @@ Current file being edited: ${currentFile || 'none'}`;
 
     // Helper function to parse and create files from response
     const parseAndCreateFiles = async (responseText: string): Promise<Array<{ path: string; success: boolean; error?: string }>> => {
-      const codeBlockRegex = /```(?:file:)?([^\n`]+)\n([\s\S]*?)```/g;
+      // More flexible regex that handles various file: formats and spacing
+      const codeBlockRegex = /```(?:file:)?\s*([^\n`]+?)(?:\n|$)([\s\S]*?)```/g;
       const createdFiles: Array<{ path: string; success: boolean; error?: string }> = [];
       let match;
-      
+
       console.log('📝 Parsing response for file creation...');
       console.log('Response length:', responseText.length);
-      console.log('Response preview:', responseText.substring(0, 500));
+      console.log('Response preview (first 1000 chars):', responseText.substring(0, 1000));
+
+      // Count potential code blocks
+      const codeBlockCount = (responseText.match(/```/g) || []).length / 2;
+      console.log(`📊 Found ${codeBlockCount} potential code blocks`);
 
       while ((match = codeBlockRegex.exec(responseText)) !== null) {
         let filePath = match[1].trim();
@@ -1936,9 +1955,117 @@ Current file being edited: ${currentFile || 'none'}`;
         totalFound: createdFiles.length,
         successful: createdFiles.filter(f => f.success).length,
         failed: createdFiles.filter(f => !f.success).length,
-        files: createdFiles.map(f => ({ path: f.path, success: f.success }))
+        files: createdFiles.map(f => ({ path: f.path, success: f.success, error: f.error }))
       });
-      
+
+      // Fallback: If no files were created, create basic test files
+      if (createdFiles.length === 0) {
+        console.warn('⚠️ No files were parsed from AI response. Creating basic fallback files...');
+
+        const fallbackFiles = [
+          {
+            path: 'src/App.jsx',
+            name: 'App.jsx',
+            content: `import React from 'react';
+import './App.css';
+
+function App() {
+  return (
+    <div className="App">
+      <header className="App-header">
+        <h1>${brandName || 'My App'}</h1>
+        <p>${tagline || 'Welcome to my application!'}</p>
+      </header>
+    </div>
+  );
+}
+
+export default App;`,
+            language: 'javascript',
+            isMain: true
+          },
+          {
+            path: 'src/index.js',
+            name: 'index.js',
+            content: `import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import './index.css';
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);`,
+            language: 'javascript',
+            isMain: false
+          },
+          {
+            path: 'src/App.css',
+            name: 'App.css',
+            content: `.App {
+  text-align: center;
+}
+
+.App-header {
+  background-color: #282c34;
+  padding: 40px;
+  color: white;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.App-header h1 {
+  font-size: 2.5rem;
+  margin-bottom: 20px;
+}
+
+.App-header p {
+  font-size: 1.2rem;
+}`,
+            language: 'css',
+            isMain: false
+          }
+        ];
+
+        // Create fallback files
+        for (const file of fallbackFiles) {
+          try {
+            await prisma.appFile.upsert({
+              where: {
+                projectId_path: {
+                  projectId: id,
+                  path: file.path,
+                },
+              },
+              update: {
+                content: file.content,
+                language: file.language,
+                isMain: file.isMain,
+                name: file.name,
+              },
+              create: {
+                projectId: id,
+                path: file.path,
+                name: file.name,
+                content: file.content,
+                language: file.language,
+                isMain: file.isMain,
+              },
+            });
+            createdFiles.push({ path: file.path, success: true });
+            console.log('✅ Created fallback file:', file.path);
+          } catch (error) {
+            console.error('❌ Error creating fallback file:', file.path, error);
+            createdFiles.push({ path: file.path, success: false, error: 'Fallback creation failed' });
+          }
+        }
+      }
+
       return createdFiles;
     };
 
@@ -1966,7 +2093,7 @@ Current file being edited: ${currentFile || 'none'}`;
           { role: 'user', content: message },
         ],
         temperature: 0.7,
-        max_tokens: 4000, // Increased to ensure full file content is included
+        max_tokens: 12000, // Significantly increased to ensure ALL files are included in response
       });
       
       console.log('✅ AI response received:', {

@@ -423,7 +423,7 @@ export async function GET(req: NextRequest) {
           select: { createdAt: true },
         });
         const dailyVisitsMap = new Map<string, number>();
-        visitsLast30Days.forEach((visit) => {
+        visitsLast30Days.forEach((visit: { createdAt: Date }) => {
           const date = visit.createdAt.toISOString().split('T')[0];
           dailyVisitsMap.set(date, (dailyVisitsMap.get(date) || 0) + 1);
         });

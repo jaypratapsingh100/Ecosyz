@@ -418,6 +418,27 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
         }
         
         console.log('🤖 Using AI provider:', provider, 'with model:', model);
+        console.log('🔑 API Key present:', !!userApiKey, '| Provider:', provider);
+        
+        // Check if API key is needed but missing (except for Ollama which uses localhost)
+        if (!userApiKey && provider !== 'ollama') {
+          console.warn('⚠️ No API key provided for provider:', provider);
+          const errorMsg = `No API key configured for ${provider}. Please add your API key in chat settings (⚙️ icon).`;
+          sessionStorage.setItem(`auto-error-${project.id}`, JSON.stringify({
+            error: errorMsg,
+            type: 'missing_api_key',
+            suggestion: `Get your ${provider} API key and add it in chat settings (⚙️ icon)`
+          }));
+          window.dispatchEvent(new CustomEvent('generation-complete', { 
+            detail: { 
+              projectId: project.id,
+              duration: '0',
+              filesCreated: 0,
+              error: true
+            } 
+          }));
+          return;
+        }
         
         // Store generation start time and trigger loading overlay
         const generationStartTime = Date.now();
@@ -593,20 +614,73 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
               }
               
               // Log error with proper serialization - ensure all values are serializable
-              const logData: Record<string, any> = {
-                status: String(errorLogInfo.status),
-                statusText: String(errorLogInfo.statusText),
-                statusCode: String(errorLogInfo.statusCode),
-                error: String(finalErrorData.error || finalErrorData.message || 'Unknown error'),
-                errorDetails: finalErrorData,
-                responseText: String(errorLogInfo.responseText || '(no response text)'),
-                provider: String(errorLogInfo.provider),
-                model: String(errorLogInfo.model),
-                projectId: String(errorLogInfo.projectId),
-                timestamp: String(errorLogInfo.timestamp),
-              };
+              // Safely serialize finalErrorData to avoid circular references
+              let serializedErrorDetails: any = {};
+              try {
+                // Try to serialize and parse to ensure it's safe
+                const errorDetailsStr = JSON.stringify(finalErrorData);
+                serializedErrorDetails = JSON.parse(errorDetailsStr);
+              } catch (serializeError) {
+                // If serialization fails, create a safe version
+                serializedErrorDetails = {
+                  error: String(finalErrorData?.error || finalErrorData?.message || 'Unknown error'),
+                  status: String(finalErrorData?.status || chatResponse?.status || 'unknown'),
+                  statusText: String(finalErrorData?.statusText || chatResponse?.statusText || 'Unknown'),
+                  note: 'Error details could not be fully serialized'
+                };
+              }
               
-              console.error('❌ AI chat request failed:', logData);
+              // Build logData with explicit fallbacks to ensure no empty values
+              const logData: Record<string, any> = {};
+              
+              // Ensure all values are non-empty strings or valid objects
+              logData.status = String(errorLogInfo?.status ?? chatResponse?.status ?? 'unknown').trim() || 'unknown';
+              logData.statusText = String(errorLogInfo?.statusText ?? chatResponse?.statusText ?? 'unknown').trim() || 'unknown';
+              logData.statusCode = String(errorLogInfo?.statusCode ?? chatResponse?.status ?? 'unknown').trim() || 'unknown';
+              logData.error = String(finalErrorData?.error || finalErrorData?.message || errorMessage || 'Unknown error').trim() || 'Unknown error';
+              logData.errorDetails = serializedErrorDetails && Object.keys(serializedErrorDetails).length > 0 ? serializedErrorDetails : { error: logData.error };
+              logData.responseText = String(errorLogInfo?.responseText || responseText || '(no response text)').trim() || '(no response text)';
+              logData.provider = String(errorLogInfo?.provider || provider || 'unknown').trim() || 'unknown';
+              logData.model = String(errorLogInfo?.model || model || 'unknown').trim() || 'unknown';
+              logData.projectId = String(errorLogInfo?.projectId || project?.id || 'unknown').trim() || 'unknown';
+              logData.timestamp = String(errorLogInfo?.timestamp || new Date().toISOString()).trim() || new Date().toISOString();
+              
+              // Final validation - ensure logData has meaningful content
+              const hasValidData = Object.values(logData).some(val => {
+                if (typeof val === 'string') return val !== 'unknown' && val !== '(no response text)';
+                if (typeof val === 'object' && val !== null) return Object.keys(val).length > 0;
+                return val !== null && val !== undefined;
+              });
+              
+              if (!hasValidData || Object.keys(logData).length === 0) {
+                // Fallback: create minimal but valid error log
+                logData.error = String(errorMessage || 'AI chat request failed');
+                logData.status = String(chatResponse?.status || 'unknown');
+                logData.statusText = String(chatResponse?.statusText || 'unknown');
+                logData.provider = String(provider || 'unknown');
+                logData.model = String(model || 'unknown');
+                logData.projectId = String(project?.id || 'unknown');
+                logData.timestamp = new Date().toISOString();
+                logData.note = 'Error log data was empty or invalid - using fallback values';
+              }
+              
+              // Log with validation
+              try {
+                // Test serialization before logging
+                JSON.stringify(logData);
+                console.error('❌ AI chat request failed:', logData);
+              } catch (serializeError) {
+                // If serialization fails, log minimal safe data
+                console.error('❌ AI chat request failed:', {
+                  error: String(errorMessage || 'Unknown error'),
+                  status: String(chatResponse?.status || 'unknown'),
+                  statusText: String(chatResponse?.statusText || 'unknown'),
+                  provider: String(provider || 'unknown'),
+                  model: String(model || 'unknown'),
+                  projectId: String(project?.id || 'unknown'),
+                  note: 'Full error details could not be serialized'
+                });
+              }
             } else if (chatResponse.status < 400 && !requestCompleted) {
               // Log warning for non-error status codes (shouldn't happen, but log for debugging)
               console.warn('⚠️ Unexpected response status (not an error):', {
@@ -652,22 +726,37 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
             errorType = typeof chatError;
           }
           
-          // Ensure we always log meaningful information
-          const errorInfo = {
-            errorType,
-            errorMessage,
-            errorDetails: errorDetails || 'No additional details',
-            projectId: project.id,
-            provider: provider,
-            model: model,
-            hasApiKey: !!userApiKey,
-            errorObject: chatError ? (chatError instanceof Error ? {
-              name: chatError.name,
-              message: chatError.message,
-              stack: chatError.stack
-            } : chatError) : null,
-            timestamp: new Date().toISOString(),
+          // Ensure we always log meaningful information - all values must be serializable
+          const errorInfo: Record<string, any> = {
+            errorType: String(errorType || 'unknown'),
+            errorMessage: String(errorMessage || 'Unknown error'),
+            errorDetails: String(errorDetails || 'No additional details'),
+            projectId: String(project.id || 'unknown'),
+            provider: String(provider || 'unknown'),
+            model: String(model || 'unknown'),
+            hasApiKey: Boolean(userApiKey),
+            timestamp: String(new Date().toISOString()),
           };
+          
+          // Safely add error object details if available
+          if (chatError instanceof Error) {
+            errorInfo.errorName = String(chatError.name || 'Error');
+            errorInfo.errorMessage = String(chatError.message || errorMessage);
+            errorInfo.errorStack = String(chatError.stack || 'No stack trace');
+          } else if (chatError && typeof chatError === 'object') {
+            try {
+              const errorStr = JSON.stringify(chatError);
+              errorInfo.errorObject = JSON.parse(errorStr);
+            } catch (serializeError) {
+              errorInfo.errorObject = { note: 'Error object could not be serialized' };
+            }
+          }
+          
+          // Final validation - ensure errorInfo is not empty
+          if (Object.keys(errorInfo).length === 0) {
+            errorInfo.error = 'Error logging failed - no data available';
+            errorInfo.errorMessage = String(errorMessage || 'Unknown error');
+          }
           
           console.error('❌ Error calling AI chat:', errorInfo);
           

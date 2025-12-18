@@ -132,10 +132,27 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
           // Show error message
           try {
             const errorData = JSON.parse(autoError);
+            let errorContent = `❌ Error: ${errorData.error || 'Failed to generate files'}`;
+            
+            // Add more helpful error details if available
+            if (errorData.details) {
+              if (typeof errorData.details === 'string') {
+                errorContent += `\n\nDetails: ${errorData.details}`;
+              } else if (errorData.details.error) {
+                errorContent += `\n\nDetails: ${errorData.details.error}`;
+              }
+            }
+            
+            if (errorData.suggestion) {
+              errorContent += `\n\n💡 ${errorData.suggestion}`;
+            } else {
+              errorContent += `\n\n💡 Please check your API key settings (⚙️ icon) and try asking the AI manually to create your app.`;
+            }
+            
             const errorMessage: Message = {
               id: `auto-error-${timestamp}`,
               role: 'assistant',
-              content: `❌ Error: ${errorData.error || 'Failed to generate files'}\n\nPlease try asking the AI manually to create your app.`,
+              content: errorContent,
               timestamp: new Date(),
             };
             
