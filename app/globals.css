@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
 @import 'tailwindcss';
 @import '@fortawesome/fontawesome-free/css/all.min.css';
 
@@ -50,7 +51,8 @@ html, body {
   --shadow-neon-blue: 0 0 16px #38bdf880;
   --shadow-neon-cyan: 0 0 16px #0ff0fc90;
   --shadow-neon-purple: 0 0 16px #a78bfa70;
-  --font-sans: 'Geist', 'Inter', 'Segoe UI', Arial, Helvetica, sans-serif;
+  --font-space-grotesk: 'Space Grotesk', 'Geist', 'Inter', 'Segoe UI', Arial, Helvetica, sans-serif;
+  --font-sans: var(--font-space-grotesk);
   --font-mono: 'Fira Mono', 'Geist Mono', monospace;
 }
 

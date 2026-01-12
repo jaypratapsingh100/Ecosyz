@@ -15,6 +15,56 @@ function removeImports(code: string): string {
   return code;
 }
 
+// Helper function to remove CommonJS exports (module.exports, exports.)
+function removeCommonJSExports(code: string): string {
+  // Remove module.exports = ... patterns
+  code = code.replace(/module\.exports\s*=\s*[^;]+;?\s*/g, '');
+  // Remove exports.xxx = ... patterns
+  code = code.replace(/exports\.\w+\s*=\s*[^;]+;?\s*/g, '');
+  // Remove module.exports = { ... } patterns (multiline)
+  code = code.replace(/module\.exports\s*=\s*\{[\s\S]*?\};?\s*/g, '');
+  // Remove exports = ... patterns
+  code = code.replace(/exports\s*=\s*[^;]+;?\s*/g, '');
+  // Remove any remaining module.exports references
+  code = code.replace(/module\.exports\s*[^;]*;?\s*/g, '');
+  // Remove any remaining exports references
+  code = code.replace(/exports\s*[^;]*;?\s*/g, '');
+  return code;
+}
+
+// Helper function to process Tailwind CSS
+function processTailwindCSS(cssContent: string): { processed: string; usesTailwind: boolean } {
+  // Check for Tailwind directives or Tailwind utility classes in CSS
+  const hasTailwindDirectives = /@tailwind|@apply/.test(cssContent);
+  const hasTailwindClasses = /\b(bg-|text-|p-|m-|flex|grid|rounded|shadow|hover:|focus:|transition|duration|ease|backdrop-blur|w-|h-|max-w|min-h|border|gap-|space-)/.test(cssContent);
+  
+  // If CSS contains Tailwind directives, we need Tailwind CDN
+  const usesTailwind = hasTailwindDirectives || hasTailwindClasses;
+  
+  if (!usesTailwind) {
+    return { processed: cssContent, usesTailwind: false };
+  }
+  
+  // Process Tailwind directives
+  let processed = cssContent;
+  
+  // Remove @tailwind directives (base, components, utilities) - Tailwind Play CDN handles these automatically
+  // The CDN injects base, components, and utilities automatically, so we don't need these directives
+  processed = processed.replace(/@tailwind\s+(base|components|utilities);?\s*/g, '');
+  
+  // Keep @apply directives - Tailwind Play CDN can process them in <style> tags
+  // The CDN will compile @apply directives correctly
+  
+  return { processed, usesTailwind: true };
+}
+
+// Helper function to detect if JSX code uses Tailwind classes
+function detectTailwindInJS(jsContent: string): boolean {
+  // Check for common Tailwind class patterns in className attributes
+  const tailwindPattern = /className=["'][^"']*\b(bg-|text-|p-|m-|flex|grid|rounded|shadow|hover:|focus:|transition|duration|ease|backdrop-blur|w-|h-|max-w|min-h|border|gap-|space-)/;
+  return tailwindPattern.test(jsContent);
+}
+
 // Helper function to clean exports and ensure component is accessible
 function cleanExports(code: string): { cleaned: string; componentName?: string } {
   let cleaned = code;
@@ -105,9 +155,11 @@ function findAppFile(jsFiles: any[]): any {
     return null;
   }
 
-  // Priority: 1) isMain + .js, 2) .js, 3) isMain, 4) first match
+  // Priority: 1) isMain + App.jsx, 2) isMain + App.js, 3) App.jsx, 4) App.js, 5) isMain, 6) first match
   return (
+    appFileCandidates.find((f) => f.isMain && (f.name === 'App.jsx' || f.path.includes('App.jsx'))) ||
     appFileCandidates.find((f) => f.isMain && (f.name === 'App.js' || f.path.includes('App.js'))) ||
+    appFileCandidates.find((f) => f.name === 'App.jsx' || f.path.includes('App.jsx')) ||
     appFileCandidates.find((f) => f.name === 'App.js' || f.path.includes('App.js')) ||
     appFileCandidates.find((f) => f.isMain) ||
     appFileCandidates[0]
@@ -156,39 +208,88 @@ function extractComponentsFromJSX(jsxContent: string, componentFiles: any[]): st
 }
 
 // Helper function to process component files
-function processComponentFiles(componentFiles: any[], appFile: any): string {
+function processComponentFiles(componentFiles: any[], appFile: any): { processed: string; usesRouter: boolean } {
   let combinedJs = '';
+  let usesRouter = false;
 
   componentFiles.forEach((file) => {
     let fileContent = file.content;
 
-    // Remove imports
+    // Check if this component uses React Router (including Link/NavLink)
+    const fileUsesRouter = detectReactRouter(fileContent);
+    if (fileUsesRouter) {
+      usesRouter = true;
+      console.log(`🔍 Component ${file.path} uses React Router`);
+    }
+
+    // Remove CommonJS exports first (before other processing)
+    fileContent = removeCommonJSExports(fileContent);
+
+    // Remove imports (but keep router detection)
     fileContent = removeImports(fileContent);
 
     // Clean exports
-    const { cleaned } = cleanExports(fileContent);
+    const { cleaned, componentName } = cleanExports(fileContent);
     fileContent = cleaned;
-
+    
+    // Ensure component is available globally
     combinedJs += `\n// ${file.path}\n${fileContent}\n`;
+    
+    // If component has a name, ensure it's available globally
+    if (componentName) {
+      // Make sure it's available both locally and globally
+      combinedJs += `\nif (typeof ${componentName} !== 'undefined') { 
+  window.${componentName} = ${componentName};
+  console.log('✅ Component ${componentName} loaded and available');
+} else {
+  console.warn('⚠️ Component ${componentName} not found after processing ${file.path}');
+}\n`;
+    } else {
+      // Try to extract component name from file content if not found
+      const functionMatch = fileContent.match(/(?:function|const|var|let)\s+([A-Z][a-zA-Z0-9]*)\s*[=(]/);
+      if (functionMatch && functionMatch[1]) {
+        const extractedName = functionMatch[1];
+        combinedJs += `\nif (typeof ${extractedName} !== 'undefined') { 
+  window.${extractedName} = ${extractedName};
+  console.log('✅ Component ${extractedName} loaded (extracted from code)');
+}\n`;
+      }
+    }
   });
 
-  return combinedJs;
+  return { processed: combinedJs, usesRouter };
+}
+
+// Helper function to detect React Router usage
+function detectReactRouter(jsContent: string): boolean {
+  // Check for React Router imports
+  const hasRouterImport = /import.*from\s+['"]react-router-dom['"]/.test(jsContent);
+  
+  // Check for React Router components
+  const hasRouterComponents = /BrowserRouter|Routes|Route|Router/.test(jsContent);
+  
+  // CRITICAL: Check for Link/NavLink usage (components might use them without importing)
+  const hasLinkUsage = /<Link\s|<Link\s+to|<Link\s*\{|Link\s*\(|<\/Link>/.test(jsContent);
+  const hasNavLinkUsage = /<NavLink\s|<NavLink\s+to|<NavLink\s*\{|NavLink\s*\(|<\/NavLink>/.test(jsContent);
+  
+  // Check for router hooks
+  const hasRouterHooks = /useNavigate|useParams|useLocation|useHistory/.test(jsContent);
+  
+  return hasRouterImport || hasRouterComponents || hasLinkUsage || hasNavLinkUsage || hasRouterHooks;
 }
 
 // Helper function to process App file
-function processAppFile(appFile: any, componentFiles: any[]): string {
+function processAppFile(appFile: any, componentFiles: any[]): { processed: string; usesRouter: boolean } {
   let appContent = appFile.content;
   const originalContent = appContent;
 
   // Check for React Router
-  const usesRouter =
-    appContent.includes('react-router-dom') ||
-    appContent.includes('BrowserRouter') ||
-    appContent.includes('Routes') ||
-    appContent.includes('Route');
+  const usesRouter = detectReactRouter(appContent);
 
-  // If using React Router, extract route components
+  // If using React Router, we need to handle it specially
+  // For preview, we'll render all route components without routing
   if (usesRouter) {
+    // Extract all route components
     const routeElementMatches = appContent.match(/element=\{<(\w+)\s*\/>\}/g);
     const routeComponentsSet = new Set<string>();
     if (routeElementMatches) {
@@ -199,33 +300,107 @@ function processAppFile(appFile: any, componentFiles: any[]): string {
         }
       });
     }
+    
+    // Also find components used directly in JSX
+    const directComponentMatches = appContent.match(/<([A-Z][a-zA-Z0-9]*)\s*(?:\/>|>)/g);
+    if (directComponentMatches) {
+      directComponentMatches.forEach((m: string) => {
+        const match = m.match(/<([A-Z][a-zA-Z0-9]*)/);
+        if (match && match[1] && !['Router', 'BrowserRouter', 'Routes', 'Route', 'NavLink', 'Link'].includes(match[1])) {
+          routeComponentsSet.add(match[1]);
+        }
+      });
+    }
+    
     const routeComponents = Array.from(routeComponentsSet);
-
+    
+    // Find navigation component
     const navigationFile = componentFiles.find(
-      (f) => f.name === 'Navigation.js' || f.name === 'Navigation.jsx' || f.path.includes('Navigation')
+      (f) => f.name === 'Navigation.js' || f.name === 'Navigation.jsx' || f.name === 'Navbar.js' || f.name === 'Navbar.jsx' || f.path.includes('Navigation') || f.path.includes('Navbar')
     );
-    const hasNavigationInJSX = appContent.includes('<Navigation') || appContent.includes('Navigation />');
+    const hasNavigationInJSX = appContent.includes('<Navigation') || appContent.includes('Navigation />') || appContent.includes('<Navbar') || appContent.includes('Navbar />');
 
     const allComponents: string[] = [];
-    if (navigationFile && !routeComponents.includes('Navigation')) {
-      allComponents.push('Navigation');
-    } else if (hasNavigationInJSX && !routeComponents.includes('Navigation')) {
-      allComponents.push('Navigation');
+    
+    // Add navigation first if it exists
+    if (navigationFile || hasNavigationInJSX) {
+      const navName = navigationFile?.name?.includes('Navbar') ? 'Navbar' : 'Navigation';
+      if (!allComponents.includes(navName)) {
+        allComponents.push(navName);
+      }
     }
+    
+    // Add route components
     routeComponents.forEach((comp) => {
       if (!allComponents.includes(comp)) {
         allComponents.push(comp);
       }
     });
-
+    
+    // If we found components, render them all (for preview, show all routes stacked)
     if (allComponents.length > 0) {
+      console.log('🔧 Transforming React Router App - rendering components:', allComponents);
+      // Verify components exist in componentFiles
+      const missingComponents = allComponents.filter(comp => {
+        const found = componentFiles.some(f => 
+          f.name === `${comp}.js` || 
+          f.name === `${comp}.jsx` || 
+          f.path.includes(`/${comp}.`) ||
+          f.path.includes(`\\${comp}.`)
+        );
+        if (!found) {
+          console.warn(`⚠️ Component ${comp} not found in componentFiles`);
+        }
+        return !found;
+      });
+      
+      if (missingComponents.length > 0) {
+        console.warn('⚠️ Some components not found:', missingComponents);
+      }
+      
+      // Create a simple App that renders all components using JSX
+      // Ensure all components are available before rendering
       appContent = `function App() {
+  console.log('App rendering, checking components:', [${allComponents.map(c => `'${c}'`).join(', ')}]);
+  
+  // Check each component exists - try window first, then global scope
+  ${allComponents.map(c => `
+  const ${c}Component = typeof ${c} !== 'undefined' ? ${c} : (typeof window !== 'undefined' && typeof window.${c} !== 'undefined' ? window.${c} : null);`).join('')}
+  
+  const availableComponents = [${allComponents.map(c => `{ name: '${c}', component: ${c}Component }`).join(', ')}];
+  console.log('Components status:', availableComponents.map(c => ({ name: c.name, available: c.component !== null })));
+  
+  // Only render components that are actually available
+  const validComponents = availableComponents.filter(c => c.component !== null);
+  if (validComponents.length === 0) {
+    return React.createElement('div', { style: { padding: '40px', textAlign: 'center' } },
+      React.createElement('h1', null, 'No Components Loaded'),
+      React.createElement('p', null, 'Expected: ' + [${allComponents.map(c => `'${c}'`).join(', ')}].join(', ')),
+      React.createElement('p', { style: { fontSize: '12px', color: '#666', marginTop: '20px' } }, 'Check console for details')
+    );
+  }
+  
   return (
-    <div style="min-height: 100vh;">
-      ${allComponents.map((c) => `<${c} />`).join('\n      ')}
+    <div className="min-h-screen">
+      ${allComponents.map((c) => {
+        return `{${c}Component ? React.createElement(${c}Component) : React.createElement('div', { key: '${c}', style: { padding: '20px', border: '1px solid #ef4444', margin: '10px', backgroundColor: '#fee' } }, 'Component ${c} not loaded - check exports')}`;
+      }).join(',\n      ')}
     </div>
   );
 }`;
+    } else {
+      // Fallback: transform router code to render without routing
+      console.log('🔧 Transforming React Router App - removing router wrappers');
+      // Replace BrowserRouter/Router with div
+      appContent = appContent.replace(/BrowserRouter|Router/g, 'div');
+      // Replace Routes with div  
+      appContent = appContent.replace(/Routes/g, 'div');
+      // Replace Route elements with the component directly
+      appContent = appContent.replace(/<Route\s+path=["'][^"']+["']\s+element=\{<(\w+)\s*\/>\}\s*\/?>/g, '<$1 />');
+      // Remove any remaining Route closing tags
+      appContent = appContent.replace(/<\/Route>/g, '');
+      // Remove main wrapper if it only contains Routes
+      appContent = appContent.replace(/<main[^>]*>\s*<div>\s*<\/div>\s*<\/main>/g, '');
     }
   } else {
     // Extract components from JSX
@@ -244,7 +419,10 @@ function processAppFile(appFile: any, componentFiles: any[]): string {
     }
   }
 
-  // Remove imports
+  // Remove CommonJS exports first
+  appContent = removeCommonJSExports(appContent);
+
+  // Remove imports (but keep React Router detection)
   appContent = removeImports(appContent);
 
   // Clean exports and ensure App is defined
@@ -256,15 +434,108 @@ function processAppFile(appFile: any, componentFiles: any[]): string {
   if (appContent.match(/(?:function|const)\s+App\s*[=(]/)) {
     // App is already defined
     appDefinition = appContent;
+    // Make sure App is available globally
+    appDefinition += '\nif (typeof App !== "undefined") { window.App = App; }';
   } else if (componentName) {
     // Component has a name, use it
-    appDefinition = `${appContent}\nconst App = ${componentName};`;
+    appDefinition = `${appContent}\nconst App = ${componentName};\nif (typeof App !== "undefined") { window.App = App; }`;
   } else {
     // Last resort: wrap as AppComponent
-    appDefinition = `const AppComponent = ${appContent.trim()};\nconst App = AppComponent;`;
+    appDefinition = `const AppComponent = ${appContent.trim()};\nconst App = AppComponent;\nif (typeof App !== "undefined") { window.App = App; }`;
   }
 
-  return `\n// ${appFile.path} - App component\n${appDefinition}\n`;
+  return { processed: `\n// ${appFile.path} - App component\n${appDefinition}\n`, usesRouter };
+}
+
+// Sandbox validation function - validates preview before returning
+function validatePreviewSandbox(htmlContent: string, project: any): { 
+  valid: boolean; 
+  error?: string; 
+  warnings?: string[];
+  checks: {
+    hasHTMLStructure: boolean;
+    hasReactScripts: boolean;
+    hasRootElement: boolean;
+    hasAppComponent: boolean;
+    hasValidStructure: boolean;
+  };
+} {
+  const warnings: string[] = [];
+  const checks = {
+    hasHTMLStructure: false,
+    hasReactScripts: false,
+    hasRootElement: false,
+    hasAppComponent: false,
+    hasValidStructure: false,
+  };
+
+  // Check 1: Has basic HTML structure
+  const hasDoctype = htmlContent.includes('<!DOCTYPE html>') || htmlContent.includes('<!doctype html>');
+  const hasHtmlTag = htmlContent.includes('<html') || htmlContent.includes('<HTML');
+  const hasHeadTag = htmlContent.includes('<head') || htmlContent.includes('<HEAD');
+  const hasBodyTag = htmlContent.includes('<body') || htmlContent.includes('<BODY');
+  checks.hasHTMLStructure = hasDoctype && hasHtmlTag && hasHeadTag && hasBodyTag;
+
+  if (!checks.hasHTMLStructure) {
+    return {
+      valid: false,
+      error: 'Preview HTML missing basic structure (DOCTYPE, html, head, or body tags)',
+      checks,
+    };
+  }
+
+  // Check 2: Has React scripts (required for React apps)
+  const hasReactScript = htmlContent.includes('react') || htmlContent.includes('React');
+  const hasReactDOMScript = htmlContent.includes('react-dom') || htmlContent.includes('ReactDOM');
+  const hasBabelScript = htmlContent.includes('babel') || htmlContent.includes('Babel');
+  checks.hasReactScripts = hasReactScript && hasReactDOMScript && hasBabelScript;
+
+  if (!checks.hasReactScripts) {
+    warnings.push('Preview may be missing React/ReactDOM/Babel scripts');
+  }
+
+  // Check 3: Has root element
+  const hasRootDiv = htmlContent.includes('id="root"') || htmlContent.includes("id='root'");
+  checks.hasRootElement = hasRootDiv;
+
+  if (!checks.hasRootElement) {
+    return {
+      valid: false,
+      error: 'Preview HTML missing root element (div with id="root")',
+      checks,
+      warnings,
+    };
+  }
+
+  // Check 4: Has App component reference
+  const hasAppReference = htmlContent.includes('App') || 
+                          htmlContent.includes('React.createElement(App)') ||
+                          htmlContent.includes('root.render') ||
+                          htmlContent.includes('createRoot');
+  checks.hasAppComponent = hasAppReference;
+
+  if (!checks.hasAppComponent) {
+    warnings.push('Preview may be missing App component rendering logic');
+  }
+
+  // Check 5: Has valid script structure
+  const hasScriptTag = htmlContent.includes('<script') || htmlContent.includes('<SCRIPT');
+  const scriptCount = (htmlContent.match(/<script/gi) || []).length;
+  checks.hasValidStructure = hasScriptTag && scriptCount >= 2; // At least React and Babel scripts
+
+  if (!checks.hasValidStructure) {
+    warnings.push('Preview may have insufficient script tags');
+  }
+
+  // Overall validation - must have HTML structure and root element
+  const isValid = checks.hasHTMLStructure && checks.hasRootElement;
+
+  return {
+    valid: isValid,
+    error: isValid ? undefined : 'Preview validation failed - missing critical elements',
+    warnings: warnings.length > 0 ? warnings : undefined,
+    checks,
+  };
 }
 
 // Main preview generation function
@@ -317,7 +588,8 @@ function generatePreview(project: any): string {
   // Priority: JS files > complete HTML > basic HTML > CSS only > fallback
   if (jsFiles.length > 0) {
     // Build React app from JS files
-    const cssContent = cssFiles.map((f: any) => f.content).join('\n\n');
+    const rawCssContent = cssFiles.map((f: any) => f.content).join('\n\n');
+    const { processed: cssContent, usesTailwind: cssUsesTailwind } = processTailwindCSS(rawCssContent);
 
     // Find App file
     const appFile = findAppFile(jsFiles);
@@ -340,22 +612,34 @@ function generatePreview(project: any): string {
 
     // Process files
     let combinedJs = '';
+    let usesReactRouter = false;
     
     // Add component files first
-    combinedJs += processComponentFiles(componentFiles as any[], appFile);
+    const componentResult = processComponentFiles(componentFiles as any[], appFile);
+    combinedJs += componentResult.processed;
+    usesReactRouter = usesReactRouter || componentResult.usesRouter;
 
     // Add App file
     if (appFile) {
-      combinedJs += processAppFile(appFile as any, componentFiles as any[]);
+      const appResult = processAppFile(appFile as any, componentFiles as any[]);
+      combinedJs += appResult.processed;
+      usesReactRouter = usesReactRouter || appResult.usesRouter;
     } else if (jsFiles.length > 0) {
       // No App file, use first component as App
       const firstFile = jsFiles.find((f: any) => f.id !== indexFile?.id) || jsFiles[0];
       let firstContent = firstFile.content;
+      firstContent = removeCommonJSExports(firstContent);
       firstContent = removeImports(firstContent);
       const { cleaned, componentName } = cleanExports(firstContent);
       const finalName = componentName || 'App';
       combinedJs += `\n// Using ${firstFile.path} as App\n${cleaned}\nconst App = ${finalName};\n`;
     }
+    
+    // Detect if JS code uses Tailwind classes
+    const jsUsesTailwind = detectTailwindInJS(combinedJs);
+    
+    // Use Tailwind if either CSS or JS uses it
+    const usesTailwind = cssUsesTailwind || jsUsesTailwind;
 
     // Generate HTML with React
     return `<!DOCTYPE html>
@@ -363,7 +647,20 @@ function generatePreview(project: any): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.tailwindcss.com https://fonts.googleapis.com https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https: http: blob:; connect-src 'self' https://cdn.tailwindcss.com https://picsum.photos https://images.unsplash.com https://via.placeholder.com https://i.pravatar.cc https://images.pexels.com;">
   <title>${project.title}</title>
+  ${usesTailwind ? `
+  <!-- Tailwind CSS Play CDN - Processes Tailwind directives in browser -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    // Configure Tailwind if needed
+    tailwind.config = {
+      theme: {
+        extend: {},
+      },
+    };
+  </script>
+  ` : ''}
   <style>
     * {
       margin: 0;
@@ -381,7 +678,10 @@ function generatePreview(project: any): string {
     }
     ${cssContent}
   </style>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline';">
+  ${usesReactRouter ? `
+  <!-- React Router CDN -->
+  <script crossorigin src="https://unpkg.com/react-router-dom@6/dist/umd/react-router-dom.production.min.js"></script>
+  ` : ''}
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -391,35 +691,162 @@ function generatePreview(project: any): string {
   <script type="text/babel">
     const { useState, useEffect, useRef, useCallback, useMemo, useContext, createContext } = React;
     
+    // CRITICAL: Always create Link and NavLink stubs FIRST (before any components load)
+    // This prevents "Link is not defined" errors in Navigation and other components
+    if (typeof window.Link === 'undefined') {
+      window.Link = function Link({ to, children, className, style, onClick, ...props }) {
+        return React.createElement('a', { 
+          href: to || '#', 
+          className: className,
+          style: style,
+          onClick: (e) => {
+            e.preventDefault();
+            if (onClick) onClick(e);
+          },
+          ...props 
+        }, children);
+      };
+      console.log('✅ Created stub Link component (always available)');
+    }
+    
+    if (typeof window.NavLink === 'undefined') {
+      window.NavLink = function NavLink({ to, children, className, style, onClick, ...props }) {
+        return React.createElement('a', { 
+          href: to || '#', 
+          className: className,
+          style: style,
+          onClick: (e) => {
+            e.preventDefault();
+            if (onClick) onClick(e);
+          },
+          ...props 
+        }, children);
+      };
+      console.log('✅ Created stub NavLink component (always available)');
+    }
+    
+    ${usesReactRouter ? `
+    // React Router components - try to use real ones, fallback to stubs
+    const ReactRouterDOM = window.ReactRouterDOM || {};
+    const { BrowserRouter, Routes, Route, useNavigate, useParams, useLocation } = ReactRouterDOM;
+    
+    // Use real Link/NavLink if React Router CDN loaded, otherwise keep stubs
+    if (ReactRouterDOM.Link) {
+      window.Link = ReactRouterDOM.Link;
+      console.log('✅ Using real React Router Link component');
+    }
+    if (ReactRouterDOM.NavLink) {
+      window.NavLink = ReactRouterDOM.NavLink;
+      console.log('✅ Using real React Router NavLink component');
+    }
+    
+    // Make other router components available globally
+    if (ReactRouterDOM.BrowserRouter) window.BrowserRouter = ReactRouterDOM.BrowserRouter;
+    if (ReactRouterDOM.Routes) window.Routes = ReactRouterDOM.Routes;
+    if (ReactRouterDOM.Route) window.Route = ReactRouterDOM.Route;
+    ` : ''}
+    
+    // Prevent CommonJS module errors in browser
+    if (typeof module === 'undefined') {
+      window.module = { exports: {} };
+    }
+    if (typeof exports === 'undefined') {
+      window.exports = {};
+    }
+    
     console.log('Starting preview render...');
+    ${usesReactRouter ? `console.log('React Router detected - components should render without routing');` : ''}
+    console.log('Combined JS length:', ${combinedJs.length});
     
     try {
+      // Load all components first
       ${combinedJs}
+      
+      // Log what was loaded
+      console.log('📦 Components loaded. Checking availability...');
+      
+      // Log all available components after loading
+      const allComponents = Object.keys(window).filter(k => 
+        typeof window[k] === 'function' && 
+        k[0] === k[0].toUpperCase() && 
+        !k.startsWith('_') &&
+        !['React', 'ReactDOM', 'Babel', 'BrowserRouter', 'Routes', 'Route', 'Link', 'NavLink'].includes(k)
+      );
+      console.log('📦 Available components after loading:', allComponents);
+      
+      // Check for common component names that might be defined but not on window
+      const commonComponentNames = ['Navbar', 'Navigation', 'Home', 'About', 'Contact', 'Footer', 'Header', 'Pricing', 'Gallery'];
+      commonComponentNames.forEach(name => {
+        try {
+          if (typeof eval(name) === 'function' && !window[name]) {
+            window[name] = eval(name);
+            console.log('✅ Found', name, 'in scope and added to window');
+          }
+        } catch (e) {
+          // Component not in scope, that's okay
+        }
+      });
       
       // Ensure App is defined
       if (typeof App === 'undefined') {
-        console.warn('App component not found, searching for alternatives...');
-        const available = Object.keys(window).filter(k => 
-          typeof window[k] === 'function' && 
-          k[0] === k[0].toUpperCase() && 
-          !k.startsWith('_') &&
-          !['React', 'ReactDOM', 'Babel'].includes(k)
-        );
-        console.log('Available components:', available);
+        console.warn('⚠️ App component not found, searching for alternatives...');
+        console.log('Available components:', allComponents);
         
-        const appComponent = available.find(c => c.toLowerCase() === 'app') || available[0];
+        const appComponent = allComponents.find(c => c.toLowerCase() === 'app') || allComponents[0];
         if (appComponent) {
-          console.log('Using', appComponent, 'as App');
+          console.log('✅ Using', appComponent, 'as App');
           window.App = window[appComponent];
         } else {
-          throw new Error('No App component found and no alternative components available.');
+          console.error('❌ No App component found! Available:', allComponents);
+          // Create a simple fallback App
+          window.App = function App() {
+            return React.createElement('div', { style: { padding: '40px', textAlign: 'center' } },
+              React.createElement('h1', null, 'Preview'),
+              React.createElement('p', null, 'App component not found. Available components: ' + allComponents.join(', ')),
+              React.createElement('p', { style: { marginTop: '20px', fontSize: '12px', color: '#666' } }, 
+                'Check browser console for details.'
+              )
+            );
+          };
         }
       }
       
-      // Render App
-      const root = ReactDOM.createRoot(document.getElementById('root'));
-      root.render(React.createElement(App));
-      console.log('Preview render completed successfully');
+      console.log('✅ App component found:', typeof App);
+      if (App && App.toString) {
+        console.log('App function preview:', App.toString().substring(0, 300));
+      }
+      
+      // Check if root element exists
+      const rootElement = document.getElementById('root');
+      if (!rootElement) {
+        throw new Error('Root element not found!');
+      }
+      console.log('✅ Root element found');
+      
+      // Render App with error boundary
+      console.log('🎨 Rendering App...');
+      try {
+        const root = ReactDOM.createRoot(rootElement);
+        root.render(React.createElement(App));
+        console.log('✅ Preview render completed successfully');
+        
+        // Double-check if something was rendered
+        setTimeout(() => {
+          const rootContent = document.getElementById('root')?.innerHTML;
+          if (!rootContent || rootContent.trim().length === 0) {
+            console.error('⚠️ Root is still empty after render!');
+            console.log('Root element:', document.getElementById('root'));
+            // Try rendering a simple fallback
+            rootElement.innerHTML = '<div style="padding: 40px; text-align: center;"><h1>Preview</h1><p>Content is loading...</p><p style="font-size: 12px; color: #666;">Check console for errors</p></div>';
+          } else {
+            console.log('✅ Content rendered, length:', rootContent.length);
+          }
+        }, 1000);
+      } catch (renderError) {
+        console.error('❌ Error during render:', renderError);
+        rootElement.innerHTML = '<div style="padding: 20px; color: #ef4444;"><h2>Render Error</h2><p>' + renderError.message + '</p><pre style="font-size: 12px; margin-top: 10px;">' + renderError.stack + '</pre></div>';
+        throw renderError;
+      }
     } catch (error) {
       console.error('Error rendering app:', error);
       const root = document.getElementById('root');
@@ -546,6 +973,26 @@ export async function POST(
         if (!htmlContent || htmlContent.trim().length === 0) {
           throw new Error('Generated preview HTML is empty');
         }
+
+        // Sandbox validation: Validate preview (non-blocking - logs warnings but doesn't fail)
+        console.log('🔍 Sandbox validation: Validating preview structure...');
+        const sandboxValidation = validatePreviewSandbox(htmlContent, project);
+        
+        if (!sandboxValidation.valid) {
+          console.warn('⚠️ Sandbox validation failed:', sandboxValidation.error);
+          console.warn('Validation checks:', sandboxValidation.checks);
+          // Don't throw error - still return preview, but log the issue
+          // This allows preview to be shown even if validation fails (graceful degradation)
+        } else {
+          console.log('✅ Sandbox validation passed:', {
+            checks: sandboxValidation.checks,
+            htmlLength: htmlContent.length,
+          });
+        }
+
+        if (sandboxValidation.warnings && sandboxValidation.warnings.length > 0) {
+          console.warn('⚠️ Sandbox validation warnings:', sandboxValidation.warnings);
+        }
         
         console.log(`Preview generated successfully, length: ${htmlContent.length}`);
       } catch (error: any) {
@@ -629,17 +1076,46 @@ export async function POST(
       type: 'html',
     });
   } catch (error: any) {
-    console.error('Preview API error:', error);
-    
-    // Extract meaningful error message
+    // Extract meaningful error message with proper serialization
     let errorMessage = 'Failed to generate preview';
+    let errorDetails: Record<string, string> = {
+      errorType: typeof error === 'object' && error !== null ? error.constructor?.name || 'Object' : typeof error,
+      timestamp: new Date().toISOString(),
+    };
+    
     if (error?.message) {
       errorMessage = error.message;
+      errorDetails.errorMessage = String(error.message);
     } else if (typeof error === 'string') {
       errorMessage = error;
+      errorDetails.errorMessage = error;
     } else if (error?.toString) {
       errorMessage = error.toString();
+      errorDetails.errorMessage = error.toString();
     }
+    
+    if (error?.stack) {
+      errorDetails.errorStack = String(error.stack).substring(0, 500);
+    }
+    
+    // Try to serialize error object
+    try {
+      const errorStr = JSON.stringify(error, (key, value) => {
+        if (value === undefined) return 'undefined';
+        if (value === null) return 'null';
+        if (typeof value === 'function') return '[Function]';
+        if (typeof value === 'symbol') return '[Symbol]';
+        return value;
+      });
+      if (errorStr !== '{}') {
+        errorDetails.errorObject = errorStr.substring(0, 1000);
+      }
+    } catch (serializeError) {
+      errorDetails.serializationError = String(serializeError);
+    }
+    
+    console.error('Preview API error:', JSON.stringify(errorDetails, null, 2));
+    console.error('Raw error:', error);
 
     // Save error execution log
     try {
@@ -658,12 +1134,13 @@ export async function POST(
       console.error('Error saving execution error:', execError);
     }
 
-    // Always return a proper JSON error response
+    // Always return a proper JSON error response with detailed error info
     return NextResponse.json(
       {
         status: 'error',
         output: null,
         error: errorMessage,
+        errorDetails: errorDetails,
         type: 'error',
       },
       { 

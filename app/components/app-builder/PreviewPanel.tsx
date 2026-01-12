@@ -15,15 +15,22 @@ export default function PreviewPanel({ projectId, projectType, onRefresh }: Prev
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const generatePreview = async () => {
-    if (!projectId) return;
+    if (!projectId) {
+      console.warn('⚠️ PreviewPanel: No projectId provided');
+      return;
+    }
 
+    console.log('🔍 PreviewPanel: Generating preview for project:', projectId);
     setLoading(true);
     setError(null);
 
     try {
+      console.log('📡 PreviewPanel: Calling preview API...');
       const res = await fetch(`/api/app-projects/${projectId}/preview`, {
         method: 'POST',
       });
+      
+      console.log('📡 PreviewPanel: API response status:', res.status, res.statusText);
 
       if (res.ok) {
         const data = await res.json().catch((parseError) => {
@@ -31,22 +38,45 @@ export default function PreviewPanel({ projectId, projectType, onRefresh }: Prev
           return { status: 'error', error: 'Invalid response from preview API' };
         });
         
-        console.log('Preview API response:', data);
-        console.log('Preview HTML length:', data.output?.length || 0);
+        console.log('📥 PreviewPanel: API response received:', {
+          status: data.status,
+          hasOutput: !!data.output,
+          outputLength: data.output?.length || 0,
+          error: data.error,
+          type: data.type
+        });
         
-        if (data.output) {
+        if (data.output && data.output.length > 0) {
           // Accept any output, even if status is not 'success'
+          console.log('✅ PreviewPanel: Setting preview HTML, length:', data.output.length);
           setPreviewHtml(data.output);
           setError(null);
-          console.log('Preview HTML set successfully');
+          console.log('✅ PreviewPanel: Preview HTML set successfully');
         } else if (data.status === 'error') {
           const errorMsg = data.error || 'Failed to generate preview';
-          console.error('Preview API error:', errorMsg);
+          const errorDetails = data.errorDetails || {};
+          
+          // Log detailed error information
+          console.error('❌ PreviewPanel: Preview API error:', {
+            error: errorMsg,
+            errorDetails: Object.keys(errorDetails).length > 0 ? errorDetails : undefined,
+            status: data.status,
+            type: data.type,
+            responseData: data
+          });
+          
           setError(errorMsg);
           setPreviewHtml(null);
         } else {
-          console.error('No preview output in response:', data);
-          setError(data.error || 'No preview output received');
+          console.error('⚠️ PreviewPanel: No preview output in response:', {
+            status: data.status,
+            error: data.error,
+            hasOutput: !!data.output,
+            outputLength: data.output?.length || 0,
+            responseKeys: Object.keys(data),
+            fullResponse: data
+          });
+          setError(data.error || 'No preview output received. Please check console for details.');
           setPreviewHtml(null);
         }
       } else {
@@ -78,11 +108,18 @@ export default function PreviewPanel({ projectId, projectType, onRefresh }: Prev
         }
         
         const errorMessage = errorData.error || errorData.message || `Failed to generate preview (HTTP ${res.status})`;
+        
+        // Ensure errorData is properly serialized (handle empty objects)
+        const serializedErrorData = Object.keys(errorData).length > 0 
+          ? errorData 
+          : { error: `HTTP ${res.status}: ${res.statusText || 'Unknown error'}` };
+        
         console.error('Preview API error:', {
           status: res.status,
           statusText: res.statusText,
-          errorData,
-          errorMessage
+          errorData: serializedErrorData,
+          errorMessage,
+          hasErrorData: Object.keys(errorData).length > 0
         });
         
         setError(errorMessage);
@@ -101,7 +138,14 @@ export default function PreviewPanel({ projectId, projectType, onRefresh }: Prev
   useEffect(() => {
     // Auto-generate preview when project changes
     if (projectId) {
-      generatePreview();
+      console.log('🔄 PreviewPanel: Project ID changed, generating preview:', projectId);
+      // Small delay to ensure component is mounted
+      const timer = setTimeout(() => {
+        generatePreview();
+      }, 100);
+      return () => clearTimeout(timer);
+    } else {
+      console.warn('⚠️ PreviewPanel: No projectId in useEffect');
     }
   }, [projectId]);
 
@@ -228,12 +272,15 @@ export default function PreviewPanel({ projectId, projectType, onRefresh }: Prev
               srcDoc={previewHtml}
               className="w-full h-full border-0"
               title="Preview"
-              sandbox="allow-scripts allow-same-origin allow-forms"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
               style={{ backgroundColor: '#fff' }}
-              onLoad={() => console.log('Preview iframe loaded successfully')}
+              onLoad={() => {
+                console.log('✅ PreviewPanel: Preview iframe loaded successfully');
+                console.log('📊 PreviewPanel: Preview HTML length:', previewHtml.length);
+              }}
               onError={(e) => {
-                console.error('Preview iframe error:', e);
-                setError('Failed to load preview content');
+                console.error('❌ PreviewPanel: Preview iframe error:', e);
+                setError('Failed to load preview content. Check browser console for details.');
               }}
             />
             {!loading && (

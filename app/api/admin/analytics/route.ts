@@ -446,7 +446,7 @@ export async function GET(req: NextRequest) {
           select: { createdAt: true },
         });
         const dailySearchesMap = new Map<string, number>();
-        searchesLast30Days.forEach((search) => {
+        searchesLast30Days.forEach((search: { createdAt: Date }) => {
           const date = search.createdAt.toISOString().split('T')[0];
           dailySearchesMap.set(date, (dailySearchesMap.get(date) || 0) + 1);
         });

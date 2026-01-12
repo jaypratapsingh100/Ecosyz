@@ -1,15 +1,13 @@
 import type { Metadata } from 'next';
-import { Space_Grotesk } from 'next/font/google';
 import './globals.css';
 import { ThemeProvider } from 'next-themes';
 import { Providers } from './components/Providers';
 import AnalyticsTracker from './components/AnalyticsTracker';
 
-const spaceGrotesk = Space_Grotesk({
-  subsets: ['latin'],
-  weight: ['300', '400', '500', '600', '700'],
+// Font variable - using CSS fallback instead of Google Fonts to avoid build-time network issues
+const spaceGrotesk = {
   variable: '--font-space-grotesk',
-});
+};
 
 export const metadata: Metadata = {
   title: 'Open Idea',

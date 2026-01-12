@@ -3,6 +3,65 @@ import { prisma } from '../../../../../src/lib/db';
 import { getCurrentUser, ensureUserInDb } from '../../../../../src/lib/auth';
 import { deployToVercel, getClaimableDeploymentUrl } from '../../../../../src/lib/vercel';
 
+// Helper function to remove CommonJS exports
+function removeCommonJSExports(code: string): string {
+  code = code.replace(/module\.exports\s*=\s*[^;]+;?\s*/g, '');
+  code = code.replace(/exports\.\w+\s*=\s*[^;]+;?\s*/g, '');
+  code = code.replace(/module\.exports\s*=\s*\{[\s\S]*?\};?\s*/g, '');
+  code = code.replace(/exports\s*=\s*[^;]+;?\s*/g, '');
+  code = code.replace(/module\.exports\s*[^;]*;?\s*/g, '');
+  code = code.replace(/exports\s*[^;]*;?\s*/g, '');
+  return code;
+}
+
+// Helper function to remove imports
+function removeImports(code: string): string {
+  code = code.replace(/import\s+['"].*?\.css['"];?\s*/g, '');
+  code = code.replace(/import\s+.*?from\s+['"]react-router-dom['"];?\s*/g, '');
+  code = code.replace(/import\s+.*?from\s+['"].*?['"];?\s*/g, '');
+  code = code.replace(/import\s+React[^;]*;?\s*/g, '');
+  return code;
+}
+
+// Helper function to process Tailwind CSS
+function processTailwindCSS(cssContent: string): { processed: string; usesTailwind: boolean } {
+  const hasTailwindDirectives = /@tailwind|@apply/.test(cssContent);
+  const hasTailwindClasses = /\b(bg-|text-|p-|m-|flex|grid|rounded|shadow|hover:|focus:|transition|duration|ease|backdrop-blur|w-|h-|max-w|min-h|border|gap-|space-)/.test(cssContent);
+  const usesTailwind = hasTailwindDirectives || hasTailwindClasses;
+  
+  if (!usesTailwind) {
+    return { processed: cssContent, usesTailwind: false };
+  }
+  
+  let processed = cssContent;
+  processed = processed.replace(/@tailwind\s+(base|components|utilities);?\s*/g, '');
+  return { processed, usesTailwind: true };
+}
+
+// Helper function to detect if JSX code uses Tailwind classes
+function detectTailwindInJS(jsContent: string): boolean {
+  const tailwindPattern = /className=["'][^"']*\b(bg-|text-|p-|m-|flex|grid|rounded|shadow|hover:|focus:|transition|duration|ease|backdrop-blur|w-|h-|max-w|min-h|border|gap-|space-)/;
+  return tailwindPattern.test(jsContent);
+}
+
+// Helper function to detect React Router usage
+function detectReactRouter(jsContent: string): boolean {
+  // Check for React Router imports
+  const hasRouterImport = /import.*from\s+['"]react-router-dom['"]/.test(jsContent);
+  
+  // Check for React Router components
+  const hasRouterComponents = /BrowserRouter|Routes|Route|Router/.test(jsContent);
+  
+  // CRITICAL: Check for Link/NavLink usage (components might use them without importing)
+  const hasLinkUsage = /<Link\s|<Link\s+to|<Link\s*\{|Link\s*\(|<\/Link>/.test(jsContent);
+  const hasNavLinkUsage = /<NavLink\s|<NavLink\s+to|<NavLink\s*\{|NavLink\s*\(|<\/NavLink>/.test(jsContent);
+  
+  // Check for router hooks
+  const hasRouterHooks = /useNavigate|useParams|useLocation|useHistory/.test(jsContent);
+  
+  return hasRouterImport || hasRouterComponents || hasLinkUsage || hasNavLinkUsage || hasRouterHooks;
+}
+
 // Helper function to build static files from project
 function buildStaticFiles(files: any[]): Array<{ path: string; content: string }> {
   const staticFiles: Array<{ path: string; content: string }> = [];
@@ -16,20 +75,34 @@ function buildStaticFiles(files: any[]): Array<{ path: string; content: string }
   let htmlContent = '';
 
   if (jsFiles.length > 0) {
-    // Build React app
-    const cssContent = cssFiles.map((f) => f.content).join('\n\n');
+    // Process CSS files
+    const rawCssContent = cssFiles.map((f) => f.content).join('\n\n');
+    const { processed: cssContent, usesTailwind: cssUsesTailwind } = processTailwindCSS(rawCssContent);
     
-    // Combine JS files
-    const jsContent = jsFiles
-      .map((f) => {
-        // Remove imports
-        let content = f.content.replace(/import\s+.*?from\s+['"].*?['"];?\s*/g, '');
-        // Clean exports
-        content = content.replace(/export\s+default\s+/g, '');
-        content = content.replace(/export\s+/g, '');
-        return `// ${f.path}\n${content}`;
-      })
-      .join('\n\n');
+    // Combine JS files with proper processing
+    let jsContent = '';
+    let usesReactRouter = false;
+    
+    jsFiles.forEach((f) => {
+      let content = f.content;
+      
+      // Check for React Router usage
+      if (detectReactRouter(content)) {
+        usesReactRouter = true;
+        console.log(`🔍 File ${f.path} uses React Router`);
+      }
+      
+      content = removeCommonJSExports(content);
+      content = removeImports(content);
+      // Clean exports
+      content = content.replace(/export\s+default\s+/g, '');
+      content = content.replace(/export\s+/g, '');
+      jsContent += `// ${f.path}\n${content}\n\n`;
+    });
+    
+    // Detect if JS uses Tailwind
+    const jsUsesTailwind = detectTailwindInJS(jsContent);
+    const usesTailwind = cssUsesTailwind || jsUsesTailwind;
 
     htmlContent = `<!DOCTYPE html>
 <html lang="en">
@@ -37,6 +110,17 @@ function buildStaticFiles(files: any[]): Array<{ path: string; content: string }
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>App</title>
+  ${usesTailwind ? `
+  <!-- Tailwind CSS Play CDN - Processes Tailwind directives in browser -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {},
+      },
+    };
+  </script>
+  ` : ''}
   <style>
     * {
       margin: 0;
@@ -44,7 +128,9 @@ function buildStaticFiles(files: any[]): Array<{ path: string; content: string }
       box-sizing: border-box;
     }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
       min-height: 100vh;
     }
     #root {
@@ -52,6 +138,11 @@ function buildStaticFiles(files: any[]): Array<{ path: string; content: string }
     }
     ${cssContent}
   </style>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.tailwindcss.com https://fonts.googleapis.com https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https: http: blob:; connect-src 'self' https://cdn.tailwindcss.com https://picsum.photos https://images.unsplash.com https://via.placeholder.com https://i.pravatar.cc https://images.pexels.com;">
+  ${usesReactRouter ? `
+  <!-- React Router CDN -->
+  <script crossorigin src="https://unpkg.com/react-router-dom@6/dist/umd/react-router-dom.production.min.js"></script>
+  ` : ''}
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -60,6 +151,74 @@ function buildStaticFiles(files: any[]): Array<{ path: string; content: string }
   <div id="root"></div>
   <script type="text/babel">
     const { useState, useEffect, useRef, useCallback, useMemo, useContext, createContext } = React;
+    
+    // CRITICAL: Always create Link and NavLink stubs FIRST (before any components load)
+    // This prevents "Link is not defined" errors in Navigation and other components
+    if (typeof window.Link === 'undefined') {
+      window.Link = function Link({ to, children, className, style, onClick, ...props }) {
+        return React.createElement('a', { 
+          href: to || '#', 
+          className: className,
+          style: style,
+          onClick: (e) => {
+            e.preventDefault();
+            if (onClick) onClick(e);
+          },
+          ...props 
+        }, children);
+      };
+      console.log('✅ Created stub Link component (always available)');
+    }
+    
+    if (typeof window.NavLink === 'undefined') {
+      window.NavLink = function NavLink({ to, children, className, style, onClick, ...props }) {
+        return React.createElement('a', { 
+          href: to || '#', 
+          className: className,
+          style: style,
+          onClick: (e) => {
+            e.preventDefault();
+            if (onClick) onClick(e);
+          },
+          ...props 
+        }, children);
+      };
+      console.log('✅ Created stub NavLink component (always available)');
+    }
+    
+    ${usesReactRouter ? `
+    // React Router components - try to use real ones, fallback to stubs
+    const ReactRouterDOM = window.ReactRouterDOM || {};
+    const { BrowserRouter, Routes, Route, useNavigate, useParams, useLocation } = ReactRouterDOM;
+    
+    // Use real Link/NavLink if React Router CDN loaded, otherwise keep stubs
+    if (ReactRouterDOM.Link) {
+      window.Link = ReactRouterDOM.Link;
+      console.log('✅ Using real React Router Link component');
+    }
+    if (ReactRouterDOM.NavLink) {
+      window.NavLink = ReactRouterDOM.NavLink;
+      console.log('✅ Using real React Router NavLink component');
+    }
+    
+    // Make other router components available globally
+    if (ReactRouterDOM.BrowserRouter) window.BrowserRouter = ReactRouterDOM.BrowserRouter;
+    if (ReactRouterDOM.Routes) window.Routes = ReactRouterDOM.Routes;
+    if (ReactRouterDOM.Route) window.Route = ReactRouterDOM.Route;
+    ` : ''}
+    
+    // Prevent CommonJS module errors in browser
+    if (typeof module === 'undefined') {
+      window.module = { exports: {} };
+    }
+    if (typeof exports === 'undefined') {
+      window.exports = {};
+    }
+    
+    console.log('Starting deployment render...');
+    console.log('Link available:', typeof window.Link !== 'undefined');
+    console.log('NavLink available:', typeof window.NavLink !== 'undefined');
+    ${usesReactRouter ? `console.log('React Router detected - components should render without routing');` : ''}
     
     ${jsContent}
     

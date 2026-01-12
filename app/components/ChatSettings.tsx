@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { type Provider } from './chatUtils';
 
 interface ChatSettingsProps {
   isOpen: boolean;
@@ -12,116 +11,50 @@ const STORAGE_KEY = 'ai_api_key';
 const MODEL_STORAGE_KEY = 'ai_model';
 const PROVIDER_STORAGE_KEY = 'ai_provider';
 
+// Hardcoded: Only OpenRouter + DeepSeek Chat (more reliable than coder)
+const PROVIDER = 'openrouter';
+const MODEL = 'deepseek/deepseek-chat';
+
 // Export utility functions to get stored values
 export function getStoredApiKey(): string | null {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem(STORAGE_KEY);
 }
 
-export function getStoredModel(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem(MODEL_STORAGE_KEY);
+export function getStoredModel(): string {
+  if (typeof window === 'undefined') return MODEL;
+  const stored = localStorage.getItem(MODEL_STORAGE_KEY);
+  // Migrate old deepseek-coder to deepseek-chat
+  if (stored === 'deepseek/deepseek-coder' || stored === 'deepseek-coder' || stored === 'deepseekcoder') {
+    localStorage.setItem(MODEL_STORAGE_KEY, MODEL);
+    return MODEL;
+  }
+  // Default to DeepSeek Chat if nothing stored
+  return stored || MODEL;
 }
 
-export function getStoredProvider(): Provider {
-  if (typeof window === 'undefined') return 'groq';
-  return (localStorage.getItem(PROVIDER_STORAGE_KEY) || 'groq') as Provider;
+export function getStoredProvider(): string {
+  if (typeof window === 'undefined') return PROVIDER;
+  // Always return OpenRouter (hardcoded)
+  const stored = localStorage.getItem(PROVIDER_STORAGE_KEY);
+  if (stored !== PROVIDER) {
+    localStorage.setItem(PROVIDER_STORAGE_KEY, PROVIDER);
+  }
+  return PROVIDER;
 }
-
-const PROVIDER_MODELS: Record<Provider, string[]> = {
-  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
-  groq: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it'],
-  together: ['meta-llama/Llama-3-8b-chat-hf', 'meta-llama/Llama-3-70b-chat-hf', 'mistralai/Mixtral-8x7B-Instruct-v0.1'],
-  huggingface: ['meta-llama/Llama-3-8b-chat-hf'],
-  deepseek: ['deepseek-chat', 'deepseek-coder'],
-  ollama: ['llama3.2', 'llama3.1', 'mistral', 'codellama', 'phi3', 'gemma2', 'qwen2.5'],
-  openrouter: [
-    'meta-llama/llama-3.2-3b-instruct:free',
-    'google/gemma-2-2b-it:free',
-    'mistralai/mistral-7b-instruct:free',
-    'qwen/qwen-2.5-7b-instruct:free',
-    'huggingface/zephyr-7b-beta:free',
-  ],
-  perplexity: [
-    'llama-3.1-sonar-small-128k-online',
-    'llama-3.1-sonar-large-128k-online',
-    'llama-3.1-sonar-huge-128k-online',
-  ],
-  cohere: ['command-r-plus', 'command-r', 'command', 'command-light'],
-  anthropic: ['claude-3-haiku-20240307', 'claude-3-sonnet-20240229', 'claude-3-opus-20240229'],
-};
-
-const PROVIDER_DEFAULTS: Record<Provider, string> = {
-  openai: 'gpt-4o-mini',
-  groq: 'llama-3.3-70b-versatile',
-  together: 'meta-llama/Llama-3-8b-chat-hf',
-  huggingface: 'meta-llama/Llama-3-8b-chat-hf',
-  deepseek: 'deepseek-chat',
-  ollama: 'llama3.2',
-  openrouter: 'meta-llama/llama-3.2-3b-instruct:free',
-  perplexity: 'llama-3.1-sonar-small-128k-online',
-  cohere: 'command-r-plus',
-  anthropic: 'claude-3-haiku-20240307',
-};
 
 export default function ChatSettings({ isOpen, onClose }: ChatSettingsProps) {
-  // Force Groq as the only provider for connection testing
-  const [provider, setProvider] = useState<Provider>('groq'); // Default to Groq
-  const [apiKey, setApiKey] = useState('');
-  const [model, setModel] = useState('llama-3.3-70b-versatile'); // Default Groq model
-  const [showKey, setShowKey] = useState(false);
+  // Hardcoded: Only OpenRouter + DeepSeek Coder
+  // Using environment variable OPENROUTER_API_KEY by default
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
-      // Force Groq - ignore saved provider for connection testing
-      const savedKey = localStorage.getItem(STORAGE_KEY) || '';
-      const savedModel = localStorage.getItem(MODEL_STORAGE_KEY) || 'llama-3.3-70b-versatile';
-      setProvider('groq'); // Always use Groq
-      setApiKey(savedKey);
-      setModel(savedModel || 'llama-3.3-70b-versatile');
       setSaved(false);
     }
   }, [isOpen]);
 
-  useEffect(() => {
-    // Force Groq model - no need to update on provider change since provider is always Groq
-    if (model !== 'llama-3.3-70b-versatile' && !PROVIDER_MODELS.groq.includes(model)) {
-      setModel('llama-3.3-70b-versatile');
-    }
-  }, [model]);
-
-  const handleSave = () => {
-    // Always save Groq settings
-    if (apiKey.trim()) {
-      localStorage.setItem(PROVIDER_STORAGE_KEY, 'groq'); // Force Groq
-      localStorage.setItem(MODEL_STORAGE_KEY, model || 'llama-3.3-70b-versatile');
-      localStorage.setItem(STORAGE_KEY, apiKey.trim());
-      setSaved(true);
-      setTimeout(() => {
-        setSaved(false);
-        onClose();
-      }, 1000);
-    } else {
-      // Clear if empty
-      localStorage.removeItem(STORAGE_KEY);
-      localStorage.setItem(PROVIDER_STORAGE_KEY, 'groq'); // Still set Groq as provider
-      localStorage.setItem(MODEL_STORAGE_KEY, 'llama-3.3-70b-versatile');
-      setSaved(true);
-      setTimeout(() => {
-        setSaved(false);
-        onClose();
-      }, 1000);
-    }
-  };
-
-  const handleClear = () => {
-    setProvider('groq');
-    setApiKey('');
-    setModel('llama-3.3-70b-versatile');
-    localStorage.removeItem(PROVIDER_STORAGE_KEY);
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(MODEL_STORAGE_KEY);
+  const handleClose = () => {
     setSaved(true);
     setTimeout(() => {
       setSaved(false);
@@ -138,7 +71,7 @@ export default function ChatSettings({ isOpen, onClose }: ChatSettingsProps) {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-white font-semibold text-lg">Chat Settings</h2>
-            <p className="text-gray-400 text-xs mt-1">Configure your OpenAI API key</p>
+            <p className="text-gray-400 text-xs mt-1">Using OpenRouter + DeepSeek Chat</p>
           </div>
           <button
             onClick={onClose}
@@ -160,79 +93,38 @@ export default function ChatSettings({ isOpen, onClose }: ChatSettingsProps) {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <div className="flex-1">
-                <p className="text-emerald-200 text-xs font-medium mb-1">🔧 Connection Testing Mode</p>
+                <p className="text-emerald-200 text-xs font-medium mb-1">🚀 DeepSeek Chat - Best Analysis Quality</p>
                 <p className="text-emerald-300/80 text-xs leading-relaxed">
-                  Currently using <strong>Groq</strong> only for connection testing. Get your free API key at <strong>https://console.groq.com/keys</strong>. 
-                  Your API key is stored locally and never sent to our servers except for API calls.
+                  Using <strong>OpenRouter</strong> with <strong>DeepSeek Chat</strong> - excellent for comprehensive resource analysis and detailed answers. 
+                  API key is configured from environment variable (<code className="text-emerald-200">OPENROUTER_API_KEY</code>).
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Provider Selection - Hidden/Disabled for connection testing */}
+          {/* Provider Display - Fixed */}
           <div>
             <label className="block text-white text-sm font-medium mb-2">
-              AI Provider (Fixed for Testing)
+              AI Provider
             </label>
-            <select
-              value="groq"
-              disabled
-              className="w-full px-4 py-2.5 bg-[#0a0a0a] border border-white/10 rounded-lg text-gray-400 cursor-not-allowed text-sm opacity-60"
-            >
-              <option value="groq">🆓 Groq (FREE - Fastest)</option>
-            </select>
+            <div className="w-full px-4 py-2.5 bg-[#0a0a0a] border border-white/10 rounded-lg text-gray-300 text-sm">
+              🌐 OpenRouter + DeepSeek Chat
+            </div>
             <p className="text-gray-500 text-xs mt-2">
-              Get free API key: https://console.groq.com/keys
+              Using API key from environment variable
             </p>
           </div>
 
-          {/* API Key Input */}
+          {/* Model Display - Fixed */}
           <div>
             <label className="block text-white text-sm font-medium mb-2">
-              API Key
+              Model
             </label>
-            <div className="relative">
-              <input
-                type={showKey ? 'text' : 'password'}
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="gsk_... (Get your Groq API key at https://console.groq.com/keys)"
-                className="w-full px-4 py-2.5 bg-[#0a0a0a] border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-emerald-400/50 focus:ring-2 focus:ring-emerald-400/20 transition-all text-sm"
-              />
-              <button
-                type="button"
-                onClick={() => setShowKey(!showKey)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-200 transition-colors"
-                aria-label={showKey ? 'Hide key' : 'Show key'}
-              >
-                {showKey ? (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m0 0L12 12m-5.71-5.71L12 12" />
-                  </svg>
-                ) : (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                )}
-              </button>
+            <div className="w-full px-4 py-2.5 bg-[#0a0a0a] border border-white/10 rounded-lg text-gray-300 text-sm">
+              💬 DeepSeek Chat (Best for Resource Analysis)
             </div>
-          </div>
-
-          {/* Model Selection - Hidden/Disabled for connection testing */}
-          <div>
-            <label className="block text-white text-sm font-medium mb-2">
-              Model (Fixed for Testing)
-            </label>
-            <select
-              value="llama-3.3-70b-versatile"
-              disabled
-              className="w-full px-4 py-2.5 bg-[#0a0a0a] border border-white/10 rounded-lg text-gray-400 cursor-not-allowed text-sm opacity-60"
-            >
-              <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile</option>
-            </select>
             <p className="text-gray-500 text-xs mt-2">
-              Using default Groq model for connection testing.
+              Optimized for comprehensive analysis, detailed answers, and resource understanding.
             </p>
           </div>
 
@@ -249,17 +141,10 @@ export default function ChatSettings({ isOpen, onClose }: ChatSettingsProps) {
           {/* Actions */}
           <div className="flex gap-3 pt-2">
             <button
-              onClick={handleClear}
-              className="flex-1 px-4 py-2.5 bg-gray-800/60 hover:bg-gray-700/60 border border-gray-700/50 rounded-lg text-white text-sm font-medium transition-colors"
+              onClick={handleClose}
+              className="w-full px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 rounded-lg text-white text-sm font-semibold transition-all shadow-lg shadow-emerald-500/20"
             >
-              Clear
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={!apiKey.trim()}
-              className="flex-1 px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 rounded-lg text-white text-sm font-semibold transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Save Settings
+              Close
             </button>
           </div>
         </div>

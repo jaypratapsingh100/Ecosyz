@@ -52,6 +52,8 @@ function OpenResourcesPage() {
   const [summaries, setSummaries] = useState<Record<string, any>>({});
   const [summarizingId, setSummarizingId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ type: 'error'|'info'; message: string } | null>(null);
+  const [searchSummary, setSearchSummary] = useState<string>('');
+  const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryModal, setSummaryModal] = useState<{
     open: boolean;
     key: string | null;
@@ -175,16 +177,23 @@ function OpenResourcesPage() {
     const controller = new AbortController();
     activeAbort.current = controller;
     setLoading(true); setError('');
+    setSearchSummary(''); // Clear previous summary
     try {
       const res = await fetch(`/api/search?q=${encodeURIComponent(customQ)}&type=${customType}&limit=${customLimit}` , { cache: 'no-store', signal: controller.signal });
       if (!res.ok) throw new Error('Search failed');
       const data = await res.json();
-      setResults(Array.isArray(data.results) ? data.results : []);
+      const searchResults = Array.isArray(data.results) ? data.results : [];
+      setResults(searchResults);
       setCoverage(data.coverage || null);
       setTotal(data.total || 0);
       setNextCursor(typeof data.nextCursor === 'string' ? data.nextCursor : null);
       // Sync URL
       updateURL(customQ, customType, customLimit);
+      
+      // Generate summary if we have results
+      if (searchResults.length > 0 && customQ) {
+        generateSearchSummary(customQ, searchResults);
+      }
     } catch (e: any) {
       if (e?.name !== 'AbortError') {
         setError(e.message || 'Search failed');
@@ -193,6 +202,90 @@ function OpenResourcesPage() {
       setLoading(false);
       // Clear only if this controller is still the active one
       if (activeAbort.current === controller) activeAbort.current = null;
+    }
+  }
+
+  // Generate helpful summary with gist of all results
+  async function generateSearchSummary(query: string, searchResults: any[]) {
+    setSummaryLoading(true);
+    try {
+      // Get API key from localStorage
+      const userApiKey = typeof window !== 'undefined' ? localStorage.getItem('ai_api_key') : null;
+      const userModel = typeof window !== 'undefined' ? localStorage.getItem('ai_model') : null;
+      const userProvider = typeof window !== 'undefined' ? localStorage.getItem('ai_provider') : null;
+      
+      // Prepare resource overview - get titles and descriptions
+      const resourceOverview = searchResults.slice(0, 15).map((r, idx) => ({
+        title: r.title || 'Untitled',
+        type: r.type || 'unknown',
+        description: (r.description || r.summary || '').substring(0, 200), // Limit description length
+      }));
+
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: `Based on these ${searchResults.length} search results about "${query}", provide a brief, easy-to-understand summary (2-3 sentences) that explains: 1) What this topic is generally about, 2) What kinds of resources are available (papers, code, datasets, etc.), and 3) What users can expect to find. Keep it simple, helpful, and conversational - like explaining to a friend what they'll find.`,
+          apiKey: userApiKey,
+          model: userModel || 'deepseek/deepseek-chat',
+          provider: userProvider || 'openrouter',
+          context: {
+            searchQuery: query,
+            resultsCount: searchResults.length,
+            results: resourceOverview,
+            hasContext: true,
+          },
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setSearchSummary(data.response || '');
+      } else {
+        // Fallback: Create a simple but helpful summary
+        const types = [...new Set(searchResults.map(r => r.type).filter(Boolean))];
+        const typeLabels = types.map(t => {
+          const labels: Record<string, string> = {
+            'paper': 'research papers',
+            'dataset': 'datasets',
+            'code': 'code repositories',
+            'model': 'AI models',
+            'video': 'videos',
+            'hardware': 'hardware designs'
+          };
+          return labels[t] || t;
+        });
+        
+        setSearchSummary(
+          `Found ${searchResults.length} open resources about "${query}". ` +
+          `You'll find ${typeLabels.slice(0, 3).join(', ')}${types.length > 3 ? ', and more' : ''} covering various aspects of this topic. ` +
+          `These resources include research, implementations, datasets, and educational materials you can explore.`
+        );
+      }
+    } catch (error) {
+      console.error('Summary generation error:', error);
+      // Simple fallback
+      const types = [...new Set(searchResults.map(r => r.type).filter(Boolean))];
+      const typeLabels = types.map(t => {
+        const labels: Record<string, string> = {
+          'paper': 'research papers',
+          'dataset': 'datasets',
+          'code': 'code repositories',
+          'model': 'AI models',
+          'video': 'videos',
+          'hardware': 'hardware designs'
+        };
+        return labels[t] || t;
+      });
+      
+      setSearchSummary(
+        `Found ${searchResults.length} open resources about "${query}". ` +
+        `Includes ${typeLabels.slice(0, 3).join(', ')}${types.length > 3 ? ', and more' : ''} covering various aspects of this topic.`
+      );
+    } finally {
+      setSummaryLoading(false);
     }
   }
 
@@ -323,6 +416,15 @@ function OpenResourcesPage() {
                   searchQuery={q}
                   isCollapsed={chatCollapsed}
                   onToggleCollapse={() => setChatCollapsed(!chatCollapsed)}
+                  onFilterResources={(filters) => {
+                    let filtered = [...results];
+                    if (filters.type) filtered = filtered.filter(r => r.type === filters.type);
+                    if (filters.year) filtered = filtered.filter(r => r.year && r.year >= filters.year!);
+                    if (filters.license) filtered = filtered.filter(r => r.license && r.license.toLowerCase().includes('open'));
+                    if (filters.source) filtered = filtered.filter(r => r.source === filters.source);
+                    setResults(filtered);
+                    setTotal(filtered.length);
+                  }}
                   onChatSearch={async (query: string) => {
                     setChatSearchActive(true);
                     setLoading(true);
@@ -439,7 +541,7 @@ function OpenResourcesPage() {
                           .map((r, i) => {
                         const resKey = String(r.id || r.url || i);
                         return (
-                          <div key={r.id || i} className="flex-shrink-0 w-[85vw] sm:w-[400px] md:w-[500px] group rounded-xl glass-card glass-border p-4 sm:p-5 md:p-6 hover:border-emerald-400/30 transition-all duration-300 relative overflow-hidden snap-start">
+                          <div id={`resource-card-${i}`} key={`resource-card-${i}`} className="flex-shrink-0 w-[85vw] sm:w-[400px] md:w-[500px] group rounded-xl glass-card glass-border p-4 sm:p-5 md:p-6 hover:border-emerald-400/30 transition-all duration-300 relative overflow-hidden snap-start">
                             {/* Subtle gradient overlay on hover */}
                             <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/0 via-cyan-500/0 to-blue-500/0 group-hover:from-emerald-500/5 group-hover:via-cyan-500/5 group-hover:to-blue-500/5 transition-all duration-300 pointer-events-none"></div>
                             
@@ -865,6 +967,32 @@ function OpenResourcesPage() {
                 </button>
               </div>
               </div>
+              
+              {/* Search Summary */}
+              {q && results.length > 0 && (
+                <div className="mt-4 mb-6 p-4 rounded-xl bg-gradient-to-r from-emerald-900/20 to-cyan-900/20 border border-emerald-500/30 backdrop-blur-sm">
+                  {summaryLoading ? (
+                    <div className="flex items-center gap-3">
+                      <svg className="animate-spin h-5 w-5 text-emerald-400" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span className="text-sm text-gray-300">Generating summary...</span>
+                    </div>
+                  ) : searchSummary ? (
+                    <div className="flex items-start gap-3">
+                      <div className="flex-shrink-0 mt-0.5">
+                        <svg className="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm text-gray-200 leading-relaxed">{searchSummary}</p>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              )}
             </div>
             {/* Federated search results */}
             {(q || loading) && (
@@ -916,9 +1044,10 @@ function OpenResourcesPage() {
                 {/* Results Grid */}
                 <div className="space-y-4 sm:space-y-5">
                   {results.map((r, i) => {
+                    // Use index as key since it's always unique, even if IDs/URLs duplicate
                     const resKey = String(r.id || r.url || i);
                     return (
-                      <div key={r.id || i} className="group rounded-xl glass-card glass-border p-5 sm:p-6 hover:border-emerald-400/30 transition-all duration-300 relative overflow-hidden">
+                      <div id={`resource-card-${i}`} key={`resource-${i}`} className="group rounded-xl glass-card glass-border p-5 sm:p-6 hover:border-emerald-400/30 transition-all duration-300 relative overflow-hidden">
                         {/* Subtle gradient overlay on hover */}
                         <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/0 via-cyan-500/0 to-blue-500/0 group-hover:from-emerald-500/5 group-hover:via-cyan-500/5 group-hover:to-blue-500/5 transition-all duration-300 pointer-events-none"></div>
                         

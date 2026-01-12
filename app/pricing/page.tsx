@@ -60,6 +60,20 @@ function Tier({ title, price, description, features, ctaHref, isPopular }: {
         >
           Get Started
         </Link>
+      ) : ctaHref?.startsWith('http') ? (
+        // External payment link (Razorpay)
+        <a
+          href={ctaHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`w-full text-center px-4 py-3 rounded-lg font-semibold transition-all duration-300 ${
+            isPopular
+              ? 'bg-transparent border-2 border-emerald-400/50 text-emerald-400 hover:bg-emerald-400/10 hover:border-emerald-400'
+              : 'bg-transparent border-2 border-cyan-400/50 text-cyan-400 hover:bg-cyan-400/10 hover:border-cyan-400'
+          }`}
+        >
+          Subscribe for {price}/month
+        </a>
       ) : (
         <Link 
           href={ctaHref || '/auth'}
@@ -108,7 +122,7 @@ export default function PricingPage() {
         "API access (100K requests/month)"
       ],
       cta: "Upgrade to Plus",
-      ctaHref: "/auth?plan=plus",
+      ctaHref: "https://rzp.io/rzp/openidea", // Razorpay Payment Link
       isPopular: true
     },
     {

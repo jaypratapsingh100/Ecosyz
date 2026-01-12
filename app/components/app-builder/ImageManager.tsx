@@ -248,12 +248,59 @@ export default function ImageManager({ projectId, onSelectImage }: ImageManagerP
               </div>
 
               {imageType === 'url' && (
-                <div className="text-xs text-gray-400">
-                  <p>💡 Tip: Use free image sources like:</p>
-                  <ul className="list-disc list-inside mt-1 space-y-1">
-                    <li>Unsplash: https://images.unsplash.com/...</li>
-                    <li>Pexels: https://images.pexels.com/...</li>
-                    <li>Placeholder: https://via.placeholder.com/800x600</li>
+                <div className="text-xs text-gray-400 space-y-3">
+                  <p>💡 Quick Dummy Image Presets:</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setNewImageUrl('https://picsum.photos/1200/600')}
+                      className="px-2 py-1 bg-[#0a0a0a] border border-white/10 rounded text-emerald-400 hover:border-emerald-500/50 text-xs"
+                    >
+                      Hero (1200x600)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewImageUrl('https://picsum.photos/800/600')}
+                      className="px-2 py-1 bg-[#0a0a0a] border border-white/10 rounded text-emerald-400 hover:border-emerald-500/50 text-xs"
+                    >
+                      Large (800x600)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewImageUrl('https://picsum.photos/400/300')}
+                      className="px-2 py-1 bg-[#0a0a0a] border border-white/10 rounded text-emerald-400 hover:border-emerald-500/50 text-xs"
+                    >
+                      Card (400x300)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewImageUrl('https://i.pravatar.cc/150')}
+                      className="px-2 py-1 bg-[#0a0a0a] border border-white/10 rounded text-emerald-400 hover:border-emerald-500/50 text-xs"
+                    >
+                      Avatar (150x150)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewImageUrl('https://via.placeholder.com/800x600/4F46E5/FFFFFF?text=Placeholder')}
+                      className="px-2 py-1 bg-[#0a0a0a] border border-white/10 rounded text-emerald-400 hover:border-emerald-500/50 text-xs"
+                    >
+                      Placeholder
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewImageUrl('https://images.unsplash.com/photo-1518770660439-4636190af475?w=1200')}
+                      className="px-2 py-1 bg-[#0a0a0a] border border-white/10 rounded text-emerald-400 hover:border-emerald-500/50 text-xs"
+                    >
+                      Unsplash Tech
+                    </button>
+                  </div>
+                  <p className="mt-2">Or use free image sources:</p>
+                  <ul className="list-disc list-inside space-y-1">
+                    <li>Picsum: https://picsum.photos/WIDTH/HEIGHT</li>
+                    <li>Unsplash: https://images.unsplash.com/photo-...</li>
+                    <li>Pexels: https://images.pexels.com/photos/...</li>
+                    <li>Placeholder: https://via.placeholder.com/WIDTHxHEIGHT</li>
+                    <li>Avatars: https://i.pravatar.cc/SIZE?img=NUMBER</li>
                   </ul>
                 </div>
               )}
@@ -280,4 +327,8 @@ export default function ImageManager({ projectId, onSelectImage }: ImageManagerP
     </div>
   );
 }
+
+
+
+
 

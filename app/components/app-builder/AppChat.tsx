@@ -23,7 +23,7 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
     {
       id: '1',
       role: 'assistant',
-      content: "Hello! I'm your AI Code Assistant. I can help you generate, modify, and explain code. What would you like to build?\n\n🆓 **TOP 5 FREE OPEN SOURCE LLMs:**\n1. **Ollama** (100% FREE - Runs locally, no API key!)\n2. **OpenRouter** (Multiple free models)\n3. **Groq** (Fastest - Free & Fast)\n4. **DeepSeek** (Best for Code - Free)\n5. **Together AI** (Free tier)\n\n**Also Available:** Hugging Face, Perplexity, Cohere, Anthropic Claude\n\n💡 Click ⚙️ in chat settings to configure!\n\n✅ Or use DEEPSEEK_API_KEY/GROQ_API_KEY/OPENROUTER_API_KEY from .env file automatically.",
+      content: "Hello! I'm your AI Code Assistant powered by **DeepSeek Coder** via OpenRouter. I can help you generate, modify, and explain professional, production-ready code.\n\n**🚀 Using DeepSeek Coder:**\n- Specifically designed for code generation\n- Matches GPT-4 quality on coding benchmarks\n- 128K token context window\n- Professional, production-ready code output\n\n**💡 API Key:** Configured from environment variable (\`OPENROUTER_API_KEY\`).\n\nWhat would you like to build?",
       timestamp: new Date(),
     },
   ]);
@@ -51,121 +51,123 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
 
   // Check for auto-generated prompt from questionnaire
   useEffect(() => {
-    const autoPrompt = sessionStorage.getItem(`auto-prompt-${projectId}`);
-    const autoPromptTimestamp = sessionStorage.getItem(`auto-prompt-timestamp-${projectId}`);
-    const autoResponse = sessionStorage.getItem(`auto-response-${projectId}`);
-    const autoError = sessionStorage.getItem(`auto-error-${projectId}`);
-    
-    if (autoPrompt && autoPromptTimestamp) {
-      // Check if this is a recent prompt (within last 30 seconds)
-      const timestamp = parseInt(autoPromptTimestamp);
-      const now = Date.now();
-      if (now - timestamp < 30000) {
-        // Add user message with prompt
-        const userMessage: Message = {
-          id: `auto-prompt-${timestamp}`,
-          role: 'user',
-          content: autoPrompt,
-          timestamp: new Date(timestamp),
-        };
-        
-        setMessages((prev) => {
-          // Check if already added
-          if (prev.some(m => m.id === userMessage.id)) {
-            return prev;
-          }
-          return [...prev, userMessage];
-        });
-        
-        // Add AI response if available
-        if (autoResponse) {
-          try {
-            const responseData = JSON.parse(autoResponse);
-            let responseContent = responseData.response || 'Files are being generated...';
-            
-            // Add provider/model info if available
-            if (responseData.provider || responseData.model) {
-              const providerInfo = [];
-              if (responseData.provider) {
-                providerInfo.push(`**Provider:** ${responseData.provider}`);
-              }
-              if (responseData.model) {
-                providerInfo.push(`**Model:** ${responseData.model}`);
-              }
-              if (responseData.usedFallback) {
-                providerInfo.push(`⚠️ *Using fallback model*`);
-              }
-              if (providerInfo.length > 0) {
-                responseContent = `🤖 ${providerInfo.join(' | ')}\n\n---\n\n${responseContent}`;
-              }
+    const checkAutoPrompt = () => {
+      const autoPrompt = sessionStorage.getItem(`auto-prompt-${projectId}`);
+      const autoPromptTimestamp = sessionStorage.getItem(`auto-prompt-timestamp-${projectId}`);
+      const autoResponse = sessionStorage.getItem(`auto-response-${projectId}`);
+      const autoError = sessionStorage.getItem(`auto-error-${projectId}`);
+      
+      if (autoPrompt && autoPromptTimestamp) {
+        // Check if this is a recent prompt (within last 30 seconds)
+        const timestamp = parseInt(autoPromptTimestamp);
+        const now = Date.now();
+        if (now - timestamp < 30000) {
+          // Add user message with prompt
+          const userMessage: Message = {
+            id: `auto-prompt-${timestamp}`,
+            role: 'user',
+            content: autoPrompt,
+            timestamp: new Date(timestamp),
+          };
+          
+          setMessages((prev) => {
+            // Check if already added
+            if (prev.some(m => m.id === userMessage.id)) {
+              return prev;
             }
-            
-            const assistantMessage: Message = {
-              id: `auto-response-${timestamp}`,
-              role: 'assistant',
-              content: responseContent,
-              timestamp: new Date(),
-            };
-            
-            setMessages((prev) => {
-              if (prev.some(m => m.id === assistantMessage.id)) {
-                return prev;
+            return [...prev, userMessage];
+          });
+          
+          // Add AI response if available
+          if (autoResponse) {
+            try {
+              const responseData = JSON.parse(autoResponse);
+              let responseContent = responseData.response || 'Files are being generated...';
+              
+              // Add provider/model info if available
+              if (responseData.provider || responseData.model) {
+                const providerInfo = [];
+                if (responseData.provider) {
+                  providerInfo.push(`**Provider:** ${responseData.provider}`);
+                }
+                if (responseData.model) {
+                  providerInfo.push(`**Model:** ${responseData.model}`);
+                }
+                if (responseData.usedFallback) {
+                  providerInfo.push(`⚠️ *Using fallback model*`);
+                }
+                if (providerInfo.length > 0) {
+                  responseContent = `🤖 ${providerInfo.join(' | ')}\n\n---\n\n${responseContent}`;
+                }
               }
-              return [...prev, assistantMessage];
-            });
-            
-            // Trigger files refresh
-            if (onFilesCreated) {
-              setTimeout(() => {
-                onFilesCreated();
-              }, 2000);
-            }
-            
-            // Clear sessionStorage
-            sessionStorage.removeItem(`auto-prompt-${projectId}`);
-            sessionStorage.removeItem(`auto-prompt-timestamp-${projectId}`);
-            sessionStorage.removeItem(`auto-response-${projectId}`);
-          } catch (e) {
-            console.error('Error parsing auto-response:', e);
-          }
-        } else if (autoError) {
-          // Show error message
-          try {
-            const errorData = JSON.parse(autoError);
-            let errorContent = `❌ Error: ${errorData.error || 'Failed to generate files'}`;
-            
-            // Add more helpful error details if available
-            if (errorData.details) {
-              if (typeof errorData.details === 'string') {
-                errorContent += `\n\nDetails: ${errorData.details}`;
-              } else if (errorData.details.error) {
-                errorContent += `\n\nDetails: ${errorData.details.error}`;
+              
+              const assistantMessage: Message = {
+                id: `auto-response-${timestamp}`,
+                role: 'assistant',
+                content: responseContent,
+                timestamp: new Date(),
+              };
+              
+              setMessages((prev) => {
+                if (prev.some(m => m.id === assistantMessage.id)) {
+                  return prev;
+                }
+                return [...prev, assistantMessage];
+              });
+              
+              // Trigger files refresh
+              if (onFilesCreated) {
+                setTimeout(() => {
+                  onFilesCreated();
+                }, 2000);
               }
+              
+              // Clear sessionStorage
+              sessionStorage.removeItem(`auto-prompt-${projectId}`);
+              sessionStorage.removeItem(`auto-prompt-timestamp-${projectId}`);
+              sessionStorage.removeItem(`auto-response-${projectId}`);
+            } catch (e) {
+              console.error('Error parsing auto-response:', e);
             }
-            
-            if (errorData.suggestion) {
-              errorContent += `\n\n💡 ${errorData.suggestion}`;
-            } else {
-              errorContent += `\n\n💡 Please check your API key settings (⚙️ icon) and try asking the AI manually to create your app.`;
-            }
-            
-            const errorMessage: Message = {
-              id: `auto-error-${timestamp}`,
-              role: 'assistant',
-              content: errorContent,
-              timestamp: new Date(),
-            };
-            
-            setMessages((prev) => {
-              if (prev.some(m => m.id === errorMessage.id)) {
-                return prev;
+          } else if (autoError) {
+            // Show error message
+            try {
+              const errorData = JSON.parse(autoError);
+              let errorContent = `❌ Error: ${errorData.error || 'Failed to generate files'}`;
+              
+              // Add more helpful error details if available
+              if (errorData.details) {
+                if (typeof errorData.details === 'string') {
+                  errorContent += `\n\nDetails: ${errorData.details}`;
+                } else if (errorData.details.error) {
+                  errorContent += `\n\nDetails: ${errorData.details.error}`;
+                }
               }
-              return [...prev, errorMessage];
-            });
-            
-            sessionStorage.removeItem(`auto-error-${projectId}`);
-          } catch (e) {
-            console.error('Error parsing auto-error:', e);
+              
+              if (errorData.suggestion) {
+                errorContent += `\n\n💡 ${errorData.suggestion}`;
+              } else {
+                errorContent += `\n\n💡 Please check your API key settings (⚙️ icon) and try asking the AI manually to create your app.`;
+              }
+              
+              const errorMessage: Message = {
+                id: `auto-error-${timestamp}`,
+                role: 'assistant',
+                content: errorContent,
+                timestamp: new Date(),
+              };
+              
+              setMessages((prev) => {
+                if (prev.some(m => m.id === errorMessage.id)) {
+                  return prev;
+                }
+                return [...prev, errorMessage];
+              });
+              
+              sessionStorage.removeItem(`auto-error-${projectId}`);
+            } catch (e) {
+              console.error('Error parsing auto-error:', e);
+            }
           }
         }
       } else {
@@ -173,7 +175,26 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
         sessionStorage.removeItem(`auto-prompt-${projectId}`);
         sessionStorage.removeItem(`auto-prompt-timestamp-${projectId}`);
       }
-    }
+    };
+    
+    // Check immediately when component mounts or projectId changes
+    checkAutoPrompt();
+    
+    // Also listen for auto-prompt-ready event in case prompt is set after component mounts
+    const handleAutoPromptReady = (event: CustomEvent) => {
+      if (event.detail?.projectId === projectId) {
+        // Small delay to ensure sessionStorage is set
+        setTimeout(() => {
+          checkAutoPrompt();
+        }, 100);
+      }
+    };
+    
+    window.addEventListener('auto-prompt-ready', handleAutoPromptReady as EventListener);
+    
+    return () => {
+      window.removeEventListener('auto-prompt-ready', handleAutoPromptReady as EventListener);
+    };
   }, [projectId, onFilesCreated]);
 
   const handleSend = async (e: React.FormEvent) => {
@@ -217,8 +238,7 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
       }
       
       // Include API key if user has one set (otherwise backend uses .env)
-      // Ollama doesn't need API key
-      if (userApiKey && userProvider !== 'ollama') {
+      if (userApiKey) {
         requestBody.apiKey = userApiKey;
       }
 

@@ -57,6 +57,13 @@ export default function AppBuilderPage() {
     };
     checkAuth();
   }, []);
+  
+  // Fetch files when authentication completes and project is selected
+  useEffect(() => {
+    if (isAuthenticated === true && selectedProjectId) {
+      fetchFiles();
+    }
+  }, [isAuthenticated, selectedProjectId]);
 
   // Listen for generation events
   useEffect(() => {
@@ -92,13 +99,19 @@ export default function AppBuilderPage() {
   useEffect(() => {
     if (selectedProjectId) {
       fetchProject();
-      fetchFiles();
+      // Only fetch files if authenticated (or authentication check is complete)
+      if (isAuthenticated === true) {
+        fetchFiles();
+      } else if (isAuthenticated === false) {
+        console.warn('⚠️ Skipping file fetch: User is not authenticated');
+      }
+      // If isAuthenticated is null, wait for auth check to complete
     } else {
       setProject(null);
       setFiles([]);
       setSelectedFile(null);
     }
-  }, [selectedProjectId]);
+  }, [selectedProjectId, isAuthenticated]);
 
   const fetchProject = async () => {
     if (!selectedProjectId) return;
@@ -114,11 +127,36 @@ export default function AppBuilderPage() {
           framework: data.framework,
         });
       } else {
-        const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
-        console.error('Failed to fetch project:', res.status, errorData);
+        let errorData: any = {};
+        try {
+          const contentType = res.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            errorData = await res.json();
+          } else {
+            const textError = await res.text().catch(() => '');
+            errorData = { error: textError || `HTTP ${res.status}: ${res.statusText || 'Unknown error'}` };
+          }
+        } catch (parseError) {
+          errorData = { error: `HTTP ${res.status}: ${res.statusText || 'Unknown error'}` };
+        }
+        
+        // Ensure errorData has content
+        const errorMessage = errorData.error || errorData.message || `HTTP ${res.status}: ${res.statusText || 'Unknown error'}`;
+        
+        console.error('Failed to fetch project:', {
+          status: res.status,
+          statusText: res.statusText,
+          error: errorMessage,
+          errorData: Object.keys(errorData).length > 0 ? errorData : { error: errorMessage }
+        });
+        
         // Don't show alert for 401/403 as user might not be logged in
-        if (res.status !== 401 && res.status !== 403) {
-          console.warn('Project fetch error:', errorData.error || 'Unknown error');
+        if (res.status === 401) {
+          console.warn('⚠️ Authentication required - user may need to log in');
+        } else if (res.status === 403) {
+          console.warn('⚠️ Not authorized to access this project');
+        } else if (res.status !== 401 && res.status !== 403) {
+          console.warn('Project fetch error:', errorMessage);
         }
       }
     } catch (error) {
@@ -132,6 +170,18 @@ export default function AppBuilderPage() {
 
   const fetchFiles = async () => {
     if (!selectedProjectId) return;
+    
+    // Don't fetch files if user is not authenticated
+    if (isAuthenticated === false) {
+      console.warn('⚠️ Cannot fetch files: User is not authenticated');
+      return;
+    }
+    
+    // Wait for authentication check to complete
+    if (isAuthenticated === null) {
+      console.log('⏳ Waiting for authentication check to complete...');
+      return;
+    }
     
     try {
       const res = await fetch(`/api/app-projects/${selectedProjectId}/files`);
@@ -147,11 +197,38 @@ export default function AppBuilderPage() {
           setSelectedFile(data[0]);
         }
       } else {
-        const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
-        console.error('Failed to fetch files:', res.status, errorData);
-        // Don't show alert for 401/403 as user might not be logged in
-        if (res.status !== 401 && res.status !== 403) {
-          console.warn('Files fetch error:', errorData.error || 'Unknown error');
+        let errorData: any = {};
+        try {
+          const contentType = res.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            errorData = await res.json();
+          } else {
+            const textError = await res.text().catch(() => '');
+            errorData = { error: textError || `HTTP ${res.status}: ${res.statusText || 'Unknown error'}` };
+          }
+        } catch (parseError) {
+          errorData = { error: `HTTP ${res.status}: ${res.statusText || 'Unknown error'}` };
+        }
+        
+        console.error('Failed to fetch files:', {
+          status: res.status,
+          statusText: res.statusText,
+          error: errorData.error || errorData.message || 'Unknown error',
+          details: errorData.details,
+          errorData: Object.keys(errorData).length > 0 ? errorData : { error: errorData.error || 'Unknown error' }
+        });
+        
+        // Handle authentication errors
+        if (res.status === 401) {
+          console.warn('⚠️ Authentication required - user may need to log in');
+          console.warn('Suggestion:', errorData.details?.suggestion || errorData.message || 'Please sign in to continue');
+          setIsAuthenticated(false);
+          // Optionally redirect to login or show a message
+          // router.push('/auth');
+        } else if (res.status === 403) {
+          console.warn('⚠️ Not authorized to access this project');
+        } else if (res.status !== 401 && res.status !== 403) {
+          console.warn('Files fetch error:', errorData.error || errorData.message || 'Unknown error');
         }
       }
     } catch (error) {
@@ -280,30 +357,30 @@ export default function AppBuilderPage() {
         >
           {/* Column 1: Projects */}
           <div style={{ height: '100%', overflow: 'hidden' }}>
-            <ProjectManager
-              onSelectProject={setSelectedProjectId}
-              selectedProjectId={selectedProjectId}
-            />
-          </div>
+          <ProjectManager
+            onSelectProject={setSelectedProjectId}
+            selectedProjectId={selectedProjectId}
+          />
+        </div>
 
           {/* Column 2: File Explorer */}
           <div style={{ height: '100%', overflow: 'hidden', borderRight: '1px solid rgba(255, 255, 255, 0.1)' }}>
-            <FileExplorer
-              projectId={selectedProjectId}
-              onSelectFile={handleFileSelect}
-              selectedFileId={selectedFile?.id}
-              onFileChange={handleFileChange}
-            />
-          </div>
+              <FileExplorer
+                projectId={selectedProjectId}
+                onSelectFile={handleFileSelect}
+                selectedFileId={selectedFile?.id}
+                onFileChange={handleFileChange}
+              />
+            </div>
 
           {/* Column 3: Editor */}
           <div style={{ height: '100%', overflow: 'hidden' }}>
-            <CodeEditor
-              file={selectedFile}
-              projectId={selectedProjectId}
-              onChange={handleEditorChange}
-            />
-          </div>
+              <CodeEditor
+                file={selectedFile}
+                projectId={selectedProjectId}
+                onChange={handleEditorChange}
+              />
+            </div>
 
           {/* Column 4: Chat Panel - Fixed Width */}
           <div 
@@ -314,75 +391,75 @@ export default function AppBuilderPage() {
               flexDirection: 'column'
             }}
           >
-            {/* Tabs */}
+              {/* Tabs */}
             <div className="flex border-b border-white/10 bg-[#0a0a0a] flex-shrink-0">
-              <button
-                onClick={() => setRightPanelMode('chat')}
-                className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
-                  rightPanelMode === 'chat'
-                    ? 'text-emerald-400 border-b-2 border-emerald-400'
-                    : 'text-gray-400 hover:text-gray-300'
-                }`}
-              >
-                Chat
-              </button>
-              {selectedProjectId && (
                 <button
-                  onClick={() => setRightPanelMode('preview')}
+                  onClick={() => setRightPanelMode('chat')}
                   className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
-                    rightPanelMode === 'preview'
+                    rightPanelMode === 'chat'
                       ? 'text-emerald-400 border-b-2 border-emerald-400'
                       : 'text-gray-400 hover:text-gray-300'
                   }`}
                 >
-                  Preview
+                  Chat
                 </button>
-              )}
-              <button
-                onClick={() => setRightPanelMode('deploy')}
-                className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
-                  rightPanelMode === 'deploy'
-                    ? 'text-emerald-400 border-b-2 border-emerald-400'
-                    : 'text-gray-400 hover:text-gray-300'
-                }`}
-              >
-                Deploy
-              </button>
-            </div>
+                {selectedProjectId && (
+                  <button
+                    onClick={() => setRightPanelMode('preview')}
+                    className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+                      rightPanelMode === 'preview'
+                        ? 'text-emerald-400 border-b-2 border-emerald-400'
+                        : 'text-gray-400 hover:text-gray-300'
+                    }`}
+                  >
+                    Preview
+                  </button>
+                )}
+                <button
+                  onClick={() => setRightPanelMode('deploy')}
+                  className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+                    rightPanelMode === 'deploy'
+                      ? 'text-emerald-400 border-b-2 border-emerald-400'
+                      : 'text-gray-400 hover:text-gray-300'
+                  }`}
+                >
+                  Deploy
+                </button>
+              </div>
 
-            {/* Panel Content - Fixed height container */}
+              {/* Panel Content - Fixed height container */}
             <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-              {rightPanelMode === 'chat' ? (
-                <AppChat
-                  projectId={selectedProjectId}
-                  currentFile={selectedFile ? { id: selectedFile.id, path: selectedFile.path, name: selectedFile.name } : undefined}
-                  projectFiles={files.map(f => ({ path: f.path, name: f.name }))}
-                  onFilesCreated={fetchFiles}
-                />
-              ) : rightPanelMode === 'preview' ? (
-                selectedProjectId ? (
-                  <PreviewPanel
+                {rightPanelMode === 'chat' ? (
+                  <AppChat
                     projectId={selectedProjectId}
-                    projectType={project?.type || 'web'}
-                    onRefresh={fetchFiles}
+                    currentFile={selectedFile ? { id: selectedFile.id, path: selectedFile.path, name: selectedFile.name } : undefined}
+                    projectFiles={files.map(f => ({ path: f.path, name: f.name }))}
+                    onFilesCreated={fetchFiles}
                   />
-                ) : (
-                  <div className="h-full flex items-center justify-center bg-[#0a0a0a] text-gray-400">
-                    <div className="text-center">
-                      <p className="text-sm">Please select a project to preview</p>
+                ) : rightPanelMode === 'preview' ? (
+                  selectedProjectId ? (
+                    <PreviewPanel
+                      projectId={selectedProjectId}
+                      projectType={project?.type || 'web'}
+                      onRefresh={fetchFiles}
+                    />
+                  ) : (
+                    <div className="h-full flex items-center justify-center bg-[#0a0a0a] text-gray-400">
+                      <div className="text-center">
+                        <p className="text-sm">Please select a project to preview</p>
+                      </div>
                     </div>
-                  </div>
-                )
-              ) : (
-                <DeploymentPanel
-                  projectId={selectedProjectId}
-                  projectName={project?.title || 'Untitled Project'}
-                />
-              )}
+                  )
+                ) : (
+                  <DeploymentPanel
+                    projectId={selectedProjectId}
+                    projectName={project?.title || 'Untitled Project'}
+                  />
+                )}
+              </div>
             </div>
-          </div>
         </div>
-      ) : (
+        ) : (
         <div style={{ display: 'grid', gridTemplateColumns: '256px 1fr', height: '100%', overflow: 'hidden' }}>
           {/* Column 1: Projects */}
           <div style={{ height: '100%', overflow: 'hidden' }}>
@@ -428,10 +505,10 @@ export default function AppBuilderPage() {
                   Create New Project
                 </button>
               </div>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
       {/* Generation Loader Overlay */}
       <GenerationLoader

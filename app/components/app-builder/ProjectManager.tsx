@@ -374,20 +374,59 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
       setQuestionnaireData(null);
       await fetchProjects();
       
-      // Select project first, then trigger AI generation
+      // Select project first
       onSelectProject(project.id);
       
-      // Wait a bit for project to be selected and chat to initialize
+      // Step 1: Wait for scaffold files to be created and verify preview renders
+      console.log('🔍 Step 1: Verifying scaffold files render...');
+      
+      // Wait a bit for scaffold files to be saved to database
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Verify preview can be generated (this ensures scaffold files are working)
+      try {
+        const previewRes = await fetch(`/api/app-projects/${project.id}/preview`, {
+          method: 'POST',
+        });
+        
+        if (previewRes.ok) {
+          const previewData = await previewRes.json();
+          if (previewData.output && previewData.output.length > 0) {
+            console.log('✅ Scaffold files verified - preview renders successfully');
+            console.log('📊 Preview HTML length:', previewData.output.length);
+          } else {
+            console.warn('⚠️ Preview API returned empty output');
+          }
+        } else {
+          console.warn('⚠️ Preview verification failed:', previewRes.status);
+          const errorData = await previewRes.json().catch(() => ({ error: 'Unknown error' }));
+          console.warn('Preview error:', errorData);
+        }
+      } catch (previewError: any) {
+        console.error('❌ Error verifying preview:', previewError);
+        // Continue anyway - scaffold files should still work
+      }
+      
+      // Step 2: Wait for project to be selected and chat component to initialize
+      // Increased timeout to ensure AppChat useEffect runs and can detect the prompt
       setTimeout(() => {
         // Generate comprehensive prompt from questionnaire data
         const buildPrompt = generateBuildPrompt(questionnaireData, project.title);
-        console.log('📝 Generated build prompt from questionnaire:', buildPrompt);
+        console.log('📝 Step 2: Generated build prompt from questionnaire:', buildPrompt);
         
         // Store prompt in sessionStorage so AppChat can pick it up
         sessionStorage.setItem(`auto-prompt-${project.id}`, buildPrompt);
         sessionStorage.setItem(`auto-prompt-timestamp-${project.id}`, Date.now().toString());
         
-        // Automatically send prompt to AI chat to generate files
+        // Trigger a custom event to notify AppChat that prompt is ready
+        // This ensures AppChat picks up the prompt even if useEffect hasn't run yet
+        window.dispatchEvent(new CustomEvent('auto-prompt-ready', { 
+          detail: { projectId: project.id } 
+        }));
+        
+        // Step 3: Automatically send prompt to AI chat to generate files
+        // AI will build on top of the working scaffold files
+        console.log('🤖 Step 3: Triggering AI generation to build on scaffold...');
         // Use DeepSeek by default (best for code generation)
         const userProvider = typeof window !== 'undefined' 
           ? localStorage.getItem('ai_provider')
@@ -399,10 +438,9 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
           ? localStorage.getItem('ai_model')
           : null;
         
-        // Default to Groq (fastest, free tier available)
-        // If user has set a provider, use it; otherwise default to Groq for speed
-        const provider = userProvider || 'groq';
-        const model = userModel || (provider === 'groq' ? 'llama-3.3-70b-versatile' : provider === 'openrouter' ? 'meta-llama/llama-3.2-3b-instruct:free' : undefined);
+        // Hardcoded: Only OpenRouter + DeepSeek Coder
+        const provider = 'openrouter';
+        const model = 'deepseek/deepseek-coder';
         
         const requestBody: any = {
           message: buildPrompt,
@@ -420,24 +458,11 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
         console.log('🤖 Using AI provider:', provider, 'with model:', model);
         console.log('🔑 API Key present:', !!userApiKey, '| Provider:', provider);
         
-        // Check if API key is needed but missing (except for Ollama which uses localhost)
-        if (!userApiKey && provider !== 'ollama') {
-          console.warn('⚠️ No API key provided for provider:', provider);
-          const errorMsg = `No API key configured for ${provider}. Please add your API key in chat settings (⚙️ icon).`;
-          sessionStorage.setItem(`auto-error-${project.id}`, JSON.stringify({
-            error: errorMsg,
-            type: 'missing_api_key',
-            suggestion: `Get your ${provider} API key and add it in chat settings (⚙️ icon)`
-          }));
-          window.dispatchEvent(new CustomEvent('generation-complete', { 
-            detail: { 
-              projectId: project.id,
-              duration: '0',
-              filesCreated: 0,
-              error: true
-            } 
-          }));
-          return;
+        // Note: API key check removed - backend will use environment variables as fallback
+        // This allows the request to proceed even without user-provided API key
+        // The backend will handle API key resolution (user key > env vars)
+        if (!userApiKey) {
+          console.log('ℹ️ No user API key provided, backend will use environment variables if available');
         }
         
         // Store generation start time and trigger loading overlay
@@ -447,6 +472,13 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
         
         let requestCompleted = false;
         console.log('🚀 Starting AI request for project:', project.id);
+        console.log('📋 Request details:', {
+          projectId: project.id,
+          provider: provider,
+          model: model,
+          hasApiKey: !!userApiKey,
+          requestBodyKeys: Object.keys(requestBody)
+        });
         fetch(`/api/app-projects/${project.id}/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -476,10 +508,22 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
               responseLength: chatData.response?.length || 0,
               hasFilesCreated: !!chatData.filesCreated,
               filesCreatedCount: chatData.filesCreated?.length || 0,
+              successfulFiles: chatData.filesCreated?.filter((f: any) => f.success).length || 0,
               provider: chatData.provider,
               model: chatData.model,
               keys: Object.keys(chatData)
             });
+            
+            // Log file creation details
+            if (chatData.filesCreated && chatData.filesCreated.length > 0) {
+              console.log('📁 Files created:', chatData.filesCreated.map((f: any) => ({
+                path: f.path,
+                success: f.success,
+                error: f.error
+              })));
+            } else {
+              console.warn('⚠️ No files were created in the response');
+            }
             
             // Store response in sessionStorage for chat UI
             sessionStorage.setItem(`auto-response-${project.id}`, JSON.stringify(chatData));
@@ -492,17 +536,21 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
             // Trigger files refresh multiple times to ensure files appear
             // Files might take a moment to be saved to database
             setTimeout(() => {
+              console.log('🔄 Triggering files-updated event (1st)');
               window.dispatchEvent(new CustomEvent('files-updated'));
             }, 500);
             setTimeout(() => {
+              console.log('🔄 Triggering files-updated event (2nd)');
               window.dispatchEvent(new CustomEvent('files-updated'));
             }, 1500);
             setTimeout(() => {
+              console.log('🔄 Triggering files-updated event (3rd)');
               window.dispatchEvent(new CustomEvent('files-updated'));
             }, 3000);
             
             // Also trigger preview refresh after files are created
             setTimeout(() => {
+              console.log('🔄 Triggering preview-updated event');
               window.dispatchEvent(new CustomEvent('preview-updated'));
             }, 2000);
             
@@ -598,15 +646,16 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
             
             // Only log errors for actual HTTP errors (4xx, 5xx) and when request hasn't completed
             if (chatResponse.status >= 400 && !requestCompleted) {
-              // Create minimal error log - avoid complex serialization that might fail
-              const errorLog = {
-                status: chatResponse.status,
-                statusText: chatResponse.statusText,
-                error: errorMessage || 'Unknown error',
-                provider: provider || 'unknown',
-                model: model || 'unknown',
-                projectId: project.id,
-                timestamp: new Date().toISOString()
+              // Create error log with guaranteed values - capture variables from outer scope
+              const errorLog: Record<string, string> = {
+                status: String(chatResponse.status || 'unknown'),
+                statusText: String(chatResponse.statusText || 'Unknown'),
+                error: String(errorMessage || 'Unknown error'),
+                provider: String(provider || 'unknown'),
+                model: String(model || 'unknown'),
+                projectId: String(project?.id || 'unknown'),
+                timestamp: new Date().toISOString(),
+                responsePreview: String(responseText?.substring(0, 100) || 'no response')
               };
 
               console.error('❌ AI chat request failed:', errorLog);
@@ -632,31 +681,35 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
             errorType = 'Error';
             
             // Provide more specific error messages
-            if (chatError.message.includes('fetch failed') || chatError.message.includes('network')) {
+            if (chatError.message && (chatError.message.includes('fetch failed') || chatError.message.includes('network'))) {
               errorMessage = 'Connection error: Unable to reach the AI service. Please check your internet connection and API key settings.';
-            } else if (chatError.message.includes('Failed to fetch')) {
+            } else if (chatError.message && chatError.message.includes('Failed to fetch')) {
               errorMessage = 'Connection error: The AI service is not reachable. Please verify your API key is correct.';
             }
           } else if (chatError && typeof chatError === 'object') {
             // Try to extract meaningful information from error object
             errorMessage = (chatError as any).message || (chatError as any).error || 'Network error: Unable to connect to AI service';
-            errorDetails = JSON.stringify(chatError, null, 2);
+            try {
+              errorDetails = JSON.stringify(chatError, null, 2);
+            } catch {
+              errorDetails = String(chatError);
+            }
             errorType = 'Object';
           } else {
             errorMessage = 'Network error: Unable to connect to AI service';
             errorDetails = String(chatError || 'Unknown error');
-            errorType = typeof chatError;
+            errorType = chatError === null ? 'null' : chatError === undefined ? 'undefined' : typeof chatError;
           }
           
-          // Ensure we always log meaningful information - all values must be serializable
-          const errorInfo: Record<string, any> = {
+          // Ensure we always log meaningful information - all values must be serializable strings
+          const errorInfo: Record<string, string> = {
             errorType: String(errorType || 'unknown'),
             errorMessage: String(errorMessage || 'Unknown error'),
             errorDetails: String(errorDetails || 'No additional details'),
-            projectId: String(project.id || 'unknown'),
+            projectId: String(project?.id || 'unknown'),
             provider: String(provider || 'unknown'),
             model: String(model || 'unknown'),
-            hasApiKey: Boolean(userApiKey),
+            hasApiKey: String(Boolean(userApiKey)),
             timestamp: String(new Date().toISOString()),
           };
           
@@ -667,11 +720,20 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
             errorInfo.errorStack = String(chatError.stack || 'No stack trace');
           } else if (chatError && typeof chatError === 'object') {
             try {
-              const errorStr = JSON.stringify(chatError);
-              errorInfo.errorObject = JSON.parse(errorStr);
+              const errorStr = JSON.stringify(chatError, (key, value) => {
+                // Handle circular references and non-serializable values
+                if (value === undefined) return 'undefined';
+                if (value === null) return 'null';
+                if (typeof value === 'function') return '[Function]';
+                if (typeof value === 'symbol') return '[Symbol]';
+                return value;
+              });
+              errorInfo.errorObject = errorStr.substring(0, 500); // Limit length
             } catch (serializeError) {
-              errorInfo.errorObject = { note: 'Error object could not be serialized' };
+              errorInfo.errorObject = String('Error object could not be serialized: ' + String(serializeError));
             }
+          } else if (chatError !== null && chatError !== undefined) {
+            errorInfo.errorValue = String(chatError);
           }
           
           // Final validation - ensure errorInfo is not empty
@@ -680,7 +742,9 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
             errorInfo.errorMessage = String(errorMessage || 'Unknown error');
           }
           
-          console.error('❌ Error calling AI chat:', errorInfo);
+          // Log with explicit string conversion to ensure it's visible
+          console.error('❌ Error calling AI chat:', JSON.stringify(errorInfo, null, 2));
+          console.error('❌ Raw error object:', chatError);
           
           // Stop loader on network error
           const generationStartTimeStr = sessionStorage.getItem(`generation-start-${project.id}`);
@@ -689,7 +753,7 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
             const generationDuration = ((Date.now() - generationStartTime) / 1000).toFixed(1);
             window.dispatchEvent(new CustomEvent('generation-complete', { 
               detail: { 
-                projectId: project.id,
+            projectId: project.id,
                 duration: generationDuration,
                 filesCreated: 0,
                 error: true

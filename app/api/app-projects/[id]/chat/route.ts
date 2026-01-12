@@ -195,7 +195,7 @@ const PROVIDER_CONFIGS: Record<Provider, ProviderConfig> = {
   },
   openrouter: {
     baseURL: 'https://openrouter.ai/api/v1',
-    defaultModel: 'deepseek/deepseek-chat', // Safe default - works reliably
+    defaultModel: 'deepseek/deepseek-coder', // Best for code generation quality
     models: [
       'meta-llama/llama-3.2-70b-instruct',
       'meta-llama/llama-3.1-8b-instruct',
@@ -301,7 +301,9 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  let provider: Provider = 'groq'; // Default to Groq (fastest, free tier available)
+  // Hardcoded: Only OpenRouter + DeepSeek Coder
+  const provider: Provider = 'openrouter';
+  const DEFAULT_MODEL = 'deepseek/deepseek-coder';
   let apiKey: string | undefined; // Declare outside try block for error handling
   let requestedModel: string | undefined; // Store requested model for error handling
   
@@ -725,46 +727,11 @@ export default Hero;
     // Initialize load balancer
     const loadBalancer = getLoadBalancer();
     
+    // Hardcoded: Only OpenRouter + DeepSeek Coder
     // Use user-provided API key or fall back to environment variable
-    // Priority: user-provided key > .env GROQ_API_KEY (fastest) > .env OPENROUTER_API_KEY > .env DEEPSEEK_API_KEY > .env OPENAI_API_KEY
-    apiKey = userApiKey || process.env.GROQ_API_KEY || process.env.OPENROUTER_API_KEY || process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY;
+    apiKey = userApiKey || process.env.OPENROUTER_API_KEY;
     
-    // Use load balancer to get best provider with fallback
-    // Detect provider: explicit > from API key format > load balancer > defaults
-    let detectedProvider: Provider;
-    if (userProvider) {
-      detectedProvider = detectProvider('', userProvider);
-      console.log('📡 Using user-provided provider:', detectedProvider);
-      // Use load balancer to verify provider has capacity
-      const bestProvider = loadBalancer.getBestProvider(detectedProvider, userApiKey || apiKey);
-      if (bestProvider && bestProvider !== detectedProvider) {
-        console.log('🔄 Load balancer switched provider:', detectedProvider, '->', bestProvider);
-        detectedProvider = bestProvider;
-      }
-    } else if (userApiKey) {
-      detectedProvider = detectProvider(userApiKey);
-      console.log('🔑 Detected provider from API key:', detectedProvider);
-      // Use load balancer to get best available
-      const bestProvider = loadBalancer.getBestProvider(detectedProvider, userApiKey);
-      if (bestProvider && bestProvider !== detectedProvider) {
-        detectedProvider = bestProvider;
-      }
-    } else {
-      // Default to Groq (fastest) if API key is available, otherwise use load balancer
-      if (process.env.GROQ_API_KEY || apiKey) {
-        detectedProvider = 'groq';
-        console.log('⚡ Defaulting to Groq (fastest, API key available)');
-      } else if (process.env.OPENROUTER_API_KEY) {
-        detectedProvider = 'openrouter';
-        console.log('🌐 Defaulting to OpenRouter (API key available)');
-      } else {
-        detectedProvider = getProviderWithFallback(userProvider, apiKey);
-        console.log('⚖️ Using load balancer fallback:', detectedProvider);
-      }
-    }
-    
-    provider = detectedProvider;
-    console.log('✅ Final provider:', provider, '| Model:', userModel || 'default', '| Has API key:', !!apiKey);
+    console.log('✅ Using OpenRouter + DeepSeek Coder | Model:', userModel || DEFAULT_MODEL, '| Has API key:', !!apiKey);
     
     // Update load balancer with API key if provided
     if (userApiKey) {
@@ -773,18 +740,23 @@ export default Hero;
       loadBalancer.setProviderApiKey(provider, apiKey);
     }
 
-    // Ollama doesn't need API key (uses localhost)
-    if (!apiKey && provider !== 'ollama') {
+    // Check if API key is provided
+    if (!apiKey) {
       return NextResponse.json({
-        response: `I'm your AI Code Assistant! To enable AI-powered code generation, please configure your API key.\n\n**🆓 TOP 5 FREE OPEN SOURCE OPTIONS:**\n\n1. **Ollama (100% FREE - Runs Locally)**\n   - Install: https://ollama.ai/\n   - Completely free, runs on your computer\n   - No API key needed (uses localhost)\n   - Best for privacy and unlimited usage\n\n2. **OpenRouter (FREE Models Available)**\n   - Get API key: https://openrouter.ai/keys\n   - Access to multiple free models\n   - Free tier with good limits\n   - Aggregates best open source models\n\n3. **Groq (FREE & Fast)**\n   - Get API key: https://console.groq.com/keys\n   - Free tier with high limits\n   - Very fast responses\n\n4. **DeepSeek (FREE - Great for Code)**\n   - Get API key: https://platform.deepseek.com/api_keys\n   - Free tier available\n   - Excellent for code generation\n\n5. **Together AI (FREE)**\n   - Get API key: https://api.together.xyz/\n   - Free tier available\n   - Multiple open source models\n\n**OTHER FREE OPTIONS:**\n- **Hugging Face**: https://huggingface.co/settings/tokens\n- **Perplexity**: https://www.perplexity.ai/settings/api\n- **Cohere**: https://dashboard.cohere.com/api-keys\n\n**Setup:**\n- Add API key in chat settings (⚙️ icon)\n- Or add GROQ_API_KEY, DEEPSEEK_API_KEY, or OPENROUTER_API_KEY to your .env file\n- For Ollama: Install locally, no API key needed!\n\n**Recommended:** Start with Ollama (100% free, local) or OpenRouter (multiple free models)!`,
+        response: `I'm your AI Code Assistant powered by **DeepSeek Coder**! The API key is configured from the environment variable (\`OPENROUTER_API_KEY\`).\n\n**💡 Using DeepSeek Coder:**\n- Specifically designed for code generation\n- Matches GPT-4 quality on coding benchmarks\n- 128K token context window\n- Professional, production-ready code output\n\n**Note:** If you need to configure a different API key, add \`OPENROUTER_API_KEY\` to your .env file.`,
         suggestions: [],
+        filesCreated: [], // Always include filesCreated array
+        provider: provider,
+        model: userModel || 'unknown',
       });
     }
     
-    // For Ollama, use empty API key (it uses localhost)
-    const finalApiKey = provider === 'ollama' ? 'ollama' : (apiKey || '');
-
-    const { client, model } = createClient(finalApiKey, provider, userModel);
+    // Use OpenRouter API key
+    const finalApiKey = apiKey || '';
+    
+    // Always use DeepSeek Coder model
+    const model = userModel || DEFAULT_MODEL;
+    const { client } = createClient(finalApiKey, provider, model);
     
     // Store model for error handling
     const attemptedModel = model;
@@ -827,6 +799,20 @@ export default Hero;
     
     projectContext += `\n=== PROJECT FILES ===\n`;
 
+    // Check if scaffold files exist (App.jsx, index.js, App.css, index.css)
+    const hasScaffoldFiles = project.files.some(f => 
+      f.path.includes('App.jsx') || f.path.includes('App.js') || 
+      f.path.includes('index.js') || f.path.includes('App.css')
+    );
+
+    if (hasScaffoldFiles) {
+      projectContext += `\n🚨 IMPORTANT: This project has scaffold files that are already rendering correctly!\n`;
+      projectContext += `- DO NOT replace or delete existing scaffold files (App.jsx, index.js, App.css, index.css)\n`;
+      projectContext += `- BUILD ON TOP of existing files - add new components, enhance existing ones\n`;
+      projectContext += `- If modifying App.jsx, preserve the existing structure and add new components\n`;
+      projectContext += `- The scaffold files ensure the preview renders - keep them working!\n\n`;
+    }
+
     project.files.forEach((file) => {
       projectContext += `\n[File: ${file.path}]\n`;
       projectContext += `Language: ${file.language || 'unknown'}\n`;
@@ -836,6 +822,9 @@ export default Hero;
       projectContext += `Content:\n${file.content}\n`;
       projectContext += `---\n`;
     });
+    
+    // Store hasScaffoldFiles for use in system prompt
+    const scaffoldFilesExist = hasScaffoldFiles;
 
     // Build enhanced system prompt with quality guidelines
     const designStyle = questionnaireData?.designStyle || project.designStyle || 'modern-minimal';
@@ -868,6 +857,16 @@ YOU MUST IMMEDIATELY:
 DO NOT ask follow-up questions - the questionnaire has ALL the information you need!
 ` : ''}
 
+${scaffoldFilesExist ? `
+🚨 CRITICAL: SCAFFOLD FILES EXIST 🚨
+This project already has working scaffold files (App.jsx, index.js, App.css, index.css) that render correctly.
+- BUILD ON TOP of these files - add new components, enhance existing code
+- DO NOT replace or delete scaffold files - they ensure the preview works
+- If you need to modify App.jsx, ADD components to it, don't replace the entire file
+- Create NEW component files for new features (Home.jsx, About.jsx, etc.)
+- Import and use new components in App.jsx while keeping the existing structure
+` : ''}
+
 === PROFESSIONAL MARKET-GRADE QUALITY STANDARDS (LOVABLE-STYLE) ===
 
 **CRITICAL: Generate production-ready, market-grade websites that look professional and polished, not basic templates.**
@@ -896,12 +895,14 @@ DO NOT ask follow-up questions - the questionnaire has ALL the information you n
    - Implement proper content width constraints
 
 4. **Professional Styling:**
-   - Use Tailwind CSS classes for modern styling
+   - Use Tailwind CSS utility classes DIRECTLY in JSX (className="...")
+   - IMPORTANT: Use Tailwind Play CDN - include Tailwind classes directly, NOT @tailwind directives
    - Apply gradient text effects: bg-gradient-to-r from-color1 to-color2 bg-clip-text text-transparent
-   - Use professional button styles with hover states
-   - Implement card designs with proper shadows and borders
+   - Use professional button styles with hover states: hover:bg-color-600 hover:shadow-lg transition-all duration-300
+   - Implement card designs: bg-white rounded-xl shadow-lg border border-gray-100 p-6
    - Add smooth transitions: transition-all duration-300 ease-in-out
-   - Use backdrop-blur for modern glass effects
+   - Use backdrop-blur for modern glass effects: backdrop-blur-md bg-white/80
+   - For CSS files: Only use custom CSS for complex animations or specific styles. Prefer Tailwind utilities in JSX.
 
 5. **Hero Sections:**
    - Create impressive hero sections with gradients
@@ -1517,55 +1518,118 @@ ${questionnaireData ? `
 ` : ''}
 
 === IMAGE HANDLING GUIDELINES ===
+**CRITICAL: Always include dummy/placeholder images in generated components. Never leave image placeholders empty!**
+
 When adding images to components:
-1. **Use appropriate image sources:**
-   - For hero images: Use Unsplash URLs (https://images.unsplash.com/photo-...)
-   - For placeholders: Use placeholder.com (https://via.placeholder.com/WIDTHxHEIGHT)
-   - For icons: Use inline SVG code
-   - For logos: Use SVG or small PNG/WebP images
+1. **Use appropriate dummy image sources (ALWAYS include these):**
+   - **For hero images**: Use Unsplash URLs with specific categories
+     * Technology: https://images.unsplash.com/photo-1518770660439-4636190af475?w=1200
+     * Business: https://images.unsplash.com/photo-1552664730-d307ca884978?w=1200
+     * Portfolio: https://images.unsplash.com/photo-1467232004584-a241de8bcf5d?w=1200
+     * Product: https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=1200
+   
+   - **For placeholder images**: Use placeholder.com with dimensions
+     * Hero: https://via.placeholder.com/1200x600/4F46E5/FFFFFF?text=Hero+Image
+     * Card: https://via.placeholder.com/400x300/6366F1/FFFFFF?text=Image
+     * Avatar: https://via.placeholder.com/150/8B5CF6/FFFFFF?text=Avatar
+     * Thumbnail: https://via.placeholder.com/300x200/EC4899/FFFFFF?text=Thumbnail
+   
+   - **For Picsum (Lorem Picsum)**: Random high-quality images
+     * https://picsum.photos/1200/600 (hero)
+     * https://picsum.photos/400/300 (cards)
+     * https://picsum.photos/200/200 (avatars)
+   
+   - **For icons**: Use inline SVG code (Heroicons, Feather icons)
+   - **For logos**: Use SVG or small PNG/WebP images
 
 2. **Always include alt text** for accessibility:
    \`\`\`jsx
-   <img src="image.jpg" alt="Descriptive text about the image" />
+   <img src="https://picsum.photos/800/600" alt="Professional business meeting" className="w-full h-auto rounded-lg" />
    \`\`\`
 
-3. **Make images responsive:**
+3. **Make images responsive with Tailwind classes:**
    \`\`\`jsx
    <img 
-     src="image.jpg" 
-     alt="Description"
-     className="w-full h-auto max-w-full"
+     src="https://images.unsplash.com/photo-1518770660439-4636190af475?w=1200"
+     alt="Modern technology workspace"
+     className="w-full h-auto max-w-full object-cover rounded-xl shadow-lg"
    />
    \`\`\`
 
-4. **Use proper CSS classes** for styling:
-   - \`object-cover\` for background images
-   - \`object-contain\` to preserve aspect ratio
-   - \`rounded-lg\` for rounded corners
-   - \`shadow-lg\` for shadows
+4. **Use proper Tailwind CSS classes** for styling:
+   - \`object-cover\` for background images (crops to fit)
+   - \`object-contain\` to preserve aspect ratio (no cropping)
+   - \`rounded-lg\` or \`rounded-xl\` for rounded corners
+   - \`shadow-lg\` or \`shadow-xl\` for professional shadows
+   - \`w-full h-64\` for fixed height containers
+   - \`aspect-video\` or \`aspect-square\` for aspect ratios
 
-5. **For image galleries**, create responsive grid layouts:
+5. **For image galleries**, create responsive grid layouts with dummy images:
    \`\`\`jsx
-   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-     {images.map((img, idx) => (
-       <img key={idx} src={img} alt={\`Image \${idx + 1}\`} className="w-full h-64 object-cover rounded-lg" />
+   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+     {[1, 2, 3, 4, 5, 6].map((idx) => (
+       <img 
+         key={idx} 
+         src={\`https://picsum.photos/400/300?random=\${idx}\`}
+         alt={\`Gallery image \${idx}\`} 
+         className="w-full h-64 object-cover rounded-lg shadow-md hover:shadow-xl transition-shadow" 
+       />
      ))}
    </div>
    \`\`\`
 
-6. **For SVG icons**, use inline SVG for scalability:
+6. **For hero sections**, use high-quality dummy images:
    \`\`\`jsx
-   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="..." />
-   </svg>
+   <div className="relative h-screen bg-cover bg-center" style={{backgroundImage: 'url(https://images.unsplash.com/photo-1552664730-d307ca884978?w=1920)'}}>
+     <div className="absolute inset-0 bg-black/40"></div>
+     {/* Content */}
+   </div>
    \`\`\`
 
-7. **Popular free image sources:**
-   - Unsplash: https://images.unsplash.com/photo-[ID]
-   - Pexels: https://images.pexels.com/photos/[ID]
-   - Placeholder: https://via.placeholder.com/[WIDTH]x[HEIGHT]
+7. **For product/portfolio cards**, include dummy images:
+   \`\`\`jsx
+   <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+     <img 
+       src="https://picsum.photos/400/300?random=1"
+       alt="Project showcase"
+       className="w-full h-48 object-cover"
+     />
+     <div className="p-6">
+       {/* Card content */}
+     </div>
+   </div>
+   \`\`\`
 
-8. **When user asks for images**, suggest using Unsplash or placeholder images unless they specify otherwise
+8. **Popular free dummy image sources (use these in generated code):**
+   - **Unsplash**: https://images.unsplash.com/photo-[ID]?w=[WIDTH]
+   - **Picsum (Lorem Picsum)**: https://picsum.photos/[WIDTH]/[HEIGHT]?random=[NUMBER]
+   - **Placeholder.com**: https://via.placeholder.com/[WIDTH]x[HEIGHT]/[COLOR]/[TEXT_COLOR]?text=[TEXT]
+   - **Pexels**: https://images.pexels.com/photos/[ID]/pexels-photo-[ID].jpeg?w=[WIDTH]
+
+9. **When generating components, ALWAYS:**
+   - Include at least 3-6 dummy images for galleries
+   - Use different image sources for variety
+   - Add proper alt text describing what the image represents
+   - Make images responsive with Tailwind classes
+   - Use professional-looking images (not broken placeholders)
+
+10. **Example dummy image arrays for galleries:**
+    \`\`\`jsx
+    const portfolioImages = [
+      'https://picsum.photos/800/600?random=1',
+      'https://picsum.photos/800/600?random=2',
+      'https://picsum.photos/800/600?random=3',
+      'https://picsum.photos/800/600?random=4',
+    ];
+    
+    const teamAvatars = [
+      'https://i.pravatar.cc/150?img=1',
+      'https://i.pravatar.cc/150?img=2',
+      'https://i.pravatar.cc/150?img=3',
+    ];
+    \`\`\`
+
+**IMPORTANT**: Never generate components without images. Always include dummy/placeholder images using the sources above!
 
 === ERROR DETECTION & AUTO-FIX ===
 - If you detect errors in the code or user reports issues, automatically analyze and fix them
@@ -1830,29 +1894,196 @@ When suggesting code changes, structure your response as:
 
 Current file being edited: ${currentFile || 'none'}`;
 
+    // Helper function to validate file integration by checking preview
+    const validateFileIntegration = async (filePath: string): Promise<{ valid: boolean; error?: string; previewLength?: number }> => {
+      try {
+        // Reload project with updated files
+        const updatedProject = await prisma.appProject.findUnique({
+          where: { id },
+          include: { files: { orderBy: { path: 'asc' } } },
+        });
+
+        if (!updatedProject) {
+          return { valid: false, error: 'Project not found' };
+        }
+
+        // Check if we have at least one JS file (required for preview)
+        const jsFiles = updatedProject.files.filter(f => f.path.endsWith('.js') || f.path.endsWith('.jsx'));
+        if (jsFiles.length === 0) {
+          // No JS files yet - this is okay for CSS files
+          if (filePath.endsWith('.css')) {
+            return { valid: true };
+          }
+          return { valid: false, error: 'No JS files found for preview' };
+        }
+
+        // Basic syntax validation first (fast check)
+        const appFile = jsFiles.find(f => 
+          (f.path.includes('App') || f.name.includes('App')) && 
+          !f.path.includes('index')
+        ) || jsFiles[0];
+
+        if (!appFile) {
+          return { valid: false, error: 'No App file found' };
+        }
+
+        const content = appFile.content;
+        
+        // Basic syntax checks
+        // Check for basic React component structure
+        const hasComponentStructure = content.includes('function') || 
+                                     content.includes('const') || 
+                                     content.includes('class') ||
+                                     content.includes('return');
+        
+        const hasExport = content.includes('export') || content.includes('module.exports');
+        
+        // For CSS files, just check it's not empty
+        if (filePath.endsWith('.css')) {
+          if (content.trim().length > 0) {
+            return { valid: true, previewLength: content.length };
+          }
+          return { valid: false, error: 'CSS file is empty' };
+        }
+
+        // For JS/JSX files, check basic structure
+        if (!hasComponentStructure) {
+          return { valid: false, error: 'File does not contain valid component structure' };
+        }
+
+        // Check for common syntax errors
+        const openBraces = (content.match(/{/g) || []).length;
+        const closeBraces = (content.match(/}/g) || []).length;
+        const openParens = (content.match(/\(/g) || []).length;
+        const closeParens = (content.match(/\)/g) || []).length;
+
+        // Allow some imbalance for incomplete files, but flag major issues
+        if (Math.abs(openBraces - closeBraces) > 3) {
+          return { valid: false, error: `Unbalanced braces: ${openBraces} open, ${closeBraces} close` };
+        }
+
+        // If it's a main file (App.jsx), ensure it has export
+        if (filePath.includes('App') && !hasExport) {
+          // This might be okay if it's being modified, but log it
+          console.warn(`⚠️ App file ${filePath} doesn't have export statement`);
+        }
+
+        // Validation passed
+        return { valid: true, previewLength: content.length };
+      } catch (validationError: any) {
+        console.error(`⚠️ Validation error for ${filePath}:`, validationError);
+        return { valid: false, error: validationError.message || 'Validation failed' };
+      }
+    };
+
     // Helper function to parse and create files from response
-    const parseAndCreateFiles = async (responseText: string): Promise<Array<{ path: string; success: boolean; error?: string }>> => {
-      // More flexible regex that handles various file: formats and spacing
-      const codeBlockRegex = /```(?:file:)?\s*([^\n`]+?)(?:\n|$)([\s\S]*?)```/g;
-      const createdFiles: Array<{ path: string; success: boolean; error?: string }> = [];
-      let match;
+    const parseAndCreateFiles = async (responseText: string): Promise<Array<{ path: string; success: boolean; error?: string; validated?: boolean; validationError?: string }>> => {
+      // Get brand info from project for fallback files
+      const brandName = project.brandName || project.title || 'My App';
+      const tagline = project.tagline || 'Welcome to my application!';
+      
+      const createdFiles: Array<{ path: string; success: boolean; error?: string; validated?: boolean; validationError?: string }> = [];
 
       console.log('📝 Parsing response for file creation...');
       console.log('Response length:', responseText.length);
-      console.log('Response preview (first 1000 chars):', responseText.substring(0, 1000));
+      console.log('Response preview (first 2000 chars):', responseText.substring(0, 2000));
 
       // Count potential code blocks
       const codeBlockCount = (responseText.match(/```/g) || []).length / 2;
       console.log(`📊 Found ${codeBlockCount} potential code blocks`);
 
-      while ((match = codeBlockRegex.exec(responseText)) !== null) {
-        let filePath = match[1].trim();
+      // Multiple regex patterns to catch different formats
+      // Pattern 1: ```file:path/to/file.js (most common - with file: prefix)
+      const filePattern1 = /```(?:file:)?\s*([^\n`]+?)(?:\n|$)([\s\S]*?)```/g;
+      // Pattern 2: ```javascript\n// path: src/App.js\ncode... (path in comment)
+      const filePattern2 = /```(\w+)?\s*(?:\/\/\s*path:\s*([^\n]+))?\n([\s\S]*?)```/g;
+      // Pattern 3: ```\nfile: path/to/file\ncode... (alternative format)
+      const filePattern3 = /```\s*(?:file:\s*)?([^\n`]+?)\s*\n([\s\S]*?)```/g;
+      // Pattern 4: ```jsx\nsrc/App.jsx\ncode... (path on separate line)
+      const filePattern4 = /```(\w+)?\s*\n\s*([^\n`]+?\.(js|jsx|ts|tsx|css|html|json))\s*\n([\s\S]*?)```/g;
+      
+      const allMatches: Array<{ path: string; content: string }> = [];
+      let match;
+
+      // Try pattern 1 (most common)
+      while ((match = filePattern1.exec(responseText)) !== null) {
+        const filePath = match[1].trim();
         const fileContent = match[2].trim();
+        
+        // Skip if it's just a language identifier without a path
+        if (filePath && filePath.length > 0 && fileContent.length > 10) {
+          allMatches.push({ path: filePath, content: fileContent });
+        }
+      }
+
+      // Try pattern 2 (path in comment)
+      filePattern2.lastIndex = 0;
+      while ((match = filePattern2.exec(responseText)) !== null) {
+        const language = match[1];
+        const filePath = match[2]?.trim();
+        const fileContent = match[3]?.trim();
+        
+        if (filePath && fileContent && fileContent.length > 10) {
+          allMatches.push({ path: filePath, content: fileContent });
+        }
+      }
+
+      // Try pattern 3 (alternative format)
+      filePattern3.lastIndex = 0;
+      while ((match = filePattern3.exec(responseText)) !== null) {
+        const filePath = match[1]?.trim();
+        const fileContent = match[2]?.trim();
+        
+        if (filePath && fileContent && fileContent.length > 10) {
+          // Check if we already have this file
+          if (!allMatches.some(m => m.path === filePath)) {
+            allMatches.push({ path: filePath, content: fileContent });
+          }
+        }
+      }
+
+      // Try pattern 4 (path on separate line)
+      filePattern4.lastIndex = 0;
+      while ((match = filePattern4.exec(responseText)) !== null) {
+        const language = match[1];
+        const filePath = match[2]?.trim();
+        const fileContent = match[3]?.trim();
+        
+        if (filePath && fileContent && fileContent.length > 10) {
+          // Check if we already have this file
+          if (!allMatches.some(m => m.path === filePath)) {
+            allMatches.push({ path: filePath, content: fileContent });
+          }
+        }
+      }
+
+      console.log(`📁 Found ${allMatches.length} potential files to create`);
+      if (allMatches.length > 0) {
+        console.log('📋 Files to create:', allMatches.map(m => m.path));
+      } else {
+        console.warn('⚠️ No files matched any pattern!');
+        // Log all code blocks found for debugging
+        const allCodeBlocks = responseText.match(/```[\s\S]*?```/g);
+        if (allCodeBlocks) {
+          console.log('📝 Found code blocks (but no file paths):', allCodeBlocks.length);
+          allCodeBlocks.slice(0, 3).forEach((block, idx) => {
+            console.log(`Code block ${idx + 1} (first 200 chars):`, block.substring(0, 200));
+          });
+        }
+      }
+
+      // Process each match
+      for (const fileMatch of allMatches) {
+        let filePath = fileMatch.path;
+        const fileContent = fileMatch.content;
         
         // Remove "file:" prefix if present
         if (filePath.startsWith('file:')) {
           filePath = filePath.substring(5).trim();
         }
+        
+        // Remove any leading/trailing quotes
+        filePath = filePath.replace(/^["']|["']$/g, '').trim();
         
         // Skip if it's not a file path (e.g., just language identifier like "javascript")
         // Check if it looks like a file path (has extension or contains path separators)
@@ -1860,16 +2091,22 @@ Current file being edited: ${currentFile || 'none'}`;
         const hasPathSeparator = filePath.includes('/') || filePath.includes('\\');
         
         // Log what we found
-        console.log('🔍 Found code block:', {
+        console.log('🔍 Processing code block:', {
           filePath,
           hasExtension,
           hasPathSeparator,
-          contentLength: fileContent.length
+          contentLength: fileContent.length,
+          contentPreview: fileContent.substring(0, 100)
         });
         
+        // More lenient check - allow files with extensions even without path separators
         if (!hasExtension && !hasPathSeparator) {
-          console.log('⏭️ Skipping - not a file path:', filePath);
-          continue;
+          // Check if it might be a valid filename (e.g., "App.jsx")
+          const looksLikeFile = /^[a-zA-Z0-9_-]+\.[a-zA-Z0-9]+$/.test(filePath);
+          if (!looksLikeFile) {
+            console.log('⏭️ Skipping - not a file path:', filePath);
+            continue;
+          }
         }
 
         // Determine language from file extension
@@ -1939,8 +2176,30 @@ Current file being edited: ${currentFile || 'none'}`;
             },
           });
 
-          createdFiles.push({ path: filePath, success: true });
-          console.log('✅ Created/updated file:', filePath);
+          console.log(`✅ Created/updated file: ${filePath}`);
+          
+          // Incremental validation: Verify file integrates successfully
+          console.log(`🔍 Validating integration for: ${filePath}`);
+          const validation = await validateFileIntegration(normalizedPath);
+          
+          if (validation.valid) {
+            createdFiles.push({ 
+              path: filePath, 
+              success: true, 
+              validated: true 
+            });
+            console.log(`✅ File validated successfully: ${filePath} (preview length: ${validation.previewLength || 'N/A'})`);
+          } else {
+            // File created but validation failed - still mark as success but log warning
+            createdFiles.push({ 
+              path: filePath, 
+              success: true, 
+              validated: false,
+              validationError: validation.error 
+            });
+            console.warn(`⚠️ File created but validation failed: ${filePath} - ${validation.error}`);
+            console.warn(`   File will be kept but may cause preview issues`);
+          }
         } catch (fileError: any) {
           console.error(`❌ Error creating file ${filePath}:`, fileError);
           createdFiles.push({ 
@@ -1955,10 +2214,27 @@ Current file being edited: ${currentFile || 'none'}`;
         totalFound: createdFiles.length,
         successful: createdFiles.filter(f => f.success).length,
         failed: createdFiles.filter(f => !f.success).length,
-        files: createdFiles.map(f => ({ path: f.path, success: f.success, error: f.error }))
+        validated: createdFiles.filter(f => f.validated === true).length,
+        validationFailed: createdFiles.filter(f => f.validated === false).length,
+        files: createdFiles.map(f => ({ 
+          path: f.path, 
+          success: f.success, 
+          validated: f.validated,
+          error: f.error,
+          validationError: f.validationError
+        }))
       };
 
       console.log('📊 File creation summary:', summary);
+      
+      if (summary.validationFailed > 0) {
+        console.warn(`⚠️ ${summary.validationFailed} file(s) created but failed validation:`);
+        createdFiles
+          .filter(f => f.validated === false)
+          .forEach(f => {
+            console.warn(`   - ${f.path}: ${f.validationError || 'Unknown validation error'}`);
+          });
+      }
 
       // If no files were created, log warning with more details
       if (createdFiles.length === 0) {
@@ -1990,8 +2266,8 @@ function App() {
   return (
     <div className="App">
       <header className="App-header">
-        <h1>${brandName || 'My App'}</h1>
-        <p>${tagline || 'Welcome to my application!'}</p>
+        <h1>${brandName}</h1>
+        <p>${tagline}</p>
       </header>
     </div>
   );
@@ -2086,21 +2362,41 @@ root.render(
       return createdFiles;
     };
 
-    // Call AI API (works with OpenAI-compatible providers)
-    let response: string;
+    // Call AI API - OpenRouter + DeepSeek Coder
+    let response: string = '';
     let requestSuccess = false;
-    let finalProvider = provider;
+    
+    // Log project files being sent to AI
+    const fileCount = project.files.length;
+    const scaffoldFileCount = project.files.filter(f => 
+      f.path.includes('App.jsx') || f.path.includes('App.js') || 
+      f.path.includes('index.js') || f.path.includes('App.css')
+    ).length;
     
     console.log('🚀 Making AI request:', {
       provider: provider,
       model: model,
       normalizedModel: model, // Already normalized in createClient
       baseURL: PROVIDER_CONFIGS[provider].baseURL,
-      hasApiKey: !!finalApiKey && finalApiKey !== 'ollama',
+      hasApiKey: !!finalApiKey,
       messageLength: message.length,
       userProvider: userProvider || 'not provided',
-      userModel: userModel || 'not provided'
+      userModel: userModel || 'not provided',
+      projectFilesCount: fileCount,
+      scaffoldFilesCount: scaffoldFileCount,
+      scaffoldFilesIncluded: scaffoldFileCount > 0,
+      systemPromptLength: systemPrompt.length,
+      projectContextLength: projectContext.length
     });
+    
+    if (scaffoldFileCount > 0) {
+      console.log('📦 Scaffold files included in system prompt:', 
+        project.files
+          .filter(f => f.path.includes('App.jsx') || f.path.includes('App.js') || 
+                      f.path.includes('index.js') || f.path.includes('App.css'))
+          .map(f => f.path)
+      );
+    }
     
     try {
       const completion = await client.chat.completions.create({
@@ -2128,223 +2424,144 @@ root.render(
       // Record failed request
       loadBalancer.recordRequest(provider, false);
       
-      // Handle invalid model (400/404) - fallback to safe model
-      // Groq returns 404 for model_not_found, OpenRouter returns 400
+      // Handle invalid model (400/404) - fallback to deepseek-chat
       if (error?.status === 400 || error?.status === 404 || 
           error?.message?.includes('Invalid model') || 
           error?.message?.includes('model not found') ||
           error?.code === 'model_not_found') {
-        console.warn(`⚠️ Invalid model "${model}" for ${provider}, attempting fallback`);
+        console.warn(`⚠️ Invalid model "${model}" for OpenRouter, attempting fallback to deepseek-chat`);
         
-        // For Groq, fallback to default Groq model
-        if (provider === 'groq') {
-          try {
-            const fallbackModel = PROVIDER_CONFIGS.groq.defaultModel; // llama-3.3-70b-versatile
-            console.log(`🔄 Retrying Groq with fallback model: ${fallbackModel}`);
-            
-            const fallbackClient = new OpenAI({
-              apiKey: finalApiKey || process.env.GROQ_API_KEY,
-              baseURL: 'https://api.groq.com/openai/v1',
-            });
-            
-            const fallbackCompletion = await fallbackClient.chat.completions.create({
-              model: fallbackModel,
-              messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: message },
-              ],
-              temperature: 0.7,
-              max_tokens: 4000,
-            });
-            
-            response = fallbackCompletion.choices[0]?.message?.content || 'I apologize, but I could not generate a response. Please try again.';
-            requestSuccess = true;
-            loadBalancer.recordRequest(provider, true);
-            
-            // Parse and create files from fallback response
-            const fallbackFiles = await parseAndCreateFiles(response);
-            
-            return NextResponse.json({
-              response,
-              suggestions: [],
-              filesCreated: fallbackFiles,
-              provider: finalProvider,
-              model: fallbackModel,
-              usedFallback: true,
-              fallbackReason: `Invalid model "${model}" - using ${fallbackModel} instead`,
-            });
-          } catch (fallbackError: any) {
-            console.error('Groq fallback model also failed:', fallbackError);
-            // Continue to throw original error
-            throw error;
-          }
-        }
-        
-        // For OpenRouter, fallback to deepseek/deepseek-chat (reliable model)
-        if (provider === 'openrouter') {
-          try {
-            const fallbackModel = 'deepseek/deepseek-chat';
-            console.log(`🔄 Retrying with fallback model: ${fallbackModel}`);
-            
-            const fallbackClient = new OpenAI({
-              apiKey: finalApiKey || process.env.OPENROUTER_API_KEY,
-              baseURL: 'https://openrouter.ai/api/v1',
-              defaultHeaders: {
-                'HTTP-Referer': process.env.NEXT_PUBLIC_SITE_URL || process.env.VERCEL_URL 
-                  ? `https://${process.env.VERCEL_URL}` 
-                  : 'http://localhost:3000',
-                'X-Title': 'Open Idea - AI App Builder',
-              },
-            });
-            
-            const fallbackCompletion = await fallbackClient.chat.completions.create({
-              model: fallbackModel,
-              messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: message },
-              ],
-              temperature: 0.7,
-              max_tokens: 4000, // Increased to ensure full file content
-            });
-            
-            response = fallbackCompletion.choices[0]?.message?.content || 'I apologize, but I could not generate a response. Please try again.';
-            requestSuccess = true;
-            loadBalancer.recordRequest(provider, true);
-            
-            // Parse and create files from fallback response
-            const fallbackFiles = await parseAndCreateFiles(response);
-            
-            return NextResponse.json({
-              response,
-              suggestions: [],
-              filesCreated: fallbackFiles,
-              provider: finalProvider,
-              model: fallbackModel,
-              usedFallback: true,
-              fallbackReason: `Invalid model "${model}" - using ${fallbackModel} instead`,
-            });
-          } catch (fallbackError: any) {
-            console.error('Fallback model also failed:', fallbackError);
-            // Continue to throw original error
-            throw error;
-          }
-        } else {
-          // For other providers, try their default model
-          try {
-            const fallbackModel = PROVIDER_CONFIGS[provider].defaultModel;
-            console.log(`🔄 Retrying with provider default model: ${fallbackModel}`);
-            
-            const { client: fallbackClient } = createClient(finalApiKey || '', provider, fallbackModel);
-            const fallbackCompletion = await fallbackClient.chat.completions.create({
-              model: fallbackModel,
-              messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: message },
-              ],
-              temperature: 0.7,
-              max_tokens: 4000, // Increased to ensure full file content
-            });
-            
-            response = fallbackCompletion.choices[0]?.message?.content || 'I apologize, but I could not generate a response. Please try again.';
-            requestSuccess = true;
-            loadBalancer.recordRequest(provider, true);
-            
-            return NextResponse.json({
-              response,
-              suggestions: [],
-              filesCreated: [],
-              provider: finalProvider,
-              model: fallbackModel,
-              usedFallback: true,
-              fallbackReason: `Invalid model "${model}" - using ${fallbackModel} instead`,
-            });
-          } catch (fallbackError) {
-            throw error;
-          }
-        }
-      }
-      
-      // Handle insufficient balance (402) - try fallback provider
-      if (error?.status === 402 || error?.message?.includes('Insufficient Balance') || error?.message?.includes('insufficient balance')) {
-        const fallbackProvider = loadBalancer.getBestProvider();
-        if (fallbackProvider && fallbackProvider !== provider) {
-          try {
-            console.log(`⚠️ DeepSeek balance insufficient, trying fallback: ${fallbackProvider}`);
-            // Retry with fallback provider
-            const fallbackConfig = PROVIDER_CONFIGS[fallbackProvider];
-            const fallbackApiKey = userApiKey || apiKey || '';
-            const fallbackClient = new OpenAI({
-              apiKey: fallbackApiKey,
-              baseURL: fallbackConfig.baseURL,
-            });
-            
-            const fallbackCompletion = await fallbackClient.chat.completions.create({
-              model: fallbackConfig.defaultModel,
-              messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: message },
-              ],
-              temperature: 0.7,
-              max_tokens: 4000, // Increased to ensure full file content
-            });
-            
-            response = fallbackCompletion.choices[0]?.message?.content || 'I apologize, but I could not generate a response. Please try again.';
-            requestSuccess = true;
-            loadBalancer.recordRequest(fallbackProvider, true);
-            
-            // Update provider for this request
-            finalProvider = fallbackProvider;
-          } catch (fallbackError) {
-            // Fallback also failed, throw original error
-            throw error;
-          }
-        } else {
+        try {
+          const fallbackModel = 'deepseek/deepseek-chat';
+          console.log(`🔄 Retrying with fallback model: ${fallbackModel}`);
+          
+          const fallbackClient = new OpenAI({
+            apiKey: finalApiKey || process.env.OPENROUTER_API_KEY,
+            baseURL: 'https://openrouter.ai/api/v1',
+            defaultHeaders: {
+              'HTTP-Referer': process.env.NEXT_PUBLIC_SITE_URL || process.env.VERCEL_URL 
+                ? `https://${process.env.VERCEL_URL}` 
+                : 'http://localhost:3000',
+              'X-Title': 'Open Idea - AI App Builder',
+            },
+          });
+          
+          const fallbackCompletion = await fallbackClient.chat.completions.create({
+            model: fallbackModel,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: message },
+            ],
+            temperature: 0.7,
+            max_tokens: 12000,
+          });
+          
+          response = fallbackCompletion.choices[0]?.message?.content || 'I apologize, but I could not generate a response. Please try again.';
+          requestSuccess = true;
+          loadBalancer.recordRequest(provider, true);
+          
+          // Parse and create files from fallback response
+          const fallbackFiles = await parseAndCreateFiles(response);
+          
+          return NextResponse.json({
+            response,
+            suggestions: [],
+            filesCreated: fallbackFiles,
+            provider: provider,
+            model: fallbackModel,
+            usedFallback: true,
+            fallbackReason: `Invalid model "${model}" - using ${fallbackModel} instead`,
+          });
+        } catch (fallbackError: any) {
+          console.error('Fallback model also failed:', fallbackError);
+          // Continue to throw original error
           throw error;
         }
       }
-      // If rate limit error, try fallback provider
+      // Rate limit - just throw error (no fallback since we only use OpenRouter)
       else if (error?.status === 429 || error?.message?.includes('rate limit')) {
-        const fallbackProvider = loadBalancer.getBestProvider();
-        if (fallbackProvider && fallbackProvider !== provider) {
-          try {
-            // Retry with fallback provider
-            const fallbackConfig = PROVIDER_CONFIGS[fallbackProvider];
-            const fallbackApiKey = userApiKey || apiKey || '';
-            const fallbackClient = new OpenAI({
-              apiKey: fallbackApiKey,
-              baseURL: fallbackConfig.baseURL,
-            });
-            
-            const fallbackCompletion = await fallbackClient.chat.completions.create({
-              model: fallbackConfig.defaultModel,
-              messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: message },
-              ],
-              temperature: 0.7,
-              max_tokens: 4000, // Increased to ensure full file content
-            });
-            
-            response = fallbackCompletion.choices[0]?.message?.content || 'I apologize, but I could not generate a response. Please try again.';
-            requestSuccess = true;
-            loadBalancer.recordRequest(fallbackProvider, true);
-            
-            // Update provider for this request
-            finalProvider = fallbackProvider;
-          } catch (fallbackError) {
-            // Fallback also failed, throw original error
-            throw error;
-          }
-        } else {
-          throw error;
-        }
+        throw error;
       } else {
         throw error;
       }
     }
 
+    // Ensure response is not empty before parsing
+    if (!response || response.trim().length === 0) {
+      console.warn('⚠️ Empty response from AI, creating fallback files');
+      response = 'I apologize, but I could not generate a response. Creating basic files...';
+    }
+    
     // Parse code blocks and create/update files
-    const createdFiles = await parseAndCreateFiles(response);
+    let createdFiles: Array<{ path: string; success: boolean; error?: string; validated?: boolean; validationError?: string }> = [];
+    try {
+      createdFiles = await parseAndCreateFiles(response);
+      console.log('✅ File parsing completed:', {
+        totalFiles: createdFiles.length,
+        successful: createdFiles.filter(f => f.success).length,
+        failed: createdFiles.filter(f => !f.success).length,
+        validated: createdFiles.filter(f => f.validated === true).length,
+        validationFailed: createdFiles.filter(f => f.validated === false).length
+      });
+
+      // Sandbox validation: After all files are created, validate preview can be generated
+      if (createdFiles.length > 0 && createdFiles.some(f => f.success)) {
+        console.log('🔍 Sandbox validation: Validating preview generation after file creation...');
+        
+        try {
+          // Reload project with new files
+          const updatedProject = await prisma.appProject.findUnique({
+            where: { id },
+            include: { files: { orderBy: { path: 'asc' } } },
+          });
+
+          if (updatedProject && updatedProject.files.length > 0) {
+            // Check if we can generate preview HTML
+            const jsFiles = updatedProject.files.filter(f => f.path.endsWith('.js') || f.path.endsWith('.jsx'));
+            
+            if (jsFiles.length > 0) {
+              // Check if App file exists and has valid structure
+              const appFile = jsFiles.find(f => 
+                (f.path.includes('App') || f.name.includes('App')) && 
+                !f.path.includes('index')
+              ) || jsFiles[0];
+
+              if (appFile && appFile.content) {
+                // Basic validation: check if App component structure exists
+                const hasComponent = appFile.content.includes('function') || 
+                                    appFile.content.includes('const') || 
+                                    appFile.content.includes('class');
+                const hasReturn = appFile.content.includes('return');
+                const hasExport = appFile.content.includes('export') || appFile.content.includes('module.exports');
+
+                if (hasComponent && hasReturn && hasExport) {
+                  console.log('✅ Sandbox validation passed: Preview can be generated');
+                } else {
+                  console.warn('⚠️ Sandbox validation warning: App component may be incomplete');
+                  console.warn(`   Component: ${hasComponent}, Return: ${hasReturn}, Export: ${hasExport}`);
+                }
+              } else {
+                console.warn('⚠️ Sandbox validation warning: App file not found or empty');
+              }
+            } else {
+              console.warn('⚠️ Sandbox validation warning: No JS files found for preview');
+            }
+          }
+        } catch (sandboxError: any) {
+          console.error('⚠️ Sandbox validation error:', sandboxError);
+          // Don't fail the request, just log the warning
+        }
+      }
+    } catch (parseError: any) {
+      console.error('❌ Error parsing files from response:', parseError);
+      console.error('Error details:', {
+        message: parseError?.message,
+        stack: parseError?.stack,
+        responseLength: response?.length
+      });
+      // Continue with empty array - fallback files will be created if needed
+      createdFiles = [];
+    }
 
     // Save chat message to database
     try {
@@ -2384,7 +2601,7 @@ root.render(
     }
 
     // Get load balancer stats for this request
-    const stats = loadBalancer.getStats().get(finalProvider);
+    const stats = loadBalancer.getStats().get(provider);
     const statsData = stats ? {
       requestsHandled: stats.requestsHandled,
       requestsFailed: stats.requestsFailed,
@@ -2401,17 +2618,17 @@ root.render(
       responseLength: response.length,
       filesCreated: filesCreatedResult.length,
       successfulFiles: filesCreatedResult.filter(f => f.success).length,
-      provider: finalProvider,
+      provider: provider,
     });
     
     return NextResponse.json({
       response,
       suggestions: [],
       filesCreated: filesCreatedResult,
-      provider: finalProvider,
-      model: model, // Include model information
+      provider: provider,
+      model: model,
       loadBalancerStats: statsData,
-      usedFallback: finalProvider !== provider,
+      usedFallback: false, // Always using OpenRouter + DeepSeek Coder
     });
   } catch (error: any) {
     // Get the model that was attempted (might be undefined if error occurred before client creation)
@@ -2437,11 +2654,10 @@ root.render(
           error: 'Connection error',
           message: `Unable to connect to ${provider} API. Please check your internet connection and API key settings.`,
           details: process.env.NODE_ENV === 'development' ? error?.message : undefined,
-          suggestion: provider === 'deepseek' 
-            ? 'Verify your DeepSeek API key is correct at https://platform.deepseek.com/api_keys'
-            : 'Check your API key settings in chat settings (⚙️ icon)',
+          suggestion: 'Check your OpenRouter API key settings in chat settings (⚙️ icon) or get a key at https://openrouter.ai/keys',
           provider: provider,
-          model: attemptedModel
+          model: attemptedModel,
+          filesCreated: [] // Always include filesCreated array
         },
         { status: 503 }
       );
@@ -2453,12 +2669,11 @@ root.render(
         { 
           error: 'Insufficient Balance',
           message: `Your ${provider} account has insufficient balance. Please add credits to continue.`,
-          suggestion: provider === 'deepseek' 
-            ? 'Add credits at https://platform.deepseek.com/account or try using a different provider (Groq, OpenRouter)'
-            : `Add credits to your ${provider} account or switch to a different provider in chat settings (⚙️ icon)`,
+          suggestion: 'Add credits to your OpenRouter account at https://openrouter.ai/account',
           provider: provider,
           model: attemptedModel,
-          canRetry: true
+          canRetry: true,
+          filesCreated: [] // Always include filesCreated array
         },
         { status: 402 }
       );
@@ -2475,14 +2690,11 @@ root.render(
         { 
           error: 'Invalid model',
           message: `The model "${requestedModel}" is not available for ${provider}. Please try a different model.`,
-          suggestion: provider === 'groq'
-            ? 'Try using: llama, llama3.3, mixtral, or gemma2. Click ⚙️ in chat settings to change model.'
-            : provider === 'openrouter'
-            ? 'Try using: llama, deepseek, grok, mixtral, or gpt-4. Click ⚙️ in chat settings to change model.'
-            : `Try using the default model for ${provider} or switch providers in chat settings (⚙️ icon)`,
+          suggestion: 'The model is not available. Using DeepSeek Coder (deepseek/deepseek-coder) as default.',
           provider: provider,
           model: requestedModel,
-          canRetry: true
+          canRetry: true,
+          filesCreated: [] // Always include filesCreated array
         },
         { status: error?.status || 400 }
       );
@@ -2493,13 +2705,10 @@ root.render(
         { 
           error: 'Invalid API key',
           message: `Invalid API key for ${provider}. Please check your API key in chat settings.`,
-          suggestion: provider === 'deepseek' 
-            ? 'Get your API key at https://platform.deepseek.com/api_keys'
-            : provider === 'openrouter'
-            ? 'Get your API key at https://openrouter.ai/keys'
-            : 'Click ⚙️ in chat settings to configure your API key',
+          suggestion: 'Get your OpenRouter API key at https://openrouter.ai/keys and add it in chat settings (⚙️ icon)',
           provider: provider,
-          model: attemptedModel
+          model: attemptedModel,
+          filesCreated: [] // Always include filesCreated array
         },
         { status: 401 }
       );
@@ -2511,7 +2720,8 @@ root.render(
           error: 'Rate limit exceeded. Please try again later.',
           details: `You've hit the rate limit for ${provider}. Try switching to Groq (free & fast) or wait a few minutes.`,
           provider: provider,
-          model: attemptedModel
+          model: attemptedModel,
+          filesCreated: [] // Always include filesCreated array
         },
         { status: 429 }
       );
@@ -2523,7 +2733,8 @@ root.render(
         message: `An error occurred while processing your request. ${error?.message || 'Please try again.'}`,
         provider: provider,
         model: attemptedModel,
-        canRetry: true
+        canRetry: true,
+        filesCreated: [] // Always include filesCreated array
       },
       { status: 500 }
     );

@@ -152,3 +152,7 @@ export default function LogoAnimation({ onComplete }: LogoAnimationProps) {
   );
 }
 
+
+
+
+

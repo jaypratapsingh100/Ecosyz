@@ -22,3 +22,7 @@ export default function AnalyticsTracker() {
 
   return null; // This component doesn't render anything
 }
+
+
+
+

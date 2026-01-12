@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { prisma } from '../../../../../src/lib/db';
 import { getCurrentUser, ensureUserInDb } from '../../../../../src/lib/auth';
 import { CreateAppFile } from '../../../../../src/lib/validation';
@@ -11,10 +12,38 @@ export async function GET(
     const user = await getCurrentUser();
 
     if (!user) {
-      return NextResponse.json(
-        { error: 'Not authenticated' },
-        { status: 401 }
-      );
+      // Provide more detailed error information
+      try {
+        const cookieStore = await cookies();
+        const hasAccessToken = !!cookieStore.get('sb-access-token')?.value;
+        const hasRefreshToken = !!cookieStore.get('sb-refresh-token')?.value;
+        
+        return NextResponse.json(
+          { 
+            error: 'Not authenticated',
+            message: 'Please log in to access project files',
+            details: {
+              hasAccessToken,
+              hasRefreshToken,
+              suggestion: hasAccessToken && !hasRefreshToken 
+                ? 'Your session may have expired. Please log in again.'
+                : 'Please sign in to continue.'
+            }
+          },
+          { status: 401 }
+        );
+      } catch (cookieError) {
+        return NextResponse.json(
+          { 
+            error: 'Not authenticated',
+            message: 'Please log in to access project files',
+            details: {
+              suggestion: 'Please sign in to continue.'
+            }
+          },
+          { status: 401 }
+        );
+      }
     }
 
     try {
