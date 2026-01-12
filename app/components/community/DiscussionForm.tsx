@@ -55,7 +55,7 @@ export default function DiscussionForm({
             content,
             groupId,
             workspaceId,
-            tags: tags.split(',').map(t => t.trim()).filter(Boolean),
+            tags: tags.split(',').map((t: string) => t.trim()).filter(Boolean),
           }),
         });
 

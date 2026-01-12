@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '../../../../../src/lib/db';
-import { getCurrentUser } from '../../../../../src/lib/auth';
-import { UpdateDiscussion } from '../../../../../src/lib/validation';
+import { prisma } from '@/lib/db';
+import { getCurrentUser } from '@/lib/auth';
+import { UpdateDiscussion } from '@/lib/validation';
 
 export async function GET(
   req: NextRequest,

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '../../../../../src/lib/db';
-import { getCurrentUser, ensureUserInDb } from '../../../../../src/lib/auth';
-import * as JSZip from 'jszip';
+import { prisma } from '@/lib/db';
+import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
+import JSZip from 'jszip';
 
 export async function GET(
   req: NextRequest,
@@ -93,7 +93,7 @@ build/
     const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
 
     // Return zip file
-    return new NextResponse(zipBuffer, {
+    return new NextResponse(new Uint8Array(zipBuffer), {
       headers: {
         'Content-Type': 'application/zip',
         'Content-Disposition': `attachment; filename="${project.title.replace(/\s+/g, '-')}.zip"`,

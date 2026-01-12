@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '../../../../../src/lib/db';
-import { ensureOwner } from '../../../../../src/lib/auth';
-import { CreateShare } from '../../../../../src/lib/validation';
+import { prisma } from '@/lib/db';
+import { ensureOwner } from '@/lib/auth';
+import { CreateShare } from '@/lib/validation';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

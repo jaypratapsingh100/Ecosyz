@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '../../../../../src/lib/db';
-import { getCurrentUser, ensureUserInDb } from '../../../../../src/lib/auth';
+import { prisma } from '@/lib/db';
+import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
 import { createHash } from 'crypto';
 
 // Build static HTML from project files

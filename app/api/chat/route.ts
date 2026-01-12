@@ -429,6 +429,9 @@ Your capabilities:
             console.error('Fallback model also failed:', fallbackError);
             throw modelError; // Throw original error
           }
+        } else {
+          throw modelError;
+        }
       } else {
         throw modelError;
       }

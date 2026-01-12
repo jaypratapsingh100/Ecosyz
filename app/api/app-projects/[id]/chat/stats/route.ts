@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentUser, ensureUserInDb } from '../../../../../../src/lib/auth';
-import { prisma } from '../../../../../../src/lib/db';
-import { getLoadBalancer } from '../../../../../../src/lib/llm-load-balancer';
+import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
+import { prisma } from '@/lib/db';
+import { getLoadBalancer } from '@/lib/llm-load-balancer';
 
 /**
  * Get load balancer statistics and provider health

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '../../../../../../src/lib/db';
-import { getCurrentUser, ensureUserInDb } from '../../../../../../src/lib/auth';
-import * as JSZip from 'jszip';
+import { prisma } from '@/lib/db';
+import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
+import JSZip from 'jszip';
 
 // Helper function to create project files for Firebase Hosting
 async function prepareFirebaseFiles(project: any): Promise<Record<string, string>> {
@@ -152,7 +152,7 @@ export async function POST(
     });
 
     // Create a zip file for download (users can upload via Firebase Console or CLI)
-    const zip = new JSZip.default();
+    const zip = new JSZip();
     Object.entries(files).forEach(([path, content]) => {
       zip.file(path, content);
     });

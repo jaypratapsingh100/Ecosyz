@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
     const parse = UpdatePasswordSchema.safeParse(body);
 
     if (!parse.success) {
-      const errorMessages = parse.error.errors.map(err => {
+      const errorMessages = parse.error.issues.map(err => {
         const field = err.path.join('.');
         return `${field}: ${err.message}`;
       }).join(', ');

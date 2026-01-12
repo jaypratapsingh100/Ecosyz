@@ -130,8 +130,8 @@ export default function KnowledgeGraph({ resources, onSelect, onSave, onClose }:
     const cy = cytoscape({
       container: containerRef.current,
       elements: [
-        ...nodes.map(n => ({ data: n })),
-        ...edges.map(e => ({ data: e })),
+        ...nodes.map((n: KGNode) => ({ data: n })),
+        ...edges.map((e: KGEdge) => ({ data: e })),
       ],
       style: [
         // Default node style - perfect circles with vibrant colors like the screenshot

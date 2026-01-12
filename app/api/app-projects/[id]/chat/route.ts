@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
-import { prisma } from '../../../../../src/lib/db';
-import { getCurrentUser, ensureUserInDb } from '../../../../../src/lib/auth';
-import { getLoadBalancer, getProviderWithFallback } from '../../../../../src/lib/llm-load-balancer';
+import { prisma } from '@/lib/db';
+import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
+import { getLoadBalancer, getProviderWithFallback } from '@/lib/llm-load-balancer';
 
 // Provider configuration
 type Provider = 'openai' | 'groq' | 'together' | 'huggingface' | 'deepseek' | 'ollama' | 'openrouter' | 'perplexity' | 'cohere' | 'anthropic';

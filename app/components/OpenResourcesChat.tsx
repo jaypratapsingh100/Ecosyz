@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import ChatSettings, { getStoredApiKey, getStoredModel, getStoredProvider } from './ChatSettings';
 import ResourceVisualizations from './ResourceVisualizations';
 
@@ -92,7 +92,7 @@ function detectStructuredData(text: string): Array<{ headers: string[]; rows: st
     // Split values by comma, handling quoted strings
     const values = valueText
       .split(/,\s*(?=(?:[^"]*"[^"]*")*[^"]*$)/)
-      .map(v => v.trim().replace(/^["']|["']$/g, ''))
+      .map((v: string) => v.trim().replace(/^["']|["']$/g, ''))
       .filter(v => v.length > 0);
     
     if (values.length > 0) {
@@ -159,9 +159,9 @@ function formatCitation(resource: any, index: number, style: 'simple' | 'apa' | 
       } else if (authors.length === 1) {
         apaAuthors = formatAuthorName(authors[0], 'apa');
       } else if (authors.length <= 3) {
-        apaAuthors = authors.map(a => formatAuthorName(a, 'apa')).join(', ');
+        apaAuthors = authors.map((a: string) => formatAuthorName(a, 'apa')).join(', ');
       } else {
-        apaAuthors = authors.slice(0, 3).map(a => formatAuthorName(a, 'apa')).join(', ') + ' et al.';
+        apaAuthors = authors.slice(0, 3).map((a: string) => formatAuthorName(a, 'apa')).join(', ') + ' et al.';
       }
       const apaCitation = `${apaAuthors} (${year}). ${title}. ${source}${url ? `. Retrieved from ${url}` : '.'}`;
       return apaCitation;
@@ -174,9 +174,9 @@ function formatCitation(resource: any, index: number, style: 'simple' | 'apa' | 
       } else if (authors.length === 1) {
         mlaAuthors = formatAuthorName(authors[0], 'mla');
       } else if (authors.length === 2) {
-        mlaAuthors = authors.map(a => formatAuthorName(a, 'mla')).join(' and ');
+        mlaAuthors = authors.map((a: string) => formatAuthorName(a, 'mla')).join(' and ');
       } else {
-        mlaAuthors = authors.slice(0, 2).map(a => formatAuthorName(a, 'mla')).join(', ') + ', et al.';
+        mlaAuthors = authors.slice(0, 2).map((a: string) => formatAuthorName(a, 'mla')).join(', ') + ', et al.';
       }
       return `${mlaAuthors}. "${title}." ${source}, ${year}${url ? `, ${url}` : '.'}`;
     
@@ -188,9 +188,9 @@ function formatCitation(resource: any, index: number, style: 'simple' | 'apa' | 
       } else if (authors.length === 1) {
         chicagoAuthors = formatAuthorName(authors[0], 'chicago');
       } else if (authors.length <= 3) {
-        chicagoAuthors = authors.map(a => formatAuthorName(a, 'chicago')).join(', ');
+        chicagoAuthors = authors.map((a: string) => formatAuthorName(a, 'chicago')).join(', ');
       } else {
-        chicagoAuthors = authors.slice(0, 3).map(a => formatAuthorName(a, 'chicago')).join(', ') + ', et al.';
+        chicagoAuthors = authors.slice(0, 3).map((a: string) => formatAuthorName(a, 'chicago')).join(', ') + ', et al.';
       }
       return `${chicagoAuthors}. "${title}." ${source}, ${year}. ${url || ''}`;
     
@@ -262,7 +262,7 @@ function calculateQualityScore(resource: any): number {
 function generateRecommendations(currentResources: any[], query: string): any[] {
   // Find similar resources based on tags, type, and source
   const recommendations: any[] = [];
-  const seenUrls = new Set(currentResources.map(r => r.url).filter(Boolean));
+  const seenUrls = new Set(currentResources.map((r: any) => r.url).filter(Boolean));
   
   // Group by type
   const byType: Record<string, any[]> = {};
@@ -288,7 +288,7 @@ function generateRecommendations(currentResources: any[], query: string): any[] 
     .map(([tag]) => tag);
   
   // Score and recommend resources
-  const scored = currentResources.map(r => ({
+  const scored = currentResources.map((r: any) => ({
     ...r,
     qualityScore: calculateQualityScore(r),
     relevanceScore: 0
@@ -335,7 +335,7 @@ function generateFollowUpQuestions(question: string, response: string, resources
   // Extract resource numbers mentioned in response
   const resourceMatches = response.match(/Resource\s*(?:#)?\s*(\d+)/gi);
   const mentionedResources = resourceMatches 
-    ? [...new Set(resourceMatches.map(m => {
+    ? [...new Set(resourceMatches.map((m: string) => {
         const numMatch = m.match(/\d+/);
         return parseInt(numMatch ? numMatch[0] : '0') - 1;
       }))]
@@ -638,7 +638,7 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
         { pattern: /(?:only|just) (.+) (?:resources?|papers?|code|datasets?)/i, type: 'filter' },
       ];
       
-      let detectedFilter: { type?: string; year?: number; license?: string; source?: string } | null = null;
+      let detectedFilter: { type?: string; year?: number; license?: string; source?: string } = {};
       
       // Check for filter commands
       for (const cmd of filterCommands) {
@@ -669,7 +669,7 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
           }
           
           // Apply filter if detected
-          if (detectedFilter && onFilterResources) {
+          if (Object.keys(detectedFilter).length > 0 && onFilterResources) {
             onFilterResources(detectedFilter);
           }
         }
@@ -686,7 +686,7 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
       
       // Prepare detailed resource information for DeepSeek analysis
       // Send ALL available resources for comprehensive context
-      const detailedResults = resourcesToAnalyze.map(r => ({
+      const detailedResults = resourcesToAnalyze.map((r: any) => ({
         title: r.title || r.name || 'Untitled',
         type: r.type || 'unknown',
         source: r.source || 'unknown',
@@ -1225,7 +1225,7 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
                             
                             // Render text with resource links
                             const resourcePattern = /Resource\s*(?:#)?\s*(\d+)/gi;
-                            const textParts: (string | JSX.Element)[] = [];
+                            const textParts: (string | React.ReactElement)[] = [];
                             let lastIndex = 0;
                             let match;
                             let linkCounter = 0; // Counter to ensure unique keys

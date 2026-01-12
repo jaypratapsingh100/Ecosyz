@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '../../../../../src/lib/db';
-import { getCurrentUser, ensureUserInDb } from '../../../../../src/lib/auth';
-import * as JSZip from 'jszip';
+import { prisma } from '@/lib/db';
+import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
+import JSZip from 'jszip';
 
 export async function GET(
   req: NextRequest,
@@ -42,7 +42,7 @@ export async function GET(
     }
 
     // Create zip file for Firebase Hosting
-    const zip = new JSZip.default();
+    const zip = new JSZip();
     
     // Add all project files to public directory
     for (const file of project.files) {
@@ -167,8 +167,8 @@ Your site will be available at: https://YOUR-PROJECT-ID.web.app
     // Generate zip buffer
     const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
 
-    // Return zip file
-    return new NextResponse(zipBuffer, {
+    // Return zip file (convert Buffer to Uint8Array for NextResponse)
+    return new NextResponse(new Uint8Array(zipBuffer), {
       headers: {
         'Content-Type': 'application/zip',
         'Content-Disposition': `attachment; filename="${project.title.replace(/\s+/g, '-')}-firebase.zip"`,

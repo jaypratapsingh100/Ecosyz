@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '../../../../src/lib/db';
-import { getCurrentUser } from '../../../../src/lib/auth';
-import { isAdmin } from '../../../../src/lib/admin';
+import { prisma } from '@/lib/db';
+import { getCurrentUser } from '@/lib/auth';
+import { isAdmin } from '@/lib/admin';
 
 export async function GET(req: NextRequest) {
   try {
@@ -791,14 +791,6 @@ export async function GET(req: NextRequest) {
       deployments: deploymentStatsFormatted,
       frameworks: frameworkStatsFormatted,
       appTypes: appTypeStatsFormatted,
-      community: {
-        totalActivityLast30Days: communityActivity,
-        totalGroups,
-        totalDiscussions,
-        totalEvents,
-        totalChallenges,
-        totalSubmissions,
-      },
       // Search & Discovery KPIs
       search: {
         totalSearches,
@@ -873,6 +865,7 @@ export async function GET(req: NextRequest) {
 
       // Community KPIs (Complete)
       community: {
+        totalActivityLast30Days: communityActivity,
         totalGroups,
         membershipRate: Math.round(groupMembershipRate * 100) / 100,
         totalDiscussions,

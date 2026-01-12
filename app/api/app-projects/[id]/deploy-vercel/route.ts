@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '../../../../../src/lib/db';
-import { getCurrentUser, ensureUserInDb } from '../../../../../src/lib/auth';
-import { deployToVercel, getClaimableDeploymentUrl } from '../../../../../src/lib/vercel';
+import { prisma } from '@/lib/db';
+import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
+import { deployToVercel, getClaimableDeploymentUrl } from '@/lib/vercel';
 
 // Helper function to remove CommonJS exports
 function removeCommonJSExports(code: string): string {

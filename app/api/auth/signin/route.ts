@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { 
           error: 'Invalid input',
-          message: parse.error.errors.map(e => e.message).join(', '),
+          message: parse.error.issues.map(e => e.message).join(', '),
           details: parse.error.message,
           code: 'VALIDATION_ERROR'
         },

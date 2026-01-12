@@ -138,7 +138,7 @@ export default function OpenResourcesSidebar({ searchResults = [], searchQuery =
           context: {
             searchQuery,
             resultsCount: searchResults.length,
-            results: searchResults.slice(0, 5).map(r => ({
+            results: searchResults.slice(0, 5).map((r: any) => ({
               title: r.title,
               type: r.type,
               source: r.source,

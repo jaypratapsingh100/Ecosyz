@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { getCurrentUser } from '../../../../src/lib/auth';
-import { prisma } from '../../../../src/lib/db';
-import { supabase } from '../../../../src/lib/supabase';
+import { getCurrentUser } from '@/lib/auth';
+import { prisma } from '@/lib/db';
+import { supabase } from '@/lib/supabase';
 
 export async function DELETE() {
   try {
