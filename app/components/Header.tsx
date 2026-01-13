@@ -236,14 +236,14 @@ export default function Header() {
                 Sign In
               </Link>
             )}
-            <Link href="/feedback" className="focus:outline-none focus:ring-2 focus:ring-emerald-400/60 px-2 py-1 rounded transition hover:text-emerald-400 font-medium">
+            <Link href="/feedback" className="focus:outline-none focus:ring-2 focus:ring-emerald-400/60 px-2 py-1 rounded transition hover:text-emerald-400 font-medium text-white">
               Feedback
             </Link>
           </div>
           {/* Hamburger for mobile */}
           <button
             type="button"
-            className="md:hidden p-2 rounded focus:outline-none focus:ring-2 focus:ring-emerald-400/60 ml-auto hover:bg-white/10"
+            className="md:hidden p-2 rounded focus:outline-none focus:ring-2 focus:ring-emerald-400/60 ml-auto hover:bg-white/10 text-white"
             aria-label="Open menu"
             aria-controls="mobile-nav"
             aria-expanded={mobileOpen}
