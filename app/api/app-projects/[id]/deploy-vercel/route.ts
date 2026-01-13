@@ -156,14 +156,47 @@ function buildStaticFiles(files: any[]): Array<{ path: string; content: string }
     // This prevents "Link is not defined" errors in Navigation and other components
     if (typeof window.Link === 'undefined') {
       window.Link = function Link({ to, children, className, style, onClick, ...props }) {
+        const handleClick = (e) => {
+          // Allow custom onClick handler first
+          if (onClick) {
+            onClick(e);
+            // If preventDefault was called in custom handler, respect it
+            if (e.defaultPrevented) return;
+          }
+          
+          const href = to || '#';
+          
+          // Handle hash navigation (scroll to element)
+          if (href.startsWith('#')) {
+            e.preventDefault();
+            const targetId = href.substring(1);
+            const targetElement = document.getElementById(targetId) || document.querySelector(\`[name="\${targetId}"]\`);
+            if (targetElement) {
+              targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            return;
+          }
+          
+          // Allow external links (http/https) to work normally
+          if (href.startsWith('http://') || href.startsWith('https://')) {
+            // Don't prevent default - let browser handle external links
+            return;
+          }
+          
+          // For same-page routes, prevent default but show visual feedback
+          // In a static preview, we can't do real routing, but we can scroll to top
+          if (href.startsWith('/')) {
+            e.preventDefault();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            console.log('ℹ️ Navigation to', href, 'would happen in a real app');
+          }
+        };
+        
         return React.createElement('a', { 
           href: to || '#', 
           className: className,
           style: style,
-          onClick: (e) => {
-            e.preventDefault();
-            if (onClick) onClick(e);
-          },
+          onClick: handleClick,
           ...props 
         }, children);
       };
@@ -171,15 +204,51 @@ function buildStaticFiles(files: any[]): Array<{ path: string; content: string }
     }
     
     if (typeof window.NavLink === 'undefined') {
-      window.NavLink = function NavLink({ to, children, className, style, onClick, ...props }) {
+      window.NavLink = function NavLink({ to, children, className, style, onClick, activeClassName, ...props }) {
+        const handleClick = (e) => {
+          // Allow custom onClick handler first
+          if (onClick) {
+            onClick(e);
+            if (e.defaultPrevented) return;
+          }
+          
+          const href = to || '#';
+          
+          // Handle hash navigation (scroll to element)
+          if (href.startsWith('#')) {
+            e.preventDefault();
+            const targetId = href.substring(1);
+            const targetElement = document.getElementById(targetId) || document.querySelector(\`[name="\${targetId}"]\`);
+            if (targetElement) {
+              targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            return;
+          }
+          
+          // Allow external links to work normally
+          if (href.startsWith('http://') || href.startsWith('https://')) {
+            return;
+          }
+          
+          // For same-page routes, scroll to top
+          if (href.startsWith('/')) {
+            e.preventDefault();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            console.log('ℹ️ Navigation to', href, 'would happen in a real app');
+          }
+        };
+        
+        // Determine if link is "active" based on current hash
+        const isActive = typeof window !== 'undefined' && window.location.hash === (to || '#');
+        const finalClassName = isActive && activeClassName 
+          ? \`\${className || ''} \${activeClassName}\`.trim()
+          : className;
+        
         return React.createElement('a', { 
           href: to || '#', 
-          className: className,
+          className: finalClassName,
           style: style,
-          onClick: (e) => {
-            e.preventDefault();
-            if (onClick) onClick(e);
-          },
+          onClick: handleClick,
           ...props 
         }, children);
       };

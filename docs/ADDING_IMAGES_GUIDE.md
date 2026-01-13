@@ -240,3 +240,7 @@ The AI assistant can help you:
 
 Just ask: "Add images to [component]" or "Create an image gallery"
 
+
+
+
+

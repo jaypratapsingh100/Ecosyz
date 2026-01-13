@@ -282,3 +282,7 @@ Add deploy button to `ProjectManager.tsx` or `PreviewPanel.tsx`:
 
 You can now deploy user apps to Vercel with claimable URLs and configure custom domains via GoDaddy API.
 
+
+
+
+

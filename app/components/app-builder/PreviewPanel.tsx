@@ -199,6 +199,8 @@ export default function PreviewPanel({ projectId, projectType, onRefresh }: Prev
               className="w-full h-full border-0"
               title="Preview"
               sandbox="allow-scripts allow-same-origin"
+              style={{ display: 'block' }}
+              scrolling="yes"
             />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center">
@@ -273,7 +275,8 @@ export default function PreviewPanel({ projectId, projectType, onRefresh }: Prev
               className="w-full h-full border-0"
               title="Preview"
               sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
-              style={{ backgroundColor: '#fff' }}
+              style={{ backgroundColor: '#fff', display: 'block' }}
+              scrolling="yes"
               onLoad={() => {
                 console.log('✅ PreviewPanel: Preview iframe loaded successfully');
                 console.log('📊 PreviewPanel: Preview HTML length:', previewHtml.length);

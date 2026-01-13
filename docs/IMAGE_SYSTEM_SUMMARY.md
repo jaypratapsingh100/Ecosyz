@@ -145,3 +145,7 @@ function Gallery() {
 3. **Use AI chat** to add images to components
 4. **Reference the guide** (`docs/ADDING_IMAGES_GUIDE.md`) for detailed examples
 
+
+
+
+

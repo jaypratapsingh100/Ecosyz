@@ -1,0 +1,212 @@
+================================================================================
+UNCOMMITTED FILES SUMMARY (Files Not Kept/Committed)
+Branch: develop
+================================================================================
+
+MODIFIED FILES (M) - Not Committed:
+------------------------------------
+
+Markdown Documentation Files (Root):
+- FIX_ENV_LOADING.md
+- FIX_PASSWORD_MISMATCH.md
+- ISSUES_REPORT.md
+- QUICK_FIX_DATABASE.md
+
+Markdown Documentation Files (docs/):
+- docs/ADDING_IMAGES_GUIDE.md
+- docs/ANALYTICS_KPI_STATUS.md
+- docs/ANALYTICS_TRACKING_IMPLEMENTATION.md
+- docs/APP_BUILDER_DEPLOYMENT_TESTING.md
+- docs/APP_BUILDER_INTEGRATIONS_CHECKLIST.md
+- docs/APP_BUILDER_INTEGRATIONS_PLAN.md
+- docs/APP_BUILDER_INTEGRATIONS_QUICKSTART.md
+- docs/APP_BUILDER_INTEGRATIONS_SUMMARY.md
+- docs/APP_BUILDER_TESTING.md
+- docs/APP_DEPLOYMENT_ARCHITECTURE.md
+- docs/AUTHENTICATION_STATUS.md
+- docs/AUTHENTICATION_TESTING_GUIDE.md
+- docs/AUTH_TESTING_QUICK_REFERENCE.md
+- docs/AUTO_GENERATE_FROM_QUESTIONNAIRE.md
+- docs/BUILD_PORTFOLIO_GUIDE.md
+- docs/COMMUNITY_FEATURES_STEP_BY_STEP.md
+- docs/COMMUNITY_TESTING_GUIDE.md
+- docs/COMPOSER_LIKE_FEATURES.md
+- docs/DEEPSEEK_DEFAULT_CONFIG.md
+- docs/DEPLOYMENT_QUICK_START.md
+- docs/DEPLOYMENT_SETUP_COMPLETE.md
+- docs/DEPLOYMENT_WORKFLOW.md
+- docs/DEPLOY_USER_APPS_GUIDE.md
+- docs/ENV_VARIABLES_TEMPLATE.md
+- docs/FIREBASE_DEPLOYMENT_EXPLANATION.md
+- docs/FIX_AI_CHAT_ERROR_HANDLING.md
+- docs/FIX_AUTO_PROMPT_VISIBILITY.md
+- docs/FIX_CHAT_INTEGRATION.md
+- docs/FIX_DATABASE_CONNECTION.md
+- docs/FIX_FAILED_TO_FETCH_ERROR.md
+- docs/FIX_GROK_RENDERING.md
+- docs/FIX_GROK_RENDERING_COMPLETE.md
+- docs/FIX_INVALID_LOGIN_CREDENTIALS.md
+- docs/FIX_PREVIEW_NOT_VISIBLE.md
+- docs/FIX_QUESTIONNAIRE_INTEGRATION.md
+- docs/FIX_RATE_LIMIT.md
+- docs/FREE_LLM_COMPLETE_GUIDE.md
+- docs/FREE_LLM_SETUP.md
+- docs/HOW_TO_GET_AUTH_TOKEN.md
+- docs/IMAGE_SYSTEM_SUMMARY.md
+- docs/LOAD_BALANCER_IMPLEMENTATION.md
+- docs/LOCAL_AUTH_TESTING.md
+- docs/OPENAI_ENV_SETUP.md
+- docs/QUESTIONNAIRE_SYSTEM.md
+- docs/QUESTIONNAIRE_TESTING_GUIDE.md
+- docs/QUICK_TEST_GUIDE.md
+- docs/RATE_LIMITS_1000_REQUESTS.md
+- docs/TEST_GROQ_INTEGRATION.md
+- docs/TOP_5_FREE_LLMS.md
+- docs/VERCEL_DEPLOYMENT.md
+- docs/VERCEL_DEPLOYMENT_IMPLEMENTATION.md
+
+Scripts (Modified):
+- scripts/compare-projects.js
+- scripts/create-sample-project.js
+- scripts/debug-preview.js
+- scripts/final-preview-test.js
+- scripts/get-auth-token.sh
+- scripts/test-all-community-features.sh
+- scripts/test-auth-local.sh
+- scripts/test-auth.sh
+- scripts/test-community-apis.sh
+- scripts/test-deployment.ts
+- scripts/test-full-preview.js
+- scripts/test-preview-api.js
+- scripts/test-questionnaire.sh
+
+================================================================================
+
+DELETED FILES (D) - Not Committed:
+------------------------------------
+
+GitHub Workflows:
+- .github/workflows/deploy.yml
+- .github/workflows/documentation.yml
+- .github/workflows/nextjs.yml
+
+Test Files:
+- test-ai-response.js
+- test-app-creation.js
+
+================================================================================
+
+UNTRACKED FILES (??) - New Files Not Added:
+-------------------------------------------
+
+Markdown Documentation Files (Root):
+- APP_BUILDER_COMPLETE_FLOW.md
+- ATOMIC_MONETIZATION_ROADMAP.md
+- BACKLOG.md
+- COMMITABLE_FILES_SUMMARY.txt
+- COMMIT_FILES_SUMMARY.txt
+- DEBUG_PREVIEW_NOT_RENDERING.md
+- DIAGNOSE_MY_COURT_PROJECT.md
+- END_TO_END_FLOW_VERIFICATION.md
+- FILES_TO_COMMIT.md
+- FIX_NEGATIVE_BALANCE.md
+- FLOW_TEST_RESULTS.md
+- IMPLEMENTATION_STATUS.md
+- IMPLEMENTATION_SUMMARY.md
+- INCREMENTAL_FILE_VALIDATION.md
+- MONETIZATION_IMPLEMENTATION_GUIDE.md
+- MONETIZATION_STRATEGY.md
+- OPENROUTER_DAILY_CREDITS.md
+- OPENROUTER_RATE_LIMITS.md
+- PAYMENT_GATEWAY_COMPARISON.md
+- PAYMENT_LINKS_SETUP_INSTRUCTIONS.md
+- PHASE_2_3_IMPLEMENTATION.md
+- PREVIEW_FIXES_VERIFICATION.md
+- RAZORPAY_PAYMENT_LINKS_SETUP.md
+- RAZORPAY_PAYMENT_LINK_INTEGRATION.md
+- SANDBOX_VALIDATION.md
+- SCAFFOLD_FILES_IMPLEMENTATION.md
+- SCAFFOLD_VERIFICATION_FLOW.md
+- TESTING_GUIDE.md
+- VALIDATION_STRATEGY.md
+- WORKSPACE_STATUS.md
+
+Markdown Documentation Files (docs/):
+- docs/HOW_TO_ADD_DUMMY_IMAGES.md
+
+Payment Features (New):
+- app/api/payments/activate-subscription/route.ts
+- app/payment/success/page.tsx
+
+Scripts (New):
+- scripts/diagnose-project.js
+- scripts/stage-committable-files.sh
+- scripts/test-preview-rendering.js
+
+Text Files:
+- files_to_commit.txt
+
+================================================================================
+
+SUMMARY STATISTICS:
+------------------
+Total Modified Files: 60
+  - Markdown files: 48
+  - Scripts: 12
+
+Total Deleted Files: 5
+  - Workflow files: 3
+  - Test files: 2
+
+Total Untracked Files: 40
+  - Markdown files: 32
+  - Payment features: 2
+  - Scripts: 3
+  - Text files: 3
+
+Total Uncommitted Files: 105
+
+================================================================================
+
+NON-MARKDOWN FILES THAT CAN BE COMMITTED:
+------------------------------------------
+
+Modified Scripts (12):
+- scripts/compare-projects.js
+- scripts/create-sample-project.js
+- scripts/debug-preview.js
+- scripts/final-preview-test.js
+- scripts/get-auth-token.sh
+- scripts/test-all-community-features.sh
+- scripts/test-auth-local.sh
+- scripts/test-auth.sh
+- scripts/test-community-apis.sh
+- scripts/test-deployment.ts
+- scripts/test-full-preview.js
+- scripts/test-preview-api.js
+- scripts/test-questionnaire.sh
+
+Deleted Files (5):
+- .github/workflows/deploy.yml
+- .github/workflows/documentation.yml
+- .github/workflows/nextjs.yml
+- test-ai-response.js
+- test-app-creation.js
+
+New Payment Features (2):
+- app/api/payments/activate-subscription/route.ts
+- app/payment/success/page.tsx
+
+New Scripts (3):
+- scripts/diagnose-project.js
+- scripts/stage-committable-files.sh
+- scripts/test-preview-rendering.js
+
+New Text Files (2):
+- files_to_commit.txt
+- COMMITABLE_FILES_SUMMARY.txt
+
+================================================================================
+
+TOTAL NON-MARKDOWN FILES TO COMMIT: 24 files
+================================================================================

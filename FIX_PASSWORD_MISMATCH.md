@@ -63,3 +63,7 @@ DIRECT_URL="postgresql://postgres:GcQXvxI4LwNawqgJ@db.ltenyoiaydemsnrvdbpc.supab
 Then restart: `pnpm dev`
 
 
+
+
+
+

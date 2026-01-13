@@ -133,3 +133,7 @@ if (process.env.DEEPSEEK_API_KEY || apiKey?.startsWith('sk-')) {
 - **New users**: Will default to DeepSeek
 - **No breaking changes**: All existing functionality preserved
 
+
+
+
+

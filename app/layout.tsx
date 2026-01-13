@@ -20,10 +20,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className={spaceGrotesk.variable} style={{ height: '100%', overflow: 'hidden' }}>
+    <html lang="en" suppressHydrationWarning className={spaceGrotesk.variable}>
       <body
         className="antialiased bg-white text-slate-900 font-sans"
-        style={{ height: '100%', overflow: 'hidden', margin: 0 }}
+        style={{ margin: 0 }}
       >
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
           <Providers>

@@ -106,3 +106,7 @@ GROQ_API_KEY=sk-your-key
 3. Test chat functionality
 4. Check console logs to verify provider/model
 
+
+
+
+

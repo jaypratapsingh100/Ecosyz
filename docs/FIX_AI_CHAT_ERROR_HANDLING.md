@@ -163,3 +163,7 @@ If errors persist:
 4. Check server logs for backend errors
 5. Verify AI provider is accessible
 
+
+
+
+

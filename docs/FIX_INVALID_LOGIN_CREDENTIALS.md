@@ -114,3 +114,7 @@ The error handling has been improved to show more helpful messages:
 - Email confirmation disabled but required
 - Rate limiting enabled
 
+
+
+
+

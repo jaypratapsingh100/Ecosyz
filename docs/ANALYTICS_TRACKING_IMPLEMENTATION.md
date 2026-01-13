@@ -234,3 +234,7 @@ Access the analytics dashboard at: `/admin/analytics`
 - `app/admin/analytics/page.tsx` - Analytics dashboard
 - `src/lib/analytics.ts` - Client-side tracking utilities
 - `app/components/AnalyticsTracker.tsx` - Auto page visit tracking
+
+
+
+

@@ -737,3 +737,7 @@ GET    /api/community/activity
 If you encounter any issues, check the troubleshooting section or review the error messages in browser console and server logs.
 
 
+
+
+
+

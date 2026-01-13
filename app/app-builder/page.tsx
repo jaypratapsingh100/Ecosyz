@@ -336,7 +336,7 @@ export default function AppBuilderPage() {
 
   return (
     <div 
-      className="bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016]"
+      className="app-builder-page bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016]"
       style={{ 
         height: '100vh', 
         width: '100vw', 

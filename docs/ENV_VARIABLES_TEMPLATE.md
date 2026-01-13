@@ -47,3 +47,7 @@ GODADDY_API_SECRET=your_api_secret_here
 2. Test deployment endpoint
 3. Test domain configuration
 
+
+
+
+

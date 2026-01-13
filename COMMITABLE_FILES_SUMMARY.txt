@@ -1,0 +1,195 @@
+================================================================================
+COMMITABLE FILES SUMMARY (EXCLUDING .md FILES)
+Branch: develop
+================================================================================
+
+MODIFIED FILES (M) - Ready to Commit:
+-------------------------------------
+
+API Routes (Analytics):
+- app/api/admin/analytics/route.ts
+- app/api/analytics/track/resource-view/route.ts
+- app/api/analytics/track/search/route.ts
+- app/api/analytics/track/visit/route.ts
+
+API Routes (App Projects):
+- app/api/app-projects/[id]/chat/route.ts
+- app/api/app-projects/[id]/chat/stats/route.ts
+- app/api/app-projects/[id]/deploy-coolify/route.ts
+- app/api/app-projects/[id]/deploy-domain/route.ts
+- app/api/app-projects/[id]/deploy-vercel/route.ts
+- app/api/app-projects/[id]/deploy/firebase/route.ts
+- app/api/app-projects/[id]/download-firebase/route.ts
+- app/api/app-projects/[id]/files/[fileId]/route.ts
+- app/api/app-projects/[id]/files/route.ts
+- app/api/app-projects/[id]/preview/route.ts
+- app/api/app-projects/create-sample/route.ts
+- app/api/app-projects/route.ts
+
+API Routes (Chat):
+- app/api/chat/route.ts
+
+API Routes (Community):
+- app/api/community/activity/route.ts
+- app/api/community/challenges/[id]/route.ts
+- app/api/community/challenges/[id]/submissions/route.ts
+- app/api/community/challenges/[id]/submit/route.ts
+- app/api/community/challenges/route.ts
+- app/api/community/discussions/[id]/replies/[replyId]/route.ts
+- app/api/community/discussions/[id]/replies/route.ts
+- app/api/community/discussions/[id]/route.ts
+- app/api/community/discussions/route.ts
+- app/api/community/events/[id]/cancel/route.ts
+- app/api/community/events/[id]/register/route.ts
+- app/api/community/events/[id]/route.ts
+- app/api/community/events/route.ts
+- app/api/community/groups/[id]/join/route.ts
+- app/api/community/groups/[id]/leave/route.ts
+- app/api/community/groups/[id]/members/route.ts
+- app/api/community/groups/[id]/route.ts
+- app/api/community/users/[id]/activity/route.ts
+- app/api/community/users/[id]/follow/route.ts
+- app/api/community/users/[id]/followers/route.ts
+- app/api/community/users/[id]/following/route.ts
+- app/api/community/users/[id]/route.ts
+- app/api/community/users/[id]/unfollow/route.ts
+
+Pages:
+- app/app-builder/page.tsx
+- app/discover/page.tsx
+- app/openresources/page.tsx
+- app/pricing/page.tsx
+
+Components:
+- app/components/AnalyticsTracker.tsx
+- app/components/ChatSettings.tsx
+- app/components/LogoAnimation.tsx
+- app/components/OpenResourcesChat.tsx
+- app/components/app-builder/AppChat.tsx
+- app/components/app-builder/ImageManager.tsx
+- app/components/app-builder/PreviewPanel.tsx
+- app/components/app-builder/ProjectManager.tsx
+- app/components/app-builder/QuestionnaireWizard.tsx
+- app/components/chatUtils.ts
+- app/components/community/ActivityFeed.tsx
+- app/components/community/ChallengeCard.tsx
+- app/components/community/ChallengesList.tsx
+- app/components/community/CommunityGroups.tsx
+- app/components/community/DiscussionForm.tsx
+- app/components/community/DiscussionThread.tsx
+- app/components/community/EventCard.tsx
+- app/components/community/EventsList.tsx
+- app/components/community/FollowButton.tsx
+- app/components/community/GroupCard.tsx
+- app/components/workspace/WorkspaceDiscussions.tsx
+
+Styles & Layout:
+- app/globals.css
+- app/layout.tsx
+
+Database:
+- prisma/migrations/20250106000000_add_community_features/migration.sql
+
+Library Files:
+- src/lib/admin.ts
+- src/lib/analytics.ts
+- src/lib/godaddy.ts
+
+Scripts:
+- scripts/compare-projects.js
+- scripts/create-sample-project.js
+- scripts/debug-preview.js
+- scripts/final-preview-test.js
+- scripts/get-auth-token.sh
+- scripts/test-all-community-features.sh
+- scripts/test-auth-local.sh
+- scripts/test-auth.sh
+- scripts/test-community-apis.sh
+- scripts/test-deployment.ts
+- scripts/test-full-preview.js
+- scripts/test-preview-api.js
+- scripts/test-questionnaire.sh
+
+================================================================================
+
+DELETED FILES (D) - Ready to Commit:
+------------------------------------
+
+Workflow Files:
+- .github/workflows/deploy.yml
+- .github/workflows/documentation.yml
+- .github/workflows/nextjs.yml
+
+Test Files:
+- test-ai-response.js
+- test-app-creation.js
+
+================================================================================
+
+UNTRACKED FILES (??) - New Files to Add:
+-----------------------------------------
+
+Payment Features:
+- app/api/payments/activate-subscription/route.ts
+- app/payment/success/page.tsx
+
+Components:
+- app/components/ResourceVisualizations.tsx
+
+Scripts:
+- scripts/diagnose-project.js
+- scripts/test-preview-rendering.js
+
+Text Files:
+- COMMIT_FILES_SUMMARY.txt
+- files_to_commit.txt
+
+================================================================================
+
+SUMMARY STATISTICS:
+------------------
+Total Modified Files (excluding .md): 73
+Total Deleted Files (excluding .md): 5
+Total Untracked Files (excluding .md): 6
+Total Committable Files: 84
+
+================================================================================
+
+CATEGORIES BREAKDOWN:
+---------------------
+- API Routes: 45 files
+- Components: 20 files
+- Pages: 4 files
+- Scripts: 11 files
+- Database Migrations: 1 file
+- Library Files: 3 files
+- Workflow Files (deleted): 3 files
+- Payment Features (new): 2 files
+- Other: 1 file
+
+================================================================================
+
+RECOMMENDED COMMIT GROUPS:
+--------------------------
+
+1. Community Features:
+   - All community API routes and components
+   - Community migration file
+
+2. App Builder Features:
+   - App builder pages, components, and API routes
+   - Preview and file management routes
+
+3. Analytics & Tracking:
+   - Analytics API routes and tracker component
+
+4. Payment Integration:
+   - New payment API routes and pages
+
+5. Scripts & Utilities:
+   - All test and utility scripts
+
+6. Cleanup:
+   - Deleted workflow files and test files
+
+================================================================================
