@@ -67,18 +67,24 @@ export default function LogoAnimation({ onComplete }: LogoAnimationProps) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md overflow-hidden">
       {/* Animated particles background */}
       <div className="absolute inset-0">
-        {particles.map((particle) => (
-          <div
-            key={particle.id}
-            className="absolute w-2 h-2 rounded-full bg-emerald-400/30"
-            style={{
-              left: `${particle.x}%`,
-              top: `${particle.y}%`,
-              animation: `floatParticle ${2 + Math.random() * 2}s ease-in-out infinite`,
-              animationDelay: `${particle.delay}ms`,
-            }}
-          />
-        ))}
+        {particles.map((particle) => {
+          const duration = 2 + Math.random() * 2;
+          return (
+            <div
+              key={particle.id}
+              className="absolute w-2 h-2 rounded-full bg-emerald-400/30"
+              style={{
+                left: `${particle.x}%`,
+                top: `${particle.y}%`,
+                animationName: 'floatParticle',
+                animationDuration: `${duration}s`,
+                animationTimingFunction: 'ease-in-out',
+                animationIterationCount: 'infinite',
+                animationDelay: `${particle.delay}ms`,
+              }}
+            />
+          );
+        })}
       </div>
 
       <div
@@ -98,7 +104,10 @@ export default function LogoAnimation({ onComplete }: LogoAnimationProps) {
               drop-shadow(0 0 ${120 + glow * 80}px rgba(6, 182, 212, ${0.3 + glow * 0.2}))
               drop-shadow(0 0 ${40 + glow * 30}px rgba(139, 92, 246, ${0.4 + glow * 0.2}))
             `,
-            animation: 'logoPulse 2s ease-in-out infinite',
+            animationName: 'logoPulse',
+            animationDuration: '2s',
+            animationTimingFunction: 'ease-in-out',
+            animationIterationCount: 'infinite',
           }}
         >
           <Image
@@ -108,7 +117,10 @@ export default function LogoAnimation({ onComplete }: LogoAnimationProps) {
             className="object-contain"
             priority
             style={{
-              animation: 'logoRotate 3s ease-in-out infinite',
+              animationName: 'logoRotate',
+              animationDuration: '3s',
+              animationTimingFunction: 'ease-in-out',
+              animationIterationCount: 'infinite',
             }}
           />
         </div>

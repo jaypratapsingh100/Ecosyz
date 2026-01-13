@@ -54,6 +54,7 @@ function OpenResourcesPage() {
   const [toast, setToast] = useState<{ type: 'error'|'info'; message: string } | null>(null);
   const [searchSummary, setSearchSummary] = useState<string>('');
   const [summaryLoading, setSummaryLoading] = useState(false);
+  const [generalSummaryModal, setGeneralSummaryModal] = useState(false);
   const [summaryModal, setSummaryModal] = useState<{
     open: boolean;
     key: string | null;
@@ -904,7 +905,7 @@ function OpenResourcesPage() {
           <div className="flex flex-col mb-6 sm:mb-8 md:mb-10 w-full max-w-5xl mx-auto">
             <div className="w-full">
               {/* Filter Tabs */}
-              <div className="flex flex-wrap items-center gap-2 justify-center md:justify-start mb-4 md:mb-6 overflow-x-auto hide-scrollbar" role="tablist" aria-label="Resource type">
+              <div className="flex flex-wrap items-center gap-2 justify-center md:justify-start mb-4 overflow-x-auto hide-scrollbar" role="tablist" aria-label="Resource type">
                 {TABS.map(tab => (
                   <button
                     key={tab.value}
@@ -926,6 +927,48 @@ function OpenResourcesPage() {
                   </button>
                 ))}
               </div>
+              
+              {/* Action Buttons - Distinct section below filter tabs */}
+              {(q && results.length > 0) || results.length > 0 ? (
+                <div className="flex flex-wrap items-center gap-3 justify-center md:justify-start mb-4 md:mb-6 pt-3 border-t border-white/10">
+                  {/* General Summary Button */}
+                  {q && results.length > 0 && (
+                    <button
+                      className="px-4 py-2 md:px-5 md:py-2.5 rounded-lg text-sm md:text-base font-semibold transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-400/60 whitespace-nowrap bg-gradient-to-r from-blue-500/30 to-cyan-500/30 border-2 border-blue-400/50 text-blue-200 hover:from-blue-500/40 hover:to-cyan-500/40 hover:border-blue-400/70 hover:shadow-lg hover:shadow-blue-500/30 hover:scale-105"
+                      onClick={() => setGeneralSummaryModal(true)}
+                    >
+                      <span className="flex items-center gap-2">
+                        <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        General Summary
+                      </span>
+                    </button>
+                  )}
+                  
+                  {/* Knowledge Graph Button */}
+                  {results.length > 0 && (
+                    <button
+                      className="px-4 py-2 md:px-5 md:py-2.5 rounded-lg text-sm md:text-base font-semibold transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-purple-400/60 whitespace-nowrap bg-gradient-to-r from-purple-500/30 to-pink-500/30 border-2 border-purple-400/50 text-purple-200 hover:from-purple-500/40 hover:to-pink-500/40 hover:border-purple-400/70 hover:shadow-lg hover:shadow-purple-500/30 hover:scale-105"
+                      onClick={() => {
+                        // Store results in sessionStorage for the Knowledge Graph page
+                        if (typeof window !== 'undefined') {
+                          sessionStorage.setItem('kg-results', JSON.stringify(results));
+                          sessionStorage.setItem('kg-query', q || '');
+                        }
+                        router.push(`/openresources/knowledge-graph?q=${encodeURIComponent(q || '')}`);
+                      }}
+                    >
+                      <span className="flex items-center gap-2">
+                        <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                        </svg>
+                        Knowledge Graph
+                      </span>
+                    </button>
+                  )}
+                </div>
+              ) : null}
               
               {/* Search Bar */}
               <div className="relative w-full mb-4 md:mb-6">
@@ -967,32 +1010,6 @@ function OpenResourcesPage() {
                 </button>
               </div>
               </div>
-              
-              {/* Search Summary */}
-              {q && results.length > 0 && (
-                <div className="mt-4 mb-6 p-4 rounded-xl bg-gradient-to-r from-emerald-900/20 to-cyan-900/20 border border-emerald-500/30 backdrop-blur-sm">
-                  {summaryLoading ? (
-                    <div className="flex items-center gap-3">
-                      <svg className="animate-spin h-5 w-5 text-emerald-400" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      <span className="text-sm text-gray-300">Generating summary...</span>
-                    </div>
-                  ) : searchSummary ? (
-                    <div className="flex items-start gap-3">
-                      <div className="flex-shrink-0 mt-0.5">
-                        <svg className="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm text-gray-200 leading-relaxed">{searchSummary}</p>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              )}
             </div>
             {/* Federated search results */}
             {(q || loading) && (
@@ -1622,6 +1639,60 @@ function OpenResourcesPage() {
                 </div>
               </div>
             </div>
+            )}
+
+            {/* General Summary Modal */}
+            {generalSummaryModal && (
+              <div
+                className="fixed inset-0 z-40 flex items-center justify-center p-4"
+                role="dialog"
+                aria-modal="true"
+                onKeyDown={(e) => { if (e.key === 'Escape') setGeneralSummaryModal(false); }}
+                tabIndex={-1}
+              >
+                <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setGeneralSummaryModal(false)} />
+                <div className="relative z-10 w-full max-w-3xl rounded-2xl glass-strong glass-border max-h-[90vh] flex flex-col">
+                  {/* Top-right close button */}
+                  <button
+                    aria-label="Close"
+                    className="absolute top-2 right-2 p-2 rounded-md bg-white/10 hover:bg-white/15 text-white"
+                    onClick={() => setGeneralSummaryModal(false)}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
+                      <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                  {/* Header */}
+                  <div className="p-5 sm:p-6 pb-3">
+                    <h3 className="text-lg font-semibold text-white">General Summary</h3>
+                  </div>
+                  {/* Scrollable body */}
+                  <div className="px-5 sm:px-6 py-2 overflow-y-auto" style={{ maxHeight: '70vh' }}>
+                    {summaryLoading ? (
+                      <div className="flex items-center gap-3">
+                        <svg className="animate-spin h-5 w-5 text-emerald-400" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span className="text-sm text-gray-300">Generating summary...</span>
+                      </div>
+                    ) : searchSummary ? (
+                      <p className="text-white/90 text-sm leading-relaxed">{searchSummary}</p>
+                    ) : (
+                      <p className="text-white/60 text-sm">No summary available. Please perform a search first.</p>
+                    )}
+                  </div>
+                  {/* Footer */}
+                  <div className="flex items-center justify-end gap-2 p-3 border-t border-white/10 bg-black/20">
+                    <button 
+                      className="px-3 py-1.5 rounded-lg bg-white/10 text-white hover:bg-white/15" 
+                      onClick={() => setGeneralSummaryModal(false)}
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              </div>
             )}
 
           {/* --- Enhanced Resource Type Cards --- */}
