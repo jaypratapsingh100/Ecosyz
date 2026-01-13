@@ -14,6 +14,7 @@ export default function Hero() {
   const menuRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const router = useRouter();
+  const [animatedPlaceholder, setAnimatedPlaceholder] = useState('');
 
   const placeholderTexts = {
     discover: 'What would you like to discover?',
@@ -21,6 +22,18 @@ export default function Hero() {
     projects: 'Explore projects...',
     network: 'Connect with network...'
   };
+
+  // Animated phrases for typewriter effect
+  const animatedPhrases = [
+    'Explore open source resources',
+    'Search millions of research papers',
+    'Find connections among resources',
+    'Build app and innovate',
+    'Discover open datasets',
+    'Collaborate with innovators',
+    'Explore cutting-edge projects',
+    'Find solutions to complex problems',
+  ];
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -41,6 +54,53 @@ export default function Hero() {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showActionMenu]);
+
+  // Typewriter animation for placeholder
+  useEffect(() => {
+    if (buildQuery) return; // Don't animate if user is typing
+    
+    let currentPhraseIndex = 0;
+    let currentCharIndex = 0;
+    let isDeleting = false;
+    let timeoutId: NodeJS.Timeout;
+
+    const animate = () => {
+      const currentPhrase = animatedPhrases[currentPhraseIndex];
+      
+      if (!isDeleting) {
+        // Typing
+        if (currentCharIndex < currentPhrase.length) {
+          setAnimatedPlaceholder(currentPhrase.substring(0, currentCharIndex + 1));
+          currentCharIndex++;
+          timeoutId = setTimeout(animate, 80);
+        } else {
+          // Finished typing, pause then delete
+          timeoutId = setTimeout(() => {
+            isDeleting = true;
+            animate();
+          }, 2000);
+        }
+      } else {
+        // Deleting
+        if (currentCharIndex > 0) {
+          setAnimatedPlaceholder(currentPhrase.substring(0, currentCharIndex - 1));
+          currentCharIndex--;
+          timeoutId = setTimeout(animate, 40);
+        } else {
+          // Finished deleting, move to next phrase
+          isDeleting = false;
+          currentPhraseIndex = (currentPhraseIndex + 1) % animatedPhrases.length;
+          timeoutId = setTimeout(animate, 200);
+        }
+      }
+    };
+
+    animate();
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [buildQuery]);
 
 
   const handleBuild = (e: React.FormEvent) => {
@@ -194,7 +254,7 @@ export default function Hero() {
                       caretColor: '#10b981'
                     }}
                     rows={1}
-                    placeholder={placeholderTexts[selectedAction]}
+                    placeholder={animatedPlaceholder || ''}
                     onInput={(e) => {
                       const target = e.target as HTMLTextAreaElement;
                       target.style.height = 'auto';

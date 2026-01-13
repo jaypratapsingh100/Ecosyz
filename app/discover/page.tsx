@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import LogoAnimation from '../components/LogoAnimation';
+import AnimatedTypingText from '../components/AnimatedTypingText';
 
 interface Resource {
   id: string;
@@ -46,6 +47,17 @@ function DiscoverPage() {
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState(query);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const [animatedPlaceholder, setAnimatedPlaceholder] = useState('');
+  const placeholderPhrases = [
+    'Explore open source resources',
+    'Search millions of research papers',
+    'Find connections among resources',
+    'Build app and innovate',
+    'Discover open datasets',
+    'Collaborate with innovators',
+    'Explore cutting-edge projects',
+    'Find solutions to complex problems',
+  ];
 
   useEffect(() => {
     if (query) {
@@ -61,6 +73,53 @@ function DiscoverPage() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
+
+  // Animated placeholder effect
+  useEffect(() => {
+    if (inputMessage) return; // Don't animate if user is typing
+    
+    let currentPhraseIndex = 0;
+    let currentCharIndex = 0;
+    let isDeleting = false;
+    let timeoutId: NodeJS.Timeout;
+
+    const animate = () => {
+      const currentPhrase = placeholderPhrases[currentPhraseIndex];
+      
+      if (!isDeleting) {
+        // Typing
+        if (currentCharIndex < currentPhrase.length) {
+          setAnimatedPlaceholder(currentPhrase.substring(0, currentCharIndex + 1));
+          currentCharIndex++;
+          timeoutId = setTimeout(animate, 80);
+        } else {
+          // Finished typing, pause then delete
+          timeoutId = setTimeout(() => {
+            isDeleting = true;
+            animate();
+          }, 2000);
+        }
+      } else {
+        // Deleting
+        if (currentCharIndex > 0) {
+          setAnimatedPlaceholder(currentPhrase.substring(0, currentCharIndex - 1));
+          currentCharIndex--;
+          timeoutId = setTimeout(animate, 40);
+        } else {
+          // Finished deleting, move to next phrase
+          isDeleting = false;
+          currentPhraseIndex = (currentPhraseIndex + 1) % placeholderPhrases.length;
+          timeoutId = setTimeout(animate, 200);
+        }
+      }
+    };
+
+    animate();
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [inputMessage]);
 
   const performSearch = async (searchText: string) => {
     if (!searchText.trim()) return;
@@ -106,9 +165,40 @@ function DiscoverPage() {
     return <LogoAnimation onComplete={handleAnimationComplete} />;
   }
 
+  const animatedPhrases = [
+    'EXPLORE OPEN SOURCE RESOURCES',
+    'SEARCH MILLIONS OF RESEARCH PAPERS',
+    'FIND CONNECTIONS AMONG RESOURCES',
+    'BUILD APP AND INNOVATE',
+    'DISCOVER OPEN DATASETS',
+    'COLLABORATE WITH INNOVATORS',
+    'EXPLORE CUTTING-EDGE PROJECTS',
+    'FIND SOLUTIONS TO COMPLEX PROBLEMS',
+  ];
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016]">
       <Header />
+      
+      {/* Hero Section with Animated Text */}
+      <div className="border-b border-gray-800 bg-gradient-to-r from-emerald-500/10 via-cyan-500/10 to-emerald-500/10 py-16 px-4 relative overflow-hidden">
+        {/* Animated background gradient */}
+        <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/5 via-transparent to-cyan-500/5 animate-pulse"></div>
+        
+        <div className="max-w-6xl mx-auto text-center relative z-10">
+          <AnimatedTypingText
+            phrases={animatedPhrases}
+            typingSpeed={80}
+            deletingSpeed={40}
+            pauseTime={3000}
+            className="text-4xl md:text-5xl lg:text-6xl min-h-[120px] flex items-center justify-center"
+          />
+          <p className="mt-8 text-lg md:text-xl text-gray-300 max-w-2xl mx-auto leading-relaxed">
+            Discover, build, and connect with the world's open innovation network
+          </p>
+        </div>
+      </div>
+
       <main className="flex-grow flex overflow-hidden">
         {/* Left Panel - Chat Interface */}
         <div className="flex-1 flex flex-col border-r border-gray-800">
@@ -162,7 +252,7 @@ function DiscoverPage() {
                 type="text"
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
-                placeholder="Ask about resources..."
+                placeholder={animatedPlaceholder || ''}
                 className="flex-1 px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-emerald-400"
               />
               <button
