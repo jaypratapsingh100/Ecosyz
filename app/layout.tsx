@@ -22,10 +22,10 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning className={spaceGrotesk.variable}>
       <body
-        className="antialiased bg-white text-slate-900 font-sans"
+        className="antialiased bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016] text-white font-sans"
         style={{ margin: 0 }}
       >
-        <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
+        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
           <Providers>
             <AnalyticsTracker />
             {children}
