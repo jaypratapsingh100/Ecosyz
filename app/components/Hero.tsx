@@ -106,23 +106,28 @@ export default function Hero() {
   const handleBuild = (e: React.FormEvent) => {
     e.preventDefault();
     if (buildQuery.trim()) {
+      // Process search query first, then redirect
       if (selectedAction === 'discover') {
         router.push(`/openresources?q=${encodeURIComponent(buildQuery.trim())}`);
       } else if (selectedAction === 'build') {
-        router.push(`/openresources?q=${encodeURIComponent(buildQuery.trim())}`);
+        router.push(`/app-builder?q=${encodeURIComponent(buildQuery.trim())}`);
       } else if (selectedAction === 'projects') {
-        router.push(`/projects`);
+        // Process search and redirect to projects with query
+        router.push(`/projects?q=${encodeURIComponent(buildQuery.trim())}`);
       } else if (selectedAction === 'network') {
-        router.push(`/coming-soon`);
+        // Process search and redirect to network with query
+        router.push(`/coming-soon?q=${encodeURIComponent(buildQuery.trim())}`);
       }
     } else {
-      // Navigate even without query for projects and network
+      // No query - just navigate to the page without search
       if (selectedAction === 'projects') {
         router.push(`/projects`);
       } else if (selectedAction === 'network') {
         router.push(`/coming-soon`);
       } else if (selectedAction === 'discover') {
         router.push(`/openresources`);
+      } else if (selectedAction === 'build') {
+        router.push(`/app-builder`);
       }
     }
   };
@@ -211,7 +216,7 @@ export default function Hero() {
                 type="button"
                 onClick={() => {
                   setSelectedAction('projects');
-                  router.push('/projects');
+                  // Don't redirect immediately - wait for form submission
                 }}
                 className={`px-4 sm:px-6 py-2 rounded-full font-semibold text-sm sm:text-base transition-all duration-300 ${
                   selectedAction === 'projects'
@@ -225,7 +230,7 @@ export default function Hero() {
                 type="button"
                 onClick={() => {
                   setSelectedAction('network');
-                  router.push('/coming-soon');
+                  // Don't redirect immediately - wait for form submission
                 }}
                 className={`px-4 sm:px-6 py-2 rounded-full font-semibold text-sm sm:text-base transition-all duration-300 ${
                   selectedAction === 'network'
@@ -325,7 +330,7 @@ export default function Hero() {
                           onClick={() => {
                             setSelectedAction('projects');
                             setShowActionMenu(false);
-                            router.push('/projects');
+                            // Don't redirect immediately - wait for form submission
                           }}
                           className="w-full px-3 py-2 text-left text-gray-200 hover:bg-gray-700/50 transition-colors flex items-center gap-3 text-xs font-normal"
                         >
@@ -339,7 +344,7 @@ export default function Hero() {
                           onClick={() => {
                             setSelectedAction('network');
                             setShowActionMenu(false);
-                            router.push('/coming-soon');
+                            // Don't redirect immediately - wait for form submission
                           }}
                           className="w-full px-3 py-2 text-left text-gray-200 hover:bg-gray-700/50 transition-colors flex items-center gap-3 text-xs font-normal"
                         >
