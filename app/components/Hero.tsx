@@ -110,7 +110,12 @@ export default function Hero() {
       if (selectedAction === 'discover') {
         router.push(`/openresources?q=${encodeURIComponent(buildQuery.trim())}`);
       } else if (selectedAction === 'build') {
-        router.push(`/app-builder?q=${encodeURIComponent(buildQuery.trim())}`);
+        // Redirect to GOBuild (appbuilder) with description
+        // Store in localStorage and pass via URL
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('gobuild-description', buildQuery.trim());
+        }
+        router.push(`/appbuilder?description=${encodeURIComponent(buildQuery.trim())}`);
       } else if (selectedAction === 'projects') {
         // Process search and redirect to projects with query
         router.push(`/projects?q=${encodeURIComponent(buildQuery.trim())}`);
@@ -127,7 +132,8 @@ export default function Hero() {
       } else if (selectedAction === 'discover') {
         router.push(`/openresources`);
       } else if (selectedAction === 'build') {
-        router.push(`/app-builder`);
+        // Redirect to GOBuild (appbuilder) without description
+        router.push(`/appbuilder`);
       }
     }
   };
