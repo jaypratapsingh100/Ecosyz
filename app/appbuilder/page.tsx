@@ -1,3 +1,21 @@
+/**
+ * GOBuild - AI-Powered App Builder Wizard
+ * 
+ * This is the main page for the GOBuild feature, a step-by-step wizard that guides users
+ * through creating an application using AI code generation.
+ * 
+ * Flow:
+ * 1. Idea Step: User describes their app idea, features are auto-extracted
+ * 2. Configuration Step: User selects tech stack (framework, language, styling)
+ * 3. Generation Step: AI generates the complete application code
+ * 4. Result Step: User can preview, edit, or create another app
+ * 
+ * Integration:
+ * - Can be accessed from home page when user selects "Build App" and types description
+ * - Description is passed via URL params (?description=...) or localStorage
+ * - Auto-extraction populates features, target audience, and design style
+ */
+
 'use client';
 
 import { useState, useEffect, useRef, Suspense } from 'react';
@@ -9,6 +27,7 @@ import ConfigurationStep from '../components/appbuilder/ConfigurationStep';
 import GenerationStep from '../components/appbuilder/GenerationStep';
 import ResultStep from '../components/appbuilder/ResultStep';
 
+// Step types in the wizard flow
 type Step = 'idea' | 'configuration' | 'generation' | 'result';
 
 interface AppIdea {
@@ -39,17 +58,34 @@ interface GeneratedProject {
 
 export default function AppBuilderPage() {
   const router = useRouter();
+  
+  // Step management - tracks which step of the wizard user is on
   const [currentStep, setCurrentStep] = useState<Step>('idea');
+  
+  // Authentication state: null = checking, true = authenticated, false = not authenticated
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  
+  // User's app idea data (from IdeaInputStep)
   const [appIdea, setAppIdea] = useState<AppIdea | null>(null);
+  
+  // Project configuration (from ConfigurationStep)
   const [projectConfig, setProjectConfig] = useState<ProjectConfig | null>(null);
+  
+  // Generated project data (after AI generation completes)
   const [generatedProject, setGeneratedProject] = useState<GeneratedProject | null>(null);
+  
+  // Generation state tracking
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState<string>('');
   const [generationError, setGenerationError] = useState<string | null>(null);
+  
+  // Prevents duplicate generation triggers
   const generationStartedRef = useRef(false);
 
-  // Check authentication
+  /**
+   * Check authentication status on mount
+   * Required for accessing the app builder features
+   */
   useEffect(() => {
     const checkAuth = async () => {
       try {
@@ -63,17 +99,29 @@ export default function AppBuilderPage() {
     checkAuth();
   }, []);
 
+  /**
+   * Handle submission from IdeaInputStep
+   * Moves to configuration step with the user's app idea
+   */
   const handleIdeaSubmit = (idea: AppIdea) => {
     setAppIdea(idea);
     setCurrentStep('configuration');
   };
 
+  /**
+   * Handle submission from ConfigurationStep
+   * Moves to generation step and triggers AI code generation
+   */
   const handleConfigSubmit = (config: ProjectConfig) => {
     setProjectConfig(config);
     setCurrentStep('generation');
   };
 
-  // Trigger generation when both idea and config are ready
+  /**
+   * Auto-trigger generation when both idea and config are ready
+   * This effect watches for the generation step and automatically starts
+   * the AI code generation process
+   */
   useEffect(() => {
     if (currentStep === 'generation' && appIdea && projectConfig && !isGenerating && !generatedProject && !generationStartedRef.current) {
       generationStartedRef.current = true;
@@ -81,13 +129,26 @@ export default function AppBuilderPage() {
     }
   }, [currentStep, appIdea, projectConfig, isGenerating, generatedProject]);
 
+  /**
+   * Start the AI code generation process
+   * 
+   * Process:
+   * 1. Create project in database
+   * 2. Send prompt to AI (Azure DeepSeek) via chat API
+   * 3. Wait for files to be saved to database
+   * 4. Fetch generated files
+   * 5. Move to result step
+   * 
+   * @param idea - User's app idea with description, features, target audience
+   * @param config - Selected tech stack (framework, language, styling)
+   */
   const startGeneration = async (idea: AppIdea, config: ProjectConfig) => {
     setIsGenerating(true);
     setGenerationError(null);
     setGenerationProgress('Initializing project...');
 
     try {
-      // Create project
+      // Step 1: Create project record in database
       setGenerationProgress('Creating project structure...');
       const projectResponse = await fetch('/api/app-projects', {
         method: 'POST',
@@ -118,7 +179,8 @@ export default function AppBuilderPage() {
       const project = await projectResponse.json();
       setGenerationProgress('Connecting to AI (Azure DeepSeek)...');
 
-      // Generate code using Azure DeepSeek
+      // Step 2: Generate code using Azure DeepSeek AI
+      // The chat API processes the prompt and creates files automatically
       setGenerationProgress('Generating code with AI...');
       const chatResponse = await fetch(`/api/app-projects/${project.id}/chat`, {
         method: 'POST',
@@ -136,7 +198,8 @@ export default function AppBuilderPage() {
       const chatResult = await chatResponse.json();
       setGenerationProgress('Saving files to your account...');
 
-      // Wait a bit for files to be saved to database, then fetch them
+      // Step 3: Wait for files to be saved to database, then fetch them
+      // The chat API processes files asynchronously, so we poll until files appear
       let attempts = 0;
       let files: any[] = [];
       while (attempts < 5) {
@@ -182,6 +245,15 @@ export default function AppBuilderPage() {
     }
   };
 
+  /**
+   * Generate the AI prompt for code generation
+   * Combines user's idea and configuration into a comprehensive prompt
+   * that instructs the AI to generate a complete application
+   * 
+   * @param idea - User's app idea
+   * @param config - Selected tech stack
+   * @returns Formatted prompt string for AI
+   */
   const generateBuildPrompt = (idea: AppIdea, config: ProjectConfig): string => {
     return `Create a complete ${config.framework} application with the following requirements:
 
@@ -213,6 +285,9 @@ Please generate a complete, production-ready application with:
 Generate all files needed for a fully functional application.`;
   };
 
+  /**
+   * Reset wizard to start - allows user to create another app
+   */
   const handleBackToStart = () => {
     setCurrentStep('idea');
     setAppIdea(null);
@@ -224,6 +299,10 @@ Generate all files needed for a fully functional application.`;
     generationStartedRef.current = false;
   };
 
+  /**
+   * Navigate to the full App Builder editor with the generated project
+   * Opens the project in the code editor where user can modify files
+   */
   const handleViewInEditor = () => {
     if (generatedProject) {
       router.push(`/app-builder?project=${generatedProject.id}`);
@@ -365,6 +444,8 @@ Generate all files needed for a fully functional application.`;
         {/* Step content */}
         <div className="relative z-10 flex-1 pb-12">
           <div className="max-w-5xl mx-auto px-4">
+            {/* Step 1: Idea Input - User describes their app */}
+            {/* Suspense wrapper required because IdeaInputStep uses useSearchParams */}
             {currentStep === 'idea' && (
               <Suspense fallback={
                 <div className="flex items-center justify-center py-12">
@@ -374,6 +455,7 @@ Generate all files needed for a fully functional application.`;
                 <IdeaInputStep onSubmit={handleIdeaSubmit} />
               </Suspense>
             )}
+            {/* Step 2: Configuration - User selects tech stack */}
             {currentStep === 'configuration' && appIdea && (
               <ConfigurationStep
                 idea={appIdea}
@@ -381,6 +463,7 @@ Generate all files needed for a fully functional application.`;
                 onBack={() => setCurrentStep('idea')}
               />
             )}
+            {/* Step 3: Generation - AI generates code, shows progress */}
             {currentStep === 'generation' && appIdea && projectConfig && (
               <GenerationStep
                 idea={appIdea}
@@ -395,6 +478,7 @@ Generate all files needed for a fully functional application.`;
                 }}
               />
             )}
+            {/* Step 4: Result - Show generated files, allow preview/edit */}
             {currentStep === 'result' && generatedProject && (
               <ResultStep
                 project={generatedProject}

@@ -1,17 +1,45 @@
+/**
+ * Extract Info API Route
+ * 
+ * AI-powered endpoint that extracts structured information from app descriptions.
+ * Used by IdeaInputStep to auto-populate features, target audience, and design style.
+ * 
+ * Process:
+ * 1. Receives app description from client
+ * 2. Sends to Azure DeepSeek AI with extraction prompt
+ * 3. Parses AI response (handles markdown code blocks)
+ * 4. Validates and sanitizes extracted data
+ * 5. Returns structured JSON with features, targetAudience, designStyle
+ * 
+ * Fallback:
+ * If AI fails, client-side rule-based extraction is used (in IdeaInputStep)
+ * 
+ * @route POST /api/app-projects/extract-info
+ * @body { description: string } - App description text (min 10 chars)
+ * @returns { features: string[], targetAudience: string, designStyle: string }
+ */
+
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 
-// Azure DeepSeek configuration
+// Azure DeepSeek configuration - self-hosted AI model
 const AZURE_DEEPSEEK_URL = process.env.AZURE_DEEPSEEK_URL || 'http://74.225.138.116:8000';
 const AZURE_DEEPSEEK_MODEL = 'deepseek-coder';
 
+/**
+ * Create OpenAI-compatible client for Azure DeepSeek
+ * Uses self-hosted DeepSeek API endpoint
+ */
 function createAzureDeepSeekClient() {
   return new OpenAI({
     baseURL: `${AZURE_DEEPSEEK_URL}/v1`,
-    apiKey: 'not-required',
+    apiKey: 'not-required', // Self-hosted API doesn't require key
   });
 }
 
+/**
+ * POST handler - Extract structured info from app description
+ */
 export async function POST(req: NextRequest) {
   try {
     const { description } = await req.json();
@@ -25,6 +53,10 @@ export async function POST(req: NextRequest) {
 
     const client = createAzureDeepSeekClient();
 
+    /**
+     * Create extraction prompt for AI
+     * Instructs AI to analyze description and return structured JSON
+     */
     const prompt = `Analyze the following app description and extract structured information. Return ONLY a valid JSON object with this exact structure:
 {
   "features": ["feature1", "feature2", ...],
@@ -59,17 +91,20 @@ Return ONLY the JSON object, no other text.`;
 
     const responseText = completion.choices[0]?.message?.content?.trim() || '{}';
     
-    // Try to parse JSON from response (might have markdown code blocks)
+    /**
+     * Parse JSON from AI response
+     * Handles cases where AI wraps JSON in markdown code blocks
+     */
     let extractedData;
     try {
-      // Remove markdown code blocks if present
+      // Remove markdown code blocks if present (```json ... ```)
       const jsonMatch = responseText.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/) || 
                        responseText.match(/(\{[\s\S]*\})/);
       const jsonText = jsonMatch ? jsonMatch[1] : responseText;
       extractedData = JSON.parse(jsonText);
     } catch (parseError) {
       console.error('Failed to parse AI response:', parseError);
-      // Fallback to simple extraction
+      // Fallback: return empty data (client will use rule-based extraction)
       return NextResponse.json({
         features: [],
         targetAudience: '',
@@ -77,7 +112,10 @@ Return ONLY the JSON object, no other text.`;
       });
     }
 
-    // Validate and sanitize the response
+    /**
+     * Validate and sanitize the AI response
+     * Ensures data types are correct and values are within expected ranges
+     */
     const features = Array.isArray(extractedData.features)
       ? extractedData.features
           .filter((f: any) => typeof f === 'string' && f.trim().length > 0)

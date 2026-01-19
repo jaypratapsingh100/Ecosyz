@@ -1,3 +1,22 @@
+/**
+ * GenerationStep Component - Third Step of GOBuild Wizard
+ * 
+ * Displays the AI code generation progress with:
+ * - Visual progress indicators for each generation stage
+ * - Real-time progress messages from the generation process
+ * - Tech stack preview showing selected framework, language, styling
+ * - Error handling with retry functionality
+ * - Helpful tips during generation
+ * 
+ * Stages shown:
+ * 1. Initializing
+ * 2. Creating Project
+ * 3. AI Generation (Azure DeepSeek)
+ * 4. Saving Files to Platform
+ * 5. Validating
+ * 6. Complete
+ */
+
 'use client';
 
 import { useEffect, useState } from 'react';

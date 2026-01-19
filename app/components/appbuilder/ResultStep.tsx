@@ -1,3 +1,20 @@
+/**
+ * ResultStep Component - Fourth Step of GOBuild Wizard
+ * 
+ * Displays the successfully generated application with:
+ * - File explorer showing all generated files
+ * - Code preview for selected files
+ * - File type icons and language badges
+ * - Statistics (total files, components, languages)
+ * - Actions: Open in Editor, Preview App, Create Another
+ * 
+ * Features:
+ * - Click any file to preview its code
+ * - Preview button opens generated app in new window
+ * - Open in Editor navigates to full App Builder with project loaded
+ * - Create Another resets wizard to start
+ */
+
 'use client';
 
 import { useState } from 'react';

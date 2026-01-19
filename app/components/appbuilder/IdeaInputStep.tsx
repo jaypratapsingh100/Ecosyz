@@ -1,3 +1,24 @@
+/**
+ * IdeaInputStep Component - First Step of GOBuild Wizard
+ * 
+ * This component allows users to describe their app idea and automatically extracts:
+ * - Features (e.g., "Header/Navigation", "Contact Form", "Blog Section")
+ * - Target Audience (e.g., "Business owners", "Students", "Professionals")
+ * - Design Style (modern, minimalist, bold, professional, playful)
+ * 
+ * Features:
+ * - Auto-extraction from description using AI (Azure DeepSeek) or rule-based fallback
+ * - Loads description from URL params (?description=...) or localStorage
+ * - Debounced auto-extraction (2 seconds after user stops typing)
+ * - Manual "Auto-fill" button for immediate extraction
+ * - Navigation to App Builder with description
+ * 
+ * Integration:
+ * - Called from home page when user selects "Build App" and types description
+ * - Description passed via URL: /appbuilder?description=...
+ * - Stores description in localStorage for cross-page navigation
+ */
+
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -20,7 +41,15 @@ interface ExtractedInfo {
   designStyle: string;
 }
 
-// Extract features and info from description using AI
+/**
+ * Extract features and info from description using AI
+ * 
+ * First tries AI-powered extraction via /api/app-projects/extract-info
+ * Falls back to rule-based extraction if AI fails
+ * 
+ * @param description - User's app description text
+ * @returns Extracted features, target audience, and design style
+ */
 async function extractInfoFromDescription(description: string): Promise<ExtractedInfo> {
   try {
     // Create a temporary project to use the chat API for extraction
@@ -43,11 +72,23 @@ async function extractInfoFromDescription(description: string): Promise<Extracte
     console.error('Error extracting info:', error);
   }
 
-  // Fallback: Simple rule-based extraction
+  // Fallback: Simple rule-based extraction if AI API fails
   return extractInfoSimple(description);
 }
 
-// Simple rule-based extraction as fallback
+/**
+ * Simple rule-based extraction as fallback
+ * 
+ * Uses keyword matching to extract:
+ * - Features: Matches common keywords (header, footer, contact, blog, etc.)
+ * - Target Audience: Matches audience keywords (business, student, developer, etc.)
+ * - Design Style: Matches style keywords (minimal, bold, professional, etc.)
+ * 
+ * Also tries to parse "with X, Y, and Z" patterns
+ * 
+ * @param description - User's app description text
+ * @returns Extracted features, target audience, and design style
+ */
 function extractInfoSimple(description: string): ExtractedInfo {
   const lowerDesc = description.toLowerCase();
   const features: string[] = [];
@@ -187,17 +228,26 @@ function extractInfoSimple(description: string): ExtractedInfo {
 }
 
 export default function IdeaInputStep({ onSubmit }: IdeaInputStepProps) {
-  const searchParams = useSearchParams();
-  const router = useRouter();
+  const searchParams = useSearchParams(); // For reading URL params (?description=...)
+  const router = useRouter(); // For navigation
+  
+  // Form state
   const [description, setDescription] = useState('');
   const [features, setFeatures] = useState<string[]>(['']);
   const [targetAudience, setTargetAudience] = useState('');
   const [designStyle, setDesignStyle] = useState('modern');
+  
+  // Extraction state
   const [isExtracting, setIsExtracting] = useState(false);
   const [hasExtracted, setHasExtracted] = useState(false);
-  const extractTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const extractTimeoutRef = useRef<NodeJS.Timeout | null>(null); // For debouncing
 
-  // Extract info from description
+  /**
+   * Extract info from description using AI or rule-based methods
+   * Updates features, target audience, and design style fields automatically
+   * 
+   * @param desc - Description text to extract info from
+   */
   const extractInfo = useCallback(async (desc: string) => {
     if (!desc.trim() || desc.trim().length < 10) return;
     
@@ -228,16 +278,24 @@ export default function IdeaInputStep({ onSubmit }: IdeaInputStepProps) {
     }
   }, []);
 
-  // Load description from URL params or localStorage on mount
+  /**
+   * Load description from URL params or localStorage on mount
+   * 
+   * Priority:
+   * 1. URL params (?description=...) - from home page navigation
+   * 2. localStorage ('gobuild-description') - from cross-page navigation
+   * 
+   * After loading, automatically extracts features and populates form fields
+   */
   useEffect(() => {
-    // First check URL params
+    // First check URL params (from home page "Build App" button)
     const urlDescription = searchParams?.get('description');
     if (urlDescription) {
       const decodedDescription = decodeURIComponent(urlDescription);
       setDescription(decodedDescription);
-      // Extract info from description
+      // Extract info from description automatically
       extractInfo(decodedDescription);
-      // Clear URL param after reading
+      // Clear URL param after reading to keep URL clean
       if (typeof window !== 'undefined') {
         const url = new URL(window.location.href);
         url.searchParams.delete('description');
@@ -246,14 +304,14 @@ export default function IdeaInputStep({ onSubmit }: IdeaInputStepProps) {
       return;
     }
 
-    // Then check localStorage
+    // Then check localStorage (from App Builder navigation)
     const storedDescription = typeof window !== 'undefined' 
       ? localStorage.getItem('gobuild-description')
       : null;
     
     if (storedDescription) {
       setDescription(storedDescription);
-      // Extract info from description
+      // Extract info from description automatically
       extractInfo(storedDescription);
       // Clear localStorage after reading
       if (typeof window !== 'undefined') {
@@ -262,6 +320,9 @@ export default function IdeaInputStep({ onSubmit }: IdeaInputStepProps) {
     }
   }, [searchParams, extractInfo]);
 
+  /**
+   * Feature management handlers
+   */
   const handleAddFeature = () => {
     setFeatures([...features, '']);
   };
@@ -276,6 +337,10 @@ export default function IdeaInputStep({ onSubmit }: IdeaInputStepProps) {
     setFeatures(newFeatures);
   };
 
+  /**
+   * Handle form submission
+   * Validates required fields and passes data to parent component
+   */
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const validFeatures = features.filter(f => f.trim() !== '');
@@ -312,14 +377,19 @@ export default function IdeaInputStep({ onSubmit }: IdeaInputStepProps) {
                 value={description}
                 onChange={(e) => {
                   setDescription(e.target.value);
-                  // Store description in localStorage when user types, so it's available if they navigate to app-builder
+                  
+                  // Store description in localStorage for cross-page navigation
+                  // Available if user navigates to app-builder
                   if (typeof window !== 'undefined' && e.target.value.trim()) {
                     localStorage.setItem('gobuild-description', e.target.value.trim());
                   }
+                  
                   // Reset extraction flag when user manually edits
+                  // Allows re-extraction if user changes description significantly
                   setHasExtracted(false);
                   
                   // Auto-extract after user stops typing (debounced)
+                  // Waits 2 seconds of inactivity before extracting
                   if (extractTimeoutRef.current) {
                     clearTimeout(extractTimeoutRef.current);
                   }
@@ -334,6 +404,7 @@ export default function IdeaInputStep({ onSubmit }: IdeaInputStepProps) {
                 className="w-full px-4 py-3 bg-black/30 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 focus:border-emerald-400/50 transition-all"
                 required
               />
+              {/* Manual "Auto-fill" button - appears when description is long enough but not yet extracted */}
               {description.trim().length >= 10 && !hasExtracted && !isExtracting && (
                 <button
                   type="button"
@@ -452,11 +523,14 @@ export default function IdeaInputStep({ onSubmit }: IdeaInputStepProps) {
             >
               Continue to Configuration →
             </button>
+            {/* Optional: Navigate to App Builder with description */}
+            {/* Allows users to skip wizard and go directly to editor */}
             {description.trim() && (
               <button
                 type="button"
                 onClick={() => {
                   // Store description and navigate to app-builder
+                  // Description will be available in app-builder welcome screen
                   if (description.trim()) {
                     localStorage.setItem('gobuild-description', description.trim());
                     router.push(`/app-builder?description=${encodeURIComponent(description.trim())}`);

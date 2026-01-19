@@ -1,3 +1,16 @@
+/**
+ * ConfigurationStep Component - Second Step of GOBuild Wizard
+ * 
+ * Allows users to configure their project's tech stack:
+ * - Framework: React, Next.js, Vue.js, or Vanilla JS
+ * - Language: JavaScript or TypeScript
+ * - Styling: Tailwind CSS, CSS Modules, or Styled Components
+ * - Additional Packages: Optional npm packages (axios, react-router, etc.)
+ * 
+ * Shows a summary of the user's app idea at the top
+ * Submits configuration to parent component to proceed to generation step
+ */
+
 'use client';
 
 import { useState } from 'react';
