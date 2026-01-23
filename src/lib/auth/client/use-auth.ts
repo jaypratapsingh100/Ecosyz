@@ -8,6 +8,14 @@
 import { useEffect, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 
+// Simplified user type matching what the API returns
+interface ApiUser {
+  id: string;
+  email: string | null;
+  name?: string | null;
+  avatarUrl?: string | null;
+}
+
 interface AuthState {
   user: User | null;
   loading: boolean;
@@ -37,14 +45,17 @@ export function useAuth(): AuthState {
         if (response.ok) {
           const data = await response.json();
           setState({
-            user: data.user ? {
+            user: data.user ? ({
               id: data.user.id,
               email: data.user.email || null,
               user_metadata: {
                 name: data.user.name,
                 avatar_url: data.user.avatarUrl,
               },
-            } as User : null,
+              app_metadata: {},
+              aud: 'authenticated',
+              created_at: new Date().toISOString(),
+            } as User) : null,
             loading: false,
             error: null,
           });
