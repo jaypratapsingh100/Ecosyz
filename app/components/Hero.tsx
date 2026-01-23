@@ -9,7 +9,7 @@ import { useState, useEffect, useRef } from "react";
 export default function Hero() {
   const [open, setOpen] = useState(false);
   const [buildQuery, setBuildQuery] = useState('');
-  const [selectedAction, setSelectedAction] = useState<'discover' | 'build' | 'projects' | 'network'>('discover');
+  const [selectedAction, setSelectedAction] = useState<'discover' | 'build' | 'projects' | 'network'>('build');
   const [showActionMenu, setShowActionMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -283,17 +283,6 @@ export default function Hero() {
             <div className="mb-4 flex flex-wrap items-center gap-2 justify-center px-4">
               <button
                 type="button"
-                onClick={() => setSelectedAction('discover')}
-                className={`px-4 sm:px-6 py-2 rounded-full font-semibold text-sm sm:text-base transition-all duration-300 ${
-                  selectedAction === 'discover'
-                    ? 'bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 shadow-lg'
-                    : 'bg-black/40 backdrop-blur-sm border border-emerald-400/30 text-emerald-400 hover:bg-emerald-400/10 hover:border-emerald-400/50'
-                }`}
-              >
-                Discover
-              </button>
-              <button
-                type="button"
                 onClick={() => setSelectedAction('build')}
                 className={`px-4 sm:px-6 py-2 rounded-full font-semibold text-sm sm:text-base transition-all duration-300 ${
                   selectedAction === 'build'
@@ -302,6 +291,17 @@ export default function Hero() {
                 }`}
               >
                 Build App
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedAction('discover')}
+                className={`px-4 sm:px-6 py-2 rounded-full font-semibold text-sm sm:text-base transition-all duration-300 ${
+                  selectedAction === 'discover'
+                    ? 'bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 shadow-lg'
+                    : 'bg-black/40 backdrop-blur-sm border border-emerald-400/30 text-emerald-400 hover:bg-emerald-400/10 hover:border-emerald-400/50'
+                }`}
+              >
+                Discover
               </button>
               <button
                 type="button"
@@ -400,19 +400,6 @@ export default function Hero() {
                         <button
                           type="button"
                           onClick={() => {
-                            setSelectedAction('discover');
-                            setShowActionMenu(false);
-                          }}
-                          className="w-full px-3 py-2 text-left text-gray-200 hover:bg-gray-700/50 transition-colors flex items-center gap-3 text-xs font-normal"
-                        >
-                          <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                          </svg>
-                          Discover
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
                             setSelectedAction('build');
                             setShowActionMenu(false);
                           }}
@@ -422,6 +409,19 @@ export default function Hero() {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                           </svg>
                           Build
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedAction('discover');
+                            setShowActionMenu(false);
+                          }}
+                          className="w-full px-3 py-2 text-left text-gray-200 hover:bg-gray-700/50 transition-colors flex items-center gap-3 text-xs font-normal"
+                        >
+                          <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                          </svg>
+                          Discover
                         </button>
                         <button
                           type="button"
