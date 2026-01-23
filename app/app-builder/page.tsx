@@ -40,22 +40,65 @@ export default function AppBuilderPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProjectId, setGenerationProjectId] = useState<string | null>(null);
 
-  // Check authentication on mount
+  // Check authentication on mount with retry mechanism
+  // This handles cases where cookies might not be immediately available after redirect
   useEffect(() => {
-    const checkAuth = async () => {
+    let retryCount = 0;
+    const maxRetries = 5; // Increased retries for better reliability
+    const retryDelay = 300; // 300ms between retries
+
+    const checkAuth = async (isRetry = false) => {
       try {
-        const response = await fetch('/api/auth/session');
+        const response = await fetch('/api/auth/session', {
+          cache: 'no-store', // Ensure fresh check
+          credentials: 'include', // Include cookies
+        });
+        
         if (response.ok) {
           setIsAuthenticated(true);
         } else {
-          setIsAuthenticated(false);
+          // If first attempt fails and we haven't retried, try again
+          if (retryCount < maxRetries) {
+            retryCount++;
+            setTimeout(() => {
+              checkAuth(true);
+            }, retryDelay);
+          } else {
+            setIsAuthenticated(false);
+          }
         }
       } catch (error) {
         console.error('Auth check error:', error);
-        setIsAuthenticated(false);
+        // Retry on network errors too
+        if (retryCount < maxRetries) {
+          retryCount++;
+          setTimeout(() => {
+            checkAuth(true);
+          }, retryDelay);
+        } else {
+          setIsAuthenticated(false);
+        }
       }
     };
-    checkAuth();
+    
+    // Small initial delay to allow cookies to be set after redirect
+    const timeoutId = setTimeout(() => {
+      checkAuth();
+    }, 200);
+    
+    // Also re-check when window gains focus (handles tab switching after login)
+    const handleFocus = () => {
+      if (isAuthenticated === false || isAuthenticated === null) {
+        checkAuth();
+      }
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      clearTimeout(timeoutId);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
   
   // Fetch files when authentication completes and project is selected

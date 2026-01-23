@@ -182,7 +182,12 @@ function AuthPageContent() {
         description: 'You have been successfully signed in.',
         duration: 4000,
       });
-      router.push('/app-builder');
+      
+      // Small delay to ensure cookies are set before redirect
+      // Use window.location for full page reload to ensure cookies are picked up
+      setTimeout(() => {
+        window.location.href = '/app-builder';
+      }, 300);
     } catch (error) {
       // Extract error message without logging full stack trace
       const errorMessage = error instanceof Error ? error.message : 'Sign in failed';
@@ -262,8 +267,9 @@ function AuthPageContent() {
         duration: 4000,
       });
       // Redirect to app builder after successful sign up
+      // Use window.location for full page reload to ensure cookies are picked up
       setTimeout(() => {
-        router.push('/app-builder');
+        window.location.href = '/app-builder';
       }, 1000);
     } catch (error) {
       // Extract error message without logging full stack trace

@@ -129,8 +129,12 @@ function OAuthCallbackContent() {
           duration: 3000,
         });
 
-        // Redirect to app-builder
-        router.replace('/app-builder');
+        // Small delay to ensure cookies are set before redirect
+        // This helps the app-builder page detect authentication immediately
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        // Use window.location for full page reload to ensure cookies are picked up
+        window.location.href = '/app-builder';
       } catch (error: any) {
         console.error('❌ OAuth callback error:', error);
         toast.error('Authentication error', {
