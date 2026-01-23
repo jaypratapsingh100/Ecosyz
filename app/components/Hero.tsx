@@ -15,6 +15,9 @@ export default function Hero() {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const router = useRouter();
   const [animatedPlaceholder, setAnimatedPlaceholder] = useState('');
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
+  const baseTextRef = useRef<string>('');
 
   const placeholderTexts = {
     discover: 'What would you like to discover?',
@@ -55,9 +58,91 @@ export default function Hero() {
     };
   }, [showActionMenu]);
 
+  // Initialize Speech Recognition
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      
+      if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+
+        recognition.onstart = () => {
+          setIsListening(true);
+        };
+
+        recognition.onresult = (event: any) => {
+          let interimTranscript = '';
+          let finalTranscript = '';
+
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+              finalTranscript += transcript + ' ';
+            } else {
+              interimTranscript += transcript;
+            }
+          }
+
+          if (finalTranscript) {
+            baseTextRef.current += finalTranscript;
+            setBuildQuery(baseTextRef.current + (interimTranscript ? interimTranscript : ''));
+          } else if (interimTranscript) {
+            setBuildQuery(baseTextRef.current + interimTranscript);
+          }
+        };
+
+        recognition.onerror = (event: any) => {
+          console.error('Speech recognition error:', event.error);
+          setIsListening(false);
+          if (event.error === 'no-speech' || event.error === 'audio-capture') {
+            // These are common errors, don't show alert
+          } else {
+            alert(`Speech recognition error: ${event.error}`);
+          }
+        };
+
+        recognition.onend = () => {
+          setIsListening(false);
+          // Update base text to current query (without interim text)
+          baseTextRef.current = buildQuery;
+        };
+
+        recognitionRef.current = recognition;
+      }
+    }
+
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    };
+  }, []);
+
+  // Toggle speech recognition
+  const toggleSpeechRecognition = () => {
+    if (!recognitionRef.current) {
+      alert('Speech recognition is not supported in your browser. Please use Chrome, Edge, or Safari.');
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+      // Save current text as base text
+      baseTextRef.current = buildQuery;
+    } else {
+      // Initialize base text with current query
+      baseTextRef.current = buildQuery;
+      recognitionRef.current.start();
+    }
+  };
+
   // Typewriter animation for placeholder
   useEffect(() => {
-    if (buildQuery) return; // Don't animate if user is typing
+    if (buildQuery || isListening) return; // Don't animate if user is typing or listening
     
     let currentPhraseIndex = 0;
     let currentCharIndex = 0;
@@ -257,7 +342,14 @@ export default function Hero() {
                   
                   <textarea
                     value={buildQuery}
-                    onChange={(e) => setBuildQuery(e.target.value)}
+                    onChange={(e) => {
+                      const newValue = e.target.value;
+                      setBuildQuery(newValue);
+                      // Update base text when not listening (user is typing manually)
+                      if (!isListening) {
+                        baseTextRef.current = newValue;
+                      }
+                    }}
                     className="flex-1 bg-transparent text-white text-base sm:text-lg md:text-xl focus:outline-none resize-none overflow-hidden rounded-lg placeholder-gray-400"
                     style={{ 
                       minHeight: 'auto', 
@@ -365,13 +457,18 @@ export default function Hero() {
 
                     {/* Right side buttons */}
                     <div className="flex items-center gap-2 sm:gap-3">
-                      {/* Microphone Icon - Hide on mobile */}
+                      {/* Microphone Icon */}
                   <button
                     type="button"
-                        className="hidden sm:flex w-8 h-8 sm:w-10 sm:h-10 items-center justify-center bg-gray-700/50 hover:bg-gray-600 rounded-full transition-colors"
-                        aria-label="Voice input"
+                        onClick={toggleSpeechRecognition}
+                        className={`flex w-8 h-8 sm:w-10 sm:h-10 items-center justify-center rounded-full transition-colors ${
+                          isListening 
+                            ? 'bg-red-500/80 hover:bg-red-600 animate-pulse' 
+                            : 'bg-gray-700/50 hover:bg-gray-600'
+                        }`}
+                        aria-label={isListening ? "Stop voice input" : "Start voice input"}
                       >
-                        <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className={`w-4 h-4 sm:w-5 sm:h-5 ${isListening ? 'text-white' : 'text-gray-300'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
                         </svg>
                       </button>
