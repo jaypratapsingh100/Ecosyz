@@ -74,7 +74,7 @@ function cleanExports(code: string): { cleaned: string; componentName?: string }
   // Pattern: standalone "Default ComponentName;" or "export default ComponentName;" without proper definition
   // More aggressive pattern to catch all variations
   cleaned = cleaned.replace(/^\s*Default\s+(\w+)\s*;?\s*$/gm, ''); // Remove "Default Header;" lines
-  cleaned = cleaned.replace(/^\s*export\s+default\s+(\w+)\s*;?\s*$/gm, (match, name) => {
+  cleaned = cleaned.replace(/^\s*export\s+default\s+(\w+)\s*;?\s*$/gm, (match: string, name: string) => {
     // Only remove if component is not defined in the code
     const componentDefined = cleaned.match(new RegExp(`(?:function|const|class|var|let)\\s+${name}\\s*[=(]`));
     if (!componentDefined) {
@@ -252,13 +252,13 @@ function processComponentFiles(componentFiles: any[], appFile: any): { processed
 
     // CRITICAL FIX: Fix malformed imports/exports with missing spaces BEFORE processing
     // Fix: import*asReactfrom'react' → import React from 'react'
-    fileContent = fileContent.replace(/import\*as(\w+)from(['"])([^'"]+)\2/g, (match, p1, p2, p3) => {
+    fileContent = fileContent.replace(/import\*as(\w+)from(['"])([^'"]+)\2/g, (match: string, p1: string, p2: string, p3: string) => {
       console.log(`🔧 Fixed malformed import: ${match} → import ${p1} from ${p2}${p3}${p2}`);
       return `import ${p1} from ${p2}${p3}${p2}`;
     });
     
     // Fix: import*{(\w+)}from → import { $1 } from
-    fileContent = fileContent.replace(/import\*\{([^}]+)\}from(['"])([^'"]+)\2/g, (match, p1, p2, p3) => {
+    fileContent = fileContent.replace(/import\*\{([^}]+)\}from(['"])([^'"]+)\2/g, (match: string, p1: string, p2: string, p3: string) => {
       console.log(`🔧 Fixed malformed named import: ${match}`);
       return `import { ${p1.trim()} } from ${p2}${p3}${p2}`;
     });
@@ -303,7 +303,7 @@ function processComponentFiles(componentFiles: any[], appFile: any): { processed
     // CRITICAL FIX: Ensure return statements are inside functions
     // Check if there's a return statement outside a function
     const hasReturnStatement = /return\s*\(/m.test(fileContent);
-    const hasFunctionWrapper = fileContent.match(/(?:function|const|var|let|=>)\s*\w*\s*[=(].*?return\s*\(/s) ||
+    const hasFunctionWrapper = fileContent.match(/(?:function|const|var|let|=>)\s*\w*\s*[=(][\s\S]*?return\s*\(/) ||
                                 fileContent.match(/^(?:function|const|var|let)\s+[A-Z][a-zA-Z0-9]*\s*[=(]/m);
     
     // More robust check: if there's a return but no function wrapper, wrap it
@@ -343,7 +343,7 @@ function processComponentFiles(componentFiles: any[], appFile: any): { processed
     if (hasHooks && !hasFunctionWrapper && !fileContent.match(/^(?:function|const|var|let)\s+[A-Z]/m)) {
       console.log(`🔧 Component ${file.path} has hooks but no function wrapper - fixing...`);
       const fileName = file.path.split('/').pop() || file.path.split('\\').pop() || '';
-      const compName = fileName.replace(/\.(jsx|js|tsx|ts)$/i, '').replace(/^[a-z]/, (c) => c.toUpperCase());
+      const compName = fileName.replace(/\.(jsx|js|tsx|ts)$/i, '').replace(/^[a-z]/, (c: string) => c.toUpperCase());
       fileContent = `function ${compName}() {\n${fileContent}\n}`;
     }
     
@@ -440,13 +440,13 @@ function processAppFile(appFile: any, componentFiles: any[]): { processed: strin
   
   // CRITICAL FIX: Fix malformed imports/exports with missing spaces BEFORE processing
   // Fix: import*asReactfrom'react' → import React from 'react'
-  appContent = appContent.replace(/import\*as(\w+)from(['"])([^'"]+)\2/g, (match, p1, p2, p3) => {
+  appContent = appContent.replace(/import\*as(\w+)from(['"])([^'"]+)\2/g, (match: string, p1: string, p2: string, p3: string) => {
     console.log(`🔧 Fixed malformed import in App: ${match} → import ${p1} from ${p2}${p3}${p2}`);
     return `import ${p1} from ${p2}${p3}${p2}`;
   });
   
   // Fix: import*{(\w+)}from → import { $1 } from
-  appContent = appContent.replace(/import\*\{([^}]+)\}from(['"])([^'"]+)\2/g, (match, p1, p2, p3) => {
+  appContent = appContent.replace(/import\*\{([^}]+)\}from(['"])([^'"]+)\2/g, (match: string, p1: string, p2: string, p3: string) => {
     console.log(`🔧 Fixed malformed named import in App: ${match}`);
     return `import { ${p1.trim()} } from ${p2}${p3}${p2}`;
   });
@@ -964,7 +964,7 @@ loadedComponents.forEach(compName => {
     combinedJs = combinedJs.replace(/^\s*Default\s+\w+\s*;\s*\n/gm, '');
     
     // Also remove orphaned "export default ComponentName;" without definitions
-    combinedJs = combinedJs.replace(/\n\s*export\s+default\s+(\w+)\s*;\s*\n/g, (match, name) => {
+    combinedJs = combinedJs.replace(/\n\s*export\s+default\s+(\w+)\s*;\s*\n/g, (match: string, name: string) => {
       // Check if component is defined anywhere in combined code
       const componentDefined = combinedJs.match(new RegExp(`(?:function|const|class|var|let)\\s+${name}\\s*[=(]`));
       if (!componentDefined) {
