@@ -404,54 +404,8 @@ Your capabilities:
           throw new Error(`Credit limit exceeded. You can only afford ${maxAffordableTokens} tokens. Please upgrade your OpenRouter account at https://openrouter.ai/settings/credits or reduce the request size.`);
         }
       }
-      // Handle invalid model (400/404) - fallback to deepseek-chat
-      else if (provider === 'openrouter') {
-        const isInvalidModel = (
-          modelError?.status === 400 || 
-          modelError?.status === 404 || 
-          errorMessage.includes('Invalid model') || 
-          errorMessage.includes('not a valid model') ||
-          errorMessage.includes('model not found') ||
-          errorMessage.includes('is not a valid model ID') ||
-          modelError?.code === 'model_not_found'
-        );
-        
-        if (isInvalidModel) {
-          console.warn(`⚠️ Invalid model "${model}" for OpenRouter, attempting fallback to deepseek-chat`);
-          
-          try {
-            const fallbackModel = 'deepseek/deepseek-chat';
-            const fallbackClient = new OpenAI({
-              apiKey: apiKey || process.env.OPENROUTER_API_KEY,
-              baseURL: 'https://openrouter.ai/api/v1',
-              defaultHeaders: {
-                'HTTP-Referer': process.env.NEXT_PUBLIC_SITE_URL || process.env.VERCEL_URL 
-                  ? `https://${process.env.VERCEL_URL}` 
-                  : 'http://localhost:3000',
-                'X-Title': 'Ecosyz Search - Open Resources',
-              },
-            });
-            
-            const fallbackCompletion = await fallbackClient.chat.completions.create({
-              model: fallbackModel,
-              messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: message }
-              ],
-              temperature: 0.7,
-              max_tokens: 2000, // Reduced to avoid credit limit issues
-            });
-            
-            response = fallbackCompletion.choices[0]?.message?.content || 'I apologize, but I could not generate a response. Please try again.';
-            finalModel = fallbackModel;
-          } catch (fallbackError: any) {
-            console.error('Fallback model also failed:', fallbackError);
-            throw modelError; // Throw original error
-          }
-        } else {
-          throw modelError;
-        }
-      } else {
+      // For azure-deepseek, throw any other errors
+      else {
         throw modelError;
       }
     }
@@ -472,10 +426,10 @@ Your capabilities:
       provider: provider || 'unknown'
     });
     
-    // Log OpenRouter specific rate limit headers if available
-    if (provider === 'openrouter' && error?.response?.headers) {
+    // Log rate limit headers if available (for any provider)
+    if (error?.response?.headers) {
       const headers = error?.response?.headers;
-      console.error('OpenRouter Rate Limit Info:', {
+      console.error('Rate Limit Info:', {
         'x-ratelimit-limit': headers['x-ratelimit-limit'],
         'x-ratelimit-remaining': headers['x-ratelimit-remaining'],
         'x-ratelimit-reset': headers['x-ratelimit-reset'],
@@ -546,10 +500,9 @@ Your capabilities:
         rateLimitMessage += ` Rate limit resets at ${resetDate.toLocaleTimeString()}.`;
       }
       
-      if (provider === 'openrouter') {
-        rateLimitMessage += '\n\n💡 Check your OpenRouter rate limits at: https://openrouter.ai/settings/credits';
-        rateLimitMessage += '\n💡 Free tier limits: ~10 requests/minute';
-        rateLimitMessage += '\n💡 Upgrade for higher limits: https://openrouter.ai/settings/credits';
+      // Rate limit message for azure-deepseek
+      if (provider === 'azure-deepseek') {
+        rateLimitMessage += '\n\n💡 This is an Azure DeepSeek rate limit. Please try again later.';
       }
       
       return NextResponse.json(
