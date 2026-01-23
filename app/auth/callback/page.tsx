@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/src/lib/supabase';
 import { toast } from 'sonner';
@@ -18,7 +18,7 @@ import { toast } from 'sonner';
  * 4. We verify session exists and sync to server cookies
  * 5. Redirect to /app-builder
  */
-export default function OAuthCallbackPage() {
+function OAuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -174,5 +174,20 @@ export default function OAuthCallbackPage() {
         <p className="text-white text-lg">Completing authentication...</p>
       </div>
     </div>
+  );
+}
+
+export default function OAuthCallbackPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-emerald-900 to-gray-900">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-400 mx-auto mb-4"></div>
+          <p className="text-white text-lg">Loading...</p>
+        </div>
+      </div>
+    }>
+      <OAuthCallbackContent />
+    </Suspense>
   );
 }
