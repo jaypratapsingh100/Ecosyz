@@ -38,11 +38,17 @@ export default function Header() {
           setIsAuthenticated(true);
           setUserData(data.user);
         } else {
+          // 401 is expected when user is not logged in - don't log as error
+          // Only log unexpected errors (500, 503, etc.)
+          if (response.status !== 401) {
+            console.warn('Unexpected auth check status:', response.status);
+          }
           setIsAuthenticated(false);
           setUserData(null);
         }
       } catch (error) {
-        console.error('Auth check error:', error);
+        // Only log network/connection errors, not expected 401s
+        console.error('Auth check network error:', error);
         setIsAuthenticated(false);
         setUserData(null);
       }

@@ -4,7 +4,7 @@
  */
 
 import { cookies } from 'next/headers';
-import { supabase } from '@/src/lib/supabase';
+import { createClient } from '@supabase/supabase-js';
 import { SESSION_COOKIE, REFRESH_COOKIE } from './constants';
 
 /**
@@ -12,9 +12,12 @@ import { SESSION_COOKIE, REFRESH_COOKIE } from './constants';
  */
 export async function getTokens(): Promise<{ accessToken: string | null; refreshToken: string | null }> {
   const cookieStore = await cookies();
+  const accessToken = cookieStore.get(SESSION_COOKIE)?.value || null;
+  const refreshToken = cookieStore.get(REFRESH_COOKIE)?.value || null;
+  
   return {
-    accessToken: cookieStore.get(SESSION_COOKIE)?.value || null,
-    refreshToken: cookieStore.get(REFRESH_COOKIE)?.value || null,
+    accessToken,
+    refreshToken,
   };
 }
 
@@ -22,10 +25,23 @@ export async function getTokens(): Promise<{ accessToken: string | null; refresh
  * Refresh access token using refresh token
  */
 export async function refreshAccessToken(refreshToken: string): Promise<{ accessToken: string; expiresIn: number } | null> {
-  if (!supabase) {
-    console.error('Supabase client not initialized');
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.error('❌ Supabase environment variables not configured');
     return null;
   }
+
+  // Create a fresh Supabase client for server-side token refresh
+  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      flowType: 'pkce',
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+  });
 
   try {
     const { data, error } = await supabase.auth.refreshSession({
@@ -42,7 +58,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<{ access
       expiresIn: data.session.expires_in || 3600,
     };
   } catch (error) {
-    console.error('Error refreshing token:', error);
+    console.error('❌ Error refreshing token:', error);
     return null;
   }
 }
