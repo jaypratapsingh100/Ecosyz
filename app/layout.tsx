@@ -3,6 +3,7 @@ import './globals.css';
 import { ThemeProvider } from 'next-themes';
 import { Providers } from './components/Providers';
 import AnalyticsTracker from './components/AnalyticsTracker';
+import ToastProvider from './components/ui/ToastProvider';
 
 // Font variable - using CSS fallback instead of Google Fonts to avoid build-time network issues
 const spaceGrotesk = {
@@ -27,6 +28,7 @@ export default function RootLayout({
       >
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
           <Providers>
+            <ToastProvider />
             <AnalyticsTracker />
             {children}
           </Providers>

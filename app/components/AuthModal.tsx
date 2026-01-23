@@ -102,12 +102,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, title = "Sign In
         toast.error(errorMessage, {
           description,
           duration: 6000,
-          style: {
-            background: 'linear-gradient(135deg, #ef4444, #dc2626)',
-            color: 'white',
-            border: 'none',
-            fontWeight: '600',
-          },
         });
         return;
       }
@@ -115,12 +109,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, title = "Sign In
       toast.success('Signed in successfully!', {
         description: 'Welcome back! Redirecting...',
         duration: 3000,
-        style: {
-          background: 'linear-gradient(135deg, #10b981, #06b6d4)',
-          color: 'white',
-          border: 'none',
-          fontWeight: '600',
-        },
       });
       onSuccess();
       onClose();
@@ -130,8 +118,13 @@ export default function AuthModal({ isOpen, onClose, onSuccess, title = "Sign In
       // Extract error message without logging full stack trace
       const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
       
-      // Only log to console in development or for unexpected errors
-      if (process.env.NODE_ENV === 'development' || !errorMessage.includes('Invalid') && !errorMessage.includes('credentials')) {
+      // Only log unexpected errors (not common auth failures)
+      const isExpectedError = 
+        errorMessage.includes('Invalid') || 
+        errorMessage.includes('credentials') ||
+        errorMessage.includes('email') && errorMessage.includes('not found');
+      
+      if (!isExpectedError) {
         console.error('Sign in error:', errorMessage);
       }
       
@@ -140,12 +133,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, title = "Sign In
           ? 'Unable to connect to the server. Please check your internet connection.'
           : 'Please try again later.',
         duration: 5000,
-        style: {
-          background: 'linear-gradient(135deg, #ef4444, #dc2626)',
-          color: 'white',
-          border: 'none',
-          fontWeight: '600',
-        },
       });
     } finally {
       setLoading(false);
@@ -199,12 +186,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, title = "Sign In
         toast.error(errorMessage, {
           description,
           duration: 6000,
-          style: {
-            background: 'linear-gradient(135deg, #ef4444, #dc2626)',
-            color: 'white',
-            border: 'none',
-            fontWeight: '600',
-          },
         });
         return;
       }
@@ -212,12 +193,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, title = "Sign In
       toast.success('Account created successfully!', {
         description: 'You can now sign in with your credentials.',
         duration: 4000,
-        style: {
-          background: 'linear-gradient(135deg, #10b981, #06b6d4)',
-          color: 'white',
-          border: 'none',
-          fontWeight: '600',
-        },
       });
       // Switch to sign in form after successful signup
       setIsSignUp(false);
@@ -226,8 +201,14 @@ export default function AuthModal({ isOpen, onClose, onSuccess, title = "Sign In
       // Extract error message without logging full stack trace
       const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
       
-      // Only log to console in development or for unexpected errors
-      if (process.env.NODE_ENV === 'development' || !errorMessage.includes('already exists') && !errorMessage.includes('already registered')) {
+      // Only log unexpected errors (not common signup failures)
+      const isExpectedError = 
+        errorMessage.includes('already exists') || 
+        errorMessage.includes('already registered') ||
+        errorMessage.includes('Password') && errorMessage.includes('short') ||
+        errorMessage.includes('email') && errorMessage.includes('invalid');
+      
+      if (!isExpectedError) {
         console.error('Sign up error:', errorMessage);
       }
       
@@ -236,12 +217,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, title = "Sign In
           ? 'Unable to connect to the server. Please check your internet connection.'
           : 'Please try again later.',
         duration: 5000,
-        style: {
-          background: 'linear-gradient(135deg, #ef4444, #dc2626)',
-          color: 'white',
-          border: 'none',
-          fontWeight: '600',
-        },
       });
     } finally {
       setLoading(false);

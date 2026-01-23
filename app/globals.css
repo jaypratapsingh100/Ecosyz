@@ -644,3 +644,69 @@ body::-webkit-scrollbar {
   animation: blink 1s step-end infinite;
 }
 
+/* --- Custom Toast Styles --- */
+.glass-toast {
+  background: rgba(12, 35, 33, 0.95) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(16, 185, 129, 0.2) !important;
+  border-radius: 16px !important;
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(16, 185, 129, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Improve toast description text visibility */
+.glass-toast [data-description],
+.glass-toast p[data-description],
+.glass-toast .description {
+  color: rgba(243, 244, 246, 0.95) !important;
+  font-weight: 400 !important;
+  opacity: 1 !important;
+}
+
+.glass-toast [data-title],
+.glass-toast .title {
+  color: #ffffff !important;
+  font-weight: 600 !important;
+}
+
+/* Target sonner's description class directly */
+[data-sonner-toast] [data-description] {
+  color: rgba(243, 244, 246, 0.95) !important;
+  opacity: 1 !important;
+}
+
+.glass-toast-success {
+  border-left: 4px solid #10b981 !important;
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    0 0 20px rgba(16, 185, 129, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+.glass-toast-error {
+  border-left: 4px solid #ef4444 !important;
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    0 0 20px rgba(239, 68, 68, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+.glass-toast-warning {
+  border-left: 4px solid #f59e0b !important;
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    0 0 20px rgba(245, 158, 11, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+.glass-toast-info {
+  border-left: 4px solid #06b6d4 !important;
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    0 0 20px rgba(6, 182, 212, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+

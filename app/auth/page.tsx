@@ -82,12 +82,6 @@ export default function AuthPage() {
       toast.error(errorMessage, {
         description,
         duration: 6000,
-        style: {
-          background: 'linear-gradient(135deg, #ef4444, #dc2626)',
-          color: 'white',
-          border: 'none',
-          fontWeight: '600',
-        },
       });
       
       // Clean up URL parameters
@@ -187,20 +181,20 @@ export default function AuthPage() {
       toast.success('Welcome back!', {
         description: 'You have been successfully signed in.',
         duration: 4000,
-        style: {
-          background: 'linear-gradient(135deg, #10b981, #06b6d4)',
-          color: 'white',
-          border: 'none',
-          fontWeight: '600',
-        },
       });
       router.push('/app-builder');
     } catch (error) {
       // Extract error message without logging full stack trace
       const errorMessage = error instanceof Error ? error.message : 'Sign in failed';
       
-      // Only log to console in development or for unexpected errors
-      if (process.env.NODE_ENV === 'development' || !errorMessage.includes('Invalid') && !errorMessage.includes('credentials')) {
+      // Only log unexpected errors (not common auth failures)
+      const isExpectedError = 
+        errorMessage.includes('Invalid') || 
+        errorMessage.includes('credentials') || 
+        errorMessage.includes('email') && errorMessage.includes('not found') ||
+        errorMessage.includes('Too many requests');
+      
+      if (!isExpectedError) {
         console.error('Sign in error:', errorMessage);
       }
       
@@ -221,12 +215,6 @@ export default function AuthPage() {
       toast.error(errorMessage, {
         description,
         duration: 6000,
-        style: {
-          background: 'linear-gradient(135deg, #ef4444, #dc2626)',
-          color: 'white',
-          border: 'none',
-          fontWeight: '600',
-        },
       });
     } finally {
       setLoading(false);
@@ -272,12 +260,6 @@ export default function AuthPage() {
       toast.success('Account created successfully!', {
         description: 'Welcome! Redirecting to App Builder...',
         duration: 4000,
-        style: {
-          background: 'linear-gradient(135deg, #10b981, #06b6d4)',
-          color: 'white',
-          border: 'none',
-          fontWeight: '600',
-        },
       });
       // Redirect to app builder after successful sign up
       setTimeout(() => {
@@ -287,8 +269,14 @@ export default function AuthPage() {
       // Extract error message without logging full stack trace
       const errorMessage = error instanceof Error ? error.message : 'Sign up failed';
       
-      // Only log to console in development or for unexpected errors
-      if (process.env.NODE_ENV === 'development' || !errorMessage.includes('already exists') && !errorMessage.includes('already registered')) {
+      // Only log unexpected errors (not common signup failures)
+      const isExpectedError = 
+        errorMessage.includes('already exists') || 
+        errorMessage.includes('already registered') ||
+        errorMessage.includes('Password') && errorMessage.includes('short') ||
+        errorMessage.includes('email') && errorMessage.includes('invalid');
+      
+      if (!isExpectedError) {
         console.error('Sign up error:', errorMessage);
       }
       
@@ -307,12 +295,6 @@ export default function AuthPage() {
       toast.error(errorMessage, {
         description,
         duration: 5000,
-        style: {
-          background: 'linear-gradient(135deg, #ef4444, #dc2626)',
-          color: 'white',
-          border: 'none',
-          fontWeight: '600',
-        },
       });
     } finally {
       setLoading(false);
@@ -327,12 +309,6 @@ export default function AuthPage() {
       toast.error(`Failed to sign in with ${provider}`, {
         description: 'Please try again or use email/password sign in.',
         duration: 4000,
-        style: {
-          background: 'linear-gradient(135deg, #ef4444, #dc2626)',
-          color: 'white',
-          border: 'none',
-          fontWeight: '600',
-        },
       });
     }
   };
@@ -363,23 +339,11 @@ export default function AuthPage() {
             label: 'Reset Password',
             onClick: () => window.open(result.resetUrl, '_blank'),
           },
-          style: {
-            background: 'linear-gradient(135deg, #10b981, #06b6d4)',
-            color: 'white',
-            border: 'none',
-            fontWeight: '600',
-          },
         });
       } else {
         toast.success('Password reset email sent!', {
           description: 'Please check your email for instructions to reset your password.',
           duration: 5000,
-          style: {
-            background: 'linear-gradient(135deg, #10b981, #06b6d4)',
-            color: 'white',
-            border: 'none',
-            fontWeight: '600',
-          },
         });
       }
 
