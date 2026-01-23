@@ -71,7 +71,11 @@ export default function ChatSettings({ isOpen, onClose }: ChatSettingsProps) {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-white font-semibold text-lg">Chat Settings</h2>
-            <p className="text-gray-400 text-xs mt-1">Using OpenRouter + DeepSeek Chat</p>
+            <p className="text-gray-400 text-xs mt-1">
+              {typeof window !== 'undefined' && localStorage.getItem('azure_deepseek_enabled') === 'true'
+                ? 'Using Azure DeepSeek (Self-Hosted)'
+                : 'Using OpenRouter + DeepSeek Chat'}
+            </p>
           </div>
           <button
             onClick={onClose}
@@ -93,10 +97,15 @@ export default function ChatSettings({ isOpen, onClose }: ChatSettingsProps) {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <div className="flex-1">
-                <p className="text-emerald-200 text-xs font-medium mb-1">🚀 DeepSeek Chat - Best Analysis Quality</p>
+                <p className="text-emerald-200 text-xs font-medium mb-1">
+                  {typeof window !== 'undefined' && localStorage.getItem('azure_deepseek_enabled') === 'true'
+                    ? '🚀 Azure DeepSeek - Self-Hosted (Best for App Generation)'
+                    : '🚀 DeepSeek Chat - Best Analysis Quality'}
+                </p>
                 <p className="text-emerald-300/80 text-xs leading-relaxed">
-                  Using <strong>OpenRouter</strong> with <strong>DeepSeek Chat</strong> - excellent for comprehensive resource analysis and detailed answers. 
-                  API key is configured from environment variable (<code className="text-emerald-200">OPENROUTER_API_KEY</code>).
+                  {typeof window !== 'undefined' && localStorage.getItem('azure_deepseek_enabled') === 'true'
+                    ? 'Using your <strong>Azure-hosted DeepSeek</strong> model - optimized for app generation and code creation. Configured via <code className="text-emerald-200">AZURE_DEEPSEEK_URL</code> environment variable.'
+                    : 'Using <strong>OpenRouter</strong> with <strong>DeepSeek Chat</strong> - excellent for comprehensive resource analysis and detailed answers. API key is configured from environment variable (<code className="text-emerald-200">OPENROUTER_API_KEY</code>).'}
                 </p>
               </div>
             </div>
@@ -108,10 +117,14 @@ export default function ChatSettings({ isOpen, onClose }: ChatSettingsProps) {
               AI Provider
             </label>
             <div className="w-full px-4 py-2.5 bg-[#0a0a0a] border border-white/10 rounded-lg text-gray-300 text-sm">
-              🌐 OpenRouter + DeepSeek Chat
+              {typeof window !== 'undefined' && localStorage.getItem('azure_deepseek_enabled') === 'true'
+                ? '☁️ Azure DeepSeek (Self-Hosted)'
+                : '🌐 OpenRouter + DeepSeek Chat'}
             </div>
             <p className="text-gray-500 text-xs mt-2">
-              Using API key from environment variable
+              {typeof window !== 'undefined' && localStorage.getItem('azure_deepseek_enabled') === 'true'
+                ? 'Using Azure-hosted model (no API key required)'
+                : 'Using API key from environment variable'}
             </p>
           </div>
 

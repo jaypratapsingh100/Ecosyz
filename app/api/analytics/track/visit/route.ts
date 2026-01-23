@@ -46,6 +46,16 @@ export async function POST(req: NextRequest) {
           warning: 'Analytics table not found. Run migrations to enable tracking.' 
         });
       }
+      // Handle database authentication errors
+      if (dbError?.message?.includes('authentication failed') || dbError?.code === 'P1001' || dbError?.code === 'P1000') {
+        console.error('Database connection error in analytics:', dbError);
+        // Return success: false but with 200 status - analytics failures shouldn't break the app
+        return NextResponse.json({ 
+          success: false, 
+          error: 'Database connection failed. Please check DATABASE_URL and DIRECT_URL in Vercel environment variables.',
+          code: 'DATABASE_CONNECTION_ERROR'
+        });
+      }
       // Handle other Prisma errors gracefully
       console.error('Error tracking page visit:', dbError);
       // Return success: false but with 200 status - analytics failures shouldn't break the app

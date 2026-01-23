@@ -8,7 +8,6 @@ import { z } from 'zod';
 import { toast } from 'sonner';
 import Link from 'next/link';
 import { X, Eye, EyeOff, Loader2 } from 'lucide-react';
-import { supabase } from '../../src/lib/supabase';
 
 const signInSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -57,60 +56,193 @@ export default function AuthModal({ isOpen, onClose, onSuccess, title = "Sign In
   });
 
   const handleSignIn = async (data: SignInForm) => {
-    if (!supabase) {
-      toast.error('Authentication service unavailable');
-      return;
-    }
-
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: data.email,
-        password: data.password,
+      const response = await fetch('/api/auth/signin', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
       });
 
-      if (error) {
-        toast.error(error.message);
+      // Parse response
+      let result: any;
+      try {
+        const text = await response.text();
+        if (!text) {
+          throw new Error('Empty response from server');
+        }
+        result = JSON.parse(text);
+      } catch (parseError) {
+        console.error('Failed to parse response:', parseError);
+        toast.error('Server error. Please try again later.', {
+          description: 'Unable to process server response.',
+          duration: 5000,
+        });
         return;
       }
 
-      toast.success('Signed in successfully!');
+      if (!response.ok) {
+        // Extract error message with helpful descriptions
+        const errorMessage = result?.error || result?.message || 'Sign in failed';
+        let description = 'Please check your credentials and try again.';
+        
+        // Provide specific descriptions based on error type
+        if (errorMessage.includes('Invalid') || errorMessage.includes('credentials')) {
+          description = 'The email or password you entered is incorrect. Please check and try again.';
+        } else if (errorMessage.includes('email') && errorMessage.includes('not found')) {
+          description = 'No account found with this email. Please sign up first.';
+        } else if (errorMessage.includes('verify') || errorMessage.includes('confirmation')) {
+          description = 'Please check your email and verify your account before signing in.';
+        } else if (errorMessage.includes('Too many requests')) {
+          description = 'Too many login attempts. Please wait a few minutes before trying again.';
+        }
+        
+        toast.error(errorMessage, {
+          description,
+          duration: 6000,
+          style: {
+            background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+            color: 'white',
+            border: 'none',
+            fontWeight: '600',
+          },
+        });
+        return;
+      }
+
+      toast.success('Signed in successfully!', {
+        description: 'Welcome back! Redirecting...',
+        duration: 3000,
+        style: {
+          background: 'linear-gradient(135deg, #10b981, #06b6d4)',
+          color: 'white',
+          border: 'none',
+          fontWeight: '600',
+        },
+      });
       onSuccess();
       onClose();
+      // Refresh the page to update auth state
+      window.location.reload();
     } catch (error) {
-      toast.error('An error occurred during sign in');
+      // Extract error message without logging full stack trace
+      const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+      
+      // Only log to console in development or for unexpected errors
+      if (process.env.NODE_ENV === 'development' || !errorMessage.includes('Invalid') && !errorMessage.includes('credentials')) {
+        console.error('Sign in error:', errorMessage);
+      }
+      
+      toast.error('Sign in failed', {
+        description: errorMessage.includes('fetch') || errorMessage.includes('network') 
+          ? 'Unable to connect to the server. Please check your internet connection.'
+          : 'Please try again later.',
+        duration: 5000,
+        style: {
+          background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+          color: 'white',
+          border: 'none',
+          fontWeight: '600',
+        },
+      });
     } finally {
       setLoading(false);
     }
   };
 
   const handleSignUp = async (data: SignUpForm) => {
-    if (!supabase) {
-      toast.error('Authentication service unavailable');
-      return;
-    }
-
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signUp({
-        email: data.email,
-        password: data.password,
-        options: {
-          data: {
-            name: data.name,
-          },
+      const response = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
+        body: JSON.stringify(data),
       });
 
-      if (error) {
-        toast.error(error.message);
+      // Parse response
+      let result: any;
+      try {
+        const text = await response.text();
+        if (!text) {
+          throw new Error('Empty response from server');
+        }
+        result = JSON.parse(text);
+      } catch (parseError) {
+        console.error('Failed to parse response:', parseError);
+        toast.error('Server error. Please try again later.', {
+          description: 'Unable to process server response.',
+          duration: 5000,
+        });
         return;
       }
 
-      toast.success('Account created successfully! Please check your email to verify your account.');
-      // Don't close modal immediately for signup - user needs to verify email
+      if (!response.ok) {
+        // Extract error message with helpful descriptions
+        const errorMessage = result?.error || result?.message || 'Sign up failed';
+        let description = 'Please check your information and try again.';
+        
+        // Provide specific descriptions based on error type
+        if (errorMessage.includes('already exists') || errorMessage.includes('already registered')) {
+          description = 'An account with this email already exists. Please sign in instead.';
+        } else if (errorMessage.includes('password') && errorMessage.includes('short')) {
+          description = 'Password must be at least 6 characters long.';
+        } else if (errorMessage.includes('email') && errorMessage.includes('invalid')) {
+          description = 'Please enter a valid email address.';
+        } else if (errorMessage.includes('network') || errorMessage.includes('connection')) {
+          description = 'Unable to connect to the server. Please check your internet connection.';
+        }
+        
+        toast.error(errorMessage, {
+          description,
+          duration: 6000,
+          style: {
+            background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+            color: 'white',
+            border: 'none',
+            fontWeight: '600',
+          },
+        });
+        return;
+      }
+
+      toast.success('Account created successfully!', {
+        description: 'You can now sign in with your credentials.',
+        duration: 4000,
+        style: {
+          background: 'linear-gradient(135deg, #10b981, #06b6d4)',
+          color: 'white',
+          border: 'none',
+          fontWeight: '600',
+        },
+      });
+      // Switch to sign in form after successful signup
+      setIsSignUp(false);
+      signUpForm.reset();
     } catch (error) {
-      toast.error('An error occurred during sign up');
+      // Extract error message without logging full stack trace
+      const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+      
+      // Only log to console in development or for unexpected errors
+      if (process.env.NODE_ENV === 'development' || !errorMessage.includes('already exists') && !errorMessage.includes('already registered')) {
+        console.error('Sign up error:', errorMessage);
+      }
+      
+      toast.error('Sign up failed', {
+        description: errorMessage.includes('fetch') || errorMessage.includes('network')
+          ? 'Unable to connect to the server. Please check your internet connection.'
+          : 'Please try again later.',
+        duration: 5000,
+        style: {
+          background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+          color: 'white',
+          border: 'none',
+          fontWeight: '600',
+        },
+      });
     } finally {
       setLoading(false);
     }

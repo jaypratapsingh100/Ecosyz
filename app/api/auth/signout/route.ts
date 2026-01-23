@@ -19,9 +19,8 @@ export async function POST() {
     }
 
     // Clear session cookies regardless of Supabase response
-    const cookieStore = await cookies();
-    cookieStore.delete('sb-access-token');
-    cookieStore.delete('sb-refresh-token');
+    const { clearSessionTokens } = await import('@/lib/auth/core/tokens');
+    await clearSessionTokens();
 
     return NextResponse.json({
       message: 'Signed out successfully',

@@ -70,6 +70,24 @@ function cleanExports(code: string): { cleaned: string; componentName?: string }
   let cleaned = code;
   let componentName: string | undefined;
 
+  // FIX: Remove malformed export statements first (e.g., "Default Header;" or "export default Header;" without definition)
+  // Pattern: standalone "Default ComponentName;" or "export default ComponentName;" without proper definition
+  // More aggressive pattern to catch all variations
+  cleaned = cleaned.replace(/^\s*Default\s+(\w+)\s*;?\s*$/gm, ''); // Remove "Default Header;" lines
+  cleaned = cleaned.replace(/^\s*export\s+default\s+(\w+)\s*;?\s*$/gm, (match, name) => {
+    // Only remove if component is not defined in the code
+    const componentDefined = cleaned.match(new RegExp(`(?:function|const|class|var|let)\\s+${name}\\s*[=(]`));
+    if (!componentDefined) {
+      console.warn(`⚠️ Removing orphaned export: ${match.trim()} (component ${name} not defined)`);
+      return '';
+    }
+    return match;
+  });
+  
+  // Also catch standalone "Default ComponentName;" that might appear mid-code (not just at line start)
+  cleaned = cleaned.replace(/\n\s*Default\s+(\w+)\s*;\s*\n/g, '\n'); // Remove "Default Header;" with newlines
+  cleaned = cleaned.replace(/\n\s*Default\s+(\w+)\s*;\s*$/gm, ''); // Remove at end of code
+
   // Case 1: export default function ComponentName() { ... }
   const funcMatch = cleaned.match(/export\s+default\s+function\s+(\w+)\s*\(/);
   if (funcMatch) {
@@ -90,12 +108,22 @@ function cleanExports(code: string): { cleaned: string; componentName?: string }
   const exportRefMatch = cleaned.match(/export\s+default\s+(\w+)\s*;/);
   if (exportRefMatch) {
     componentName = exportRefMatch[1];
-    // Remove the export statement
-    cleaned = cleaned.replace(/export\s+default\s+\w+\s*;?\s*/g, '');
-    // Try to find the component definition
-    const componentMatch = cleaned.match(/(?:function|const|class)\s+(\w+)/);
-    if (componentMatch) {
-      componentName = componentMatch[1];
+    // Verify component exists before removing export
+    const componentExists = cleaned.match(new RegExp(`(?:function|const|class|var|let)\\s+${componentName}\\s*[=(]`));
+    if (componentExists) {
+      // Remove the export statement
+      cleaned = cleaned.replace(/export\s+default\s+\w+\s*;?\s*/g, '');
+    } else {
+      // Component doesn't exist, remove the orphaned export
+      console.warn(`⚠️ Removing orphaned export default ${componentName}; (component not defined)`);
+      cleaned = cleaned.replace(/export\s+default\s+\w+\s*;?\s*/g, '');
+      // Try to find the component definition
+      const componentMatch = cleaned.match(/(?:function|const|class)\s+(\w+)/);
+      if (componentMatch) {
+        componentName = componentMatch[1];
+      } else {
+        componentName = undefined;
+      }
     }
     return { cleaned, componentName };
   }
@@ -190,12 +218,19 @@ function extractComponentsFromJSX(jsxContent: string, componentFiles: any[]): st
     const compName = match[1];
     if (!htmlElements.has(compName.toLowerCase()) && !seen.has(compName)) {
       // Check if component file exists
+      // CRITICAL FIX: Handle alternative extensions and normalize paths
+      const normalizeFileName = (name: string) => name.replace(/\.jxs$/i, '.jsx').replace(/\.tsxs$/i, '.tsx');
+      const normalizeFilePath = (path: string) => path.replace(/\s+/g, '').replace(/\.jxs$/i, '.jsx').replace(/\.tsxs$/i, '.tsx');
+      
       const compFile = componentFiles.find(
-        (f) =>
-          f.name === `${compName}.js` ||
-          f.name === `${compName}.jsx` ||
-          f.path.includes(`/${compName}.`) ||
-          f.path.includes(`\\${compName}.`)
+        (f) => {
+          const normalizedName = normalizeFileName(f.name);
+          const normalizedPath = normalizeFilePath(f.path);
+          return normalizedName === `${compName}.js` ||
+            normalizedName === `${compName}.jsx` ||
+            normalizedPath.includes(`/${compName}.`) ||
+            normalizedPath.includes(`\\${compName}.`);
+        }
       );
       if (compFile) {
         components.push(compName);
@@ -215,6 +250,34 @@ function processComponentFiles(componentFiles: any[], appFile: any): { processed
   componentFiles.forEach((file) => {
     let fileContent = file.content;
 
+    // CRITICAL FIX: Fix malformed imports/exports with missing spaces BEFORE processing
+    // Fix: import*asReactfrom'react' → import React from 'react'
+    fileContent = fileContent.replace(/import\*as(\w+)from(['"])([^'"]+)\2/g, (match, p1, p2, p3) => {
+      console.log(`🔧 Fixed malformed import: ${match} → import ${p1} from ${p2}${p3}${p2}`);
+      return `import ${p1} from ${p2}${p3}${p2}`;
+    });
+    
+    // Fix: import*{(\w+)}from → import { $1 } from
+    fileContent = fileContent.replace(/import\*\{([^}]+)\}from(['"])([^'"]+)\2/g, (match, p1, p2, p3) => {
+      console.log(`🔧 Fixed malformed named import: ${match}`);
+      return `import { ${p1.trim()} } from ${p2}${p3}${p2}`;
+    });
+    
+    // Fix: export*default → export default
+    fileContent = fileContent.replace(/export\*default/g, 'export default');
+    
+    // Fix: return( → return (
+    fileContent = fileContent.replace(/return\(/g, 'return (');
+    
+    // Fix: function(\w+) → function $1
+    fileContent = fileContent.replace(/function\((\w+)\)/g, 'function $1');
+    
+    // Fix: const(\w+) → const $1
+    fileContent = fileContent.replace(/const\((\w+)\)/g, 'const $1');
+    
+    // Fix: let(\w+) → let $1
+    fileContent = fileContent.replace(/let\((\w+)\)/g, 'let $1');
+
     // Check if this component uses React Router (including Link/NavLink)
     const fileUsesRouter = detectReactRouter(fileContent);
     if (fileUsesRouter) {
@@ -228,32 +291,124 @@ function processComponentFiles(componentFiles: any[], appFile: any): { processed
     // Remove imports (but keep router detection)
     fileContent = removeImports(fileContent);
 
-    // Clean exports
+    // Clean exports - this removes orphaned exports like "Default Header;"
     const { cleaned, componentName } = cleanExports(fileContent);
     fileContent = cleaned;
+    
+    // Post-process: Remove any remaining orphaned statements
+    // Catch any remaining "Default ComponentName;" patterns
+    fileContent = fileContent.replace(/\n\s*Default\s+\w+\s*;\s*\n/g, '\n');
+    fileContent = fileContent.replace(/\n\s*Default\s+\w+\s*;\s*$/gm, '');
+    
+    // CRITICAL FIX: Ensure return statements are inside functions
+    // Check if there's a return statement outside a function
+    const hasReturnStatement = /return\s*\(/m.test(fileContent);
+    const hasFunctionWrapper = fileContent.match(/(?:function|const|var|let|=>)\s*\w*\s*[=(].*?return\s*\(/s) ||
+                                fileContent.match(/^(?:function|const|var|let)\s+[A-Z][a-zA-Z0-9]*\s*[=(]/m);
+    
+    // More robust check: if there's a return but no function wrapper, wrap it
+    if (hasReturnStatement && !hasFunctionWrapper) {
+      console.log(`🔧 Component ${file.path} has return statement but no function wrapper - fixing...`);
+      
+      // Try to extract component name from various patterns
+      let compName = 'Component';
+      const nameMatch = fileContent.match(/(?:function|const|var|let)\s+([A-Z][a-zA-Z0-9]*)\s*[=(]/);
+      if (nameMatch) {
+        compName = nameMatch[1];
+      } else {
+        // Try to find component name from file path
+        const fileName = file.path.split('/').pop() || file.path.split('\\').pop() || '';
+        const nameFromFile = fileName.replace(/\.(jsx|js|tsx|ts|component\.js)$/i, '');
+        if (nameFromFile && nameFromFile.match(/^[A-Z]/)) {
+          compName = nameFromFile;
+        }
+      }
+      
+      // Check if it's already wrapped
+      const isWrapped = fileContent.trim().match(/^(?:function|const|var|let)\s+[A-Z]/m);
+      
+      if (!isWrapped) {
+        // Wrap the entire content in a function
+        console.log(`  ↳ Wrapping in function: ${compName}()`);
+        fileContent = `function ${compName}() {\n${fileContent}\n}`;
+      } else {
+        // It's wrapped but might have issues - ensure proper structure
+        console.log(`  ↳ Component ${compName} appears to be wrapped, checking structure...`);
+      }
+    }
+    
+    // Additional fix: Ensure useEffect/hooks are inside functions
+    // If we see hooks but no function wrapper, wrap it
+    const hasHooks = /use(State|Effect|Ref|Callback|Memo|Context)/.test(fileContent);
+    if (hasHooks && !hasFunctionWrapper && !fileContent.match(/^(?:function|const|var|let)\s+[A-Z]/m)) {
+      console.log(`🔧 Component ${file.path} has hooks but no function wrapper - fixing...`);
+      const fileName = file.path.split('/').pop() || file.path.split('\\').pop() || '';
+      const compName = fileName.replace(/\.(jsx|js|tsx|ts)$/i, '').replace(/^[a-z]/, (c) => c.toUpperCase());
+      fileContent = `function ${compName}() {\n${fileContent}\n}`;
+    }
     
     // Ensure component is available globally
     combinedJs += `\n// ${file.path}\n${fileContent}\n`;
     
-    // If component has a name, ensure it's available globally
+    // CRITICAL: Always make component available globally, regardless of export format
     if (componentName) {
       // Make sure it's available both locally and globally
-      combinedJs += `\nif (typeof ${componentName} !== 'undefined') { 
-  window.${componentName} = ${componentName};
-  console.log('✅ Component ${componentName} loaded and available');
-} else {
-  console.warn('⚠️ Component ${componentName} not found after processing ${file.path}');
+      combinedJs += `\n// Ensure ${componentName} is globally available
+try {
+  if (typeof ${componentName} !== 'undefined') { 
+    window.${componentName} = ${componentName};
+    // CRITICAL: Also make it available in global scope (not just window)
+    // This allows direct references like <Dashboard /> to work
+    if (typeof globalThis !== 'undefined') {
+      globalThis.${componentName} = ${componentName};
+    }
+    // Make it available as a global variable (for direct reference)
+    eval('var ${componentName} = window.${componentName}');
+    console.log('✅ Component ${componentName} loaded and available globally');
+  } else {
+    console.warn('⚠️ Component ${componentName} not found after processing ${file.path}');
+  }
+} catch(e) {
+  console.error('Error making ${componentName} global:', e);
 }\n`;
-    } else {
-      // Try to extract component name from file content if not found
-      const functionMatch = fileContent.match(/(?:function|const|var|let)\s+([A-Z][a-zA-Z0-9]*)\s*[=(]/);
-      if (functionMatch && functionMatch[1]) {
-        const extractedName = functionMatch[1];
-        combinedJs += `\nif (typeof ${extractedName} !== 'undefined') { 
-  window.${extractedName} = ${extractedName};
-  console.log('✅ Component ${extractedName} loaded (extracted from code)');
+      } else {
+        // Try to extract component name from file content if not found
+        const functionMatch = fileContent.match(/(?:function|const|var|let)\s+([A-Z][a-zA-Z0-9]*)\s*[=(]/);
+        if (functionMatch && functionMatch[1]) {
+          const extractedName = functionMatch[1];
+          combinedJs += `\n// Ensure ${extractedName} is globally available (extracted)
+try {
+  if (typeof ${extractedName} !== 'undefined') { 
+    window.${extractedName} = ${extractedName};
+    if (typeof globalThis !== 'undefined') {
+      globalThis.${extractedName} = ${extractedName};
+    }
+    eval('var ${extractedName} = window.${extractedName}');
+    console.log('✅ Component ${extractedName} loaded (extracted from code)');
+  }
+} catch(e) {
+  console.error('Error making ${extractedName} global:', e);
 }\n`;
-      }
+        } else {
+          // Last resort: try to find ANY component name in the file
+          const anyComponentMatch = fileContent.match(/(?:export\s+default\s+)?(?:function|const|var|let)\s+([A-Z][a-zA-Z0-9]*)/);
+          if (anyComponentMatch && anyComponentMatch[1]) {
+            const fallbackName = anyComponentMatch[1];
+            combinedJs += `\n// Ensure ${fallbackName} is globally available (fallback)
+try {
+  if (typeof ${fallbackName} !== 'undefined') { 
+    window.${fallbackName} = ${fallbackName};
+    if (typeof globalThis !== 'undefined') {
+      globalThis.${fallbackName} = ${fallbackName};
+    }
+    eval('var ${fallbackName} = window.${fallbackName}');
+    console.log('✅ Component ${fallbackName} loaded (fallback extraction)');
+  }
+} catch(e) {
+  console.error('Error making ${fallbackName} global:', e);
+}\n`;
+          }
+        }
     }
   });
 
@@ -282,6 +437,56 @@ function detectReactRouter(jsContent: string): boolean {
 function processAppFile(appFile: any, componentFiles: any[]): { processed: string; usesRouter: boolean } {
   let appContent = appFile.content;
   const originalContent = appContent;
+  
+  // CRITICAL FIX: Fix malformed imports/exports with missing spaces BEFORE processing
+  // Fix: import*asReactfrom'react' → import React from 'react'
+  appContent = appContent.replace(/import\*as(\w+)from(['"])([^'"]+)\2/g, (match, p1, p2, p3) => {
+    console.log(`🔧 Fixed malformed import in App: ${match} → import ${p1} from ${p2}${p3}${p2}`);
+    return `import ${p1} from ${p2}${p3}${p2}`;
+  });
+  
+  // Fix: import*{(\w+)}from → import { $1 } from
+  appContent = appContent.replace(/import\*\{([^}]+)\}from(['"])([^'"]+)\2/g, (match, p1, p2, p3) => {
+    console.log(`🔧 Fixed malformed named import in App: ${match}`);
+    return `import { ${p1.trim()} } from ${p2}${p3}${p2}`;
+  });
+  
+  // Fix: export*default → export default
+  appContent = appContent.replace(/export\*default/g, 'export default');
+  
+  // Fix: return( → return (
+  appContent = appContent.replace(/return\(/g, 'return (');
+  
+  // Fix: function(\w+) → function $1
+  appContent = appContent.replace(/function\((\w+)\)/g, 'function $1');
+  
+  // Fix: const(\w+) → const $1
+  appContent = appContent.replace(/const\((\w+)\)/g, 'const $1');
+  
+  // Fix: let(\w+) → let $1
+  appContent = appContent.replace(/let\((\w+)\)/g, 'let $1');
+
+  // CRITICAL: Extract ALL components used in App.jsx
+  // This ensures we render ALL components, not just routes
+  const allComponentsUsed = new Set<string>();
+  
+  // Find all component references in App.jsx
+  const componentPattern = /<([A-Z][a-zA-Z0-9]*)\s*(?:\/>|>)/g;
+  let componentMatch;
+  while ((componentMatch = componentPattern.exec(appContent)) !== null) {
+    const compName = componentMatch[1];
+    // Skip HTML elements and React Router components
+    if (!['Router', 'BrowserRouter', 'Routes', 'Route', 'NavLink', 'Link', 'div', 'span', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'a', 'button', 'ul', 'li', 'ol', 'section', 'form', 'input', 'textarea', 'label', 'br', 'img', 'svg', 'header', 'footer', 'nav', 'main', 'article', 'aside'].includes(compName)) {
+      allComponentsUsed.add(compName);
+    }
+  }
+  
+  // Also check for components in route elements
+  const routeElementPattern = /element=\{<(\w+)\s*\/>\}/g;
+  let routeMatch;
+  while ((routeMatch = routeElementPattern.exec(appContent)) !== null) {
+    allComponentsUsed.add(routeMatch[1]);
+  }
 
   // Check for React Router
   const usesRouter = detectReactRouter(appContent);
@@ -314,26 +519,41 @@ function processAppFile(appFile: any, componentFiles: any[]): { processed: strin
     
     const routeComponents = Array.from(routeComponentsSet);
     
+    // CRITICAL: Use allComponentsUsed (from App.jsx) as primary source
+    // This ensures we render ALL components the user requested
+    const allComponents: string[] = Array.from(allComponentsUsed);
+    
+    // Also add route components that might not be directly referenced
+    routeComponents.forEach((comp) => {
+      if (!allComponents.includes(comp)) {
+        allComponents.push(comp);
+      }
+    });
+    
     // Find navigation component
     const navigationFile = componentFiles.find(
       (f) => f.name === 'Navigation.js' || f.name === 'Navigation.jsx' || f.name === 'Navbar.js' || f.name === 'Navbar.jsx' || f.path.includes('Navigation') || f.path.includes('Navbar')
     );
     const hasNavigationInJSX = appContent.includes('<Navigation') || appContent.includes('Navigation />') || appContent.includes('<Navbar') || appContent.includes('Navbar />');
 
-    const allComponents: string[] = [];
-    
     // Add navigation first if it exists
     if (navigationFile || hasNavigationInJSX) {
       const navName = navigationFile?.name?.includes('Navbar') ? 'Navbar' : 'Navigation';
       if (!allComponents.includes(navName)) {
-        allComponents.push(navName);
+        allComponents.unshift(navName); // Add to beginning
       }
     }
     
-    // Add route components
-    routeComponents.forEach((comp) => {
-      if (!allComponents.includes(comp)) {
-        allComponents.push(comp);
+    // CRITICAL: Also add ALL component files that exist, even if not referenced
+    // This ensures we render everything the user created
+    // CRITICAL FIX: Normalize file names to handle .jxs, .jXs extensions
+    componentFiles.forEach((file) => {
+      const normalizedName = file.name.replace(/\.(jxs|jsx|js)$/i, ''); // Handle .jxs, .jsx, .js
+      if (!allComponents.includes(normalizedName)) {
+        // Check if it's a valid component name (starts with capital)
+        if (normalizedName.match(/^[A-Z]/)) {
+          allComponents.push(normalizedName);
+        }
       }
     });
     
@@ -341,13 +561,16 @@ function processAppFile(appFile: any, componentFiles: any[]): { processed: strin
     if (allComponents.length > 0) {
       console.log('🔧 Transforming React Router App - rendering components:', allComponents);
       // Verify components exist in componentFiles
+      // CRITICAL FIX: Handle alternative extensions when checking for components
       const missingComponents = allComponents.filter(comp => {
-        const found = componentFiles.some(f => 
-          f.name === `${comp}.js` || 
-          f.name === `${comp}.jsx` || 
-          f.path.includes(`/${comp}.`) ||
-          f.path.includes(`\\${comp}.`)
-        );
+        const found = componentFiles.some(f => {
+          const normalizedName = f.name.replace(/\.jxs$/i, '.jsx').replace(/\.tsxs$/i, '.tsx');
+          const normalizedPath = f.path.replace(/\s+/g, '').replace(/\.jxs$/i, '.jsx').replace(/\.tsxs$/i, '.tsx');
+          return normalizedName === `${comp}.js` || 
+            normalizedName === `${comp}.jsx` || 
+            normalizedPath.includes(`/${comp}.`) ||
+            normalizedPath.includes(`\\${comp}.`);
+        });
         if (!found) {
           console.warn(`⚠️ Component ${comp} not found in componentFiles`);
         }
@@ -359,32 +582,52 @@ function processAppFile(appFile: any, componentFiles: any[]): { processed: strin
       }
       
       // Create a simple App that renders all components using JSX
-      // Ensure all components are available before rendering
+      // CRITICAL: Render ALL components in order, ensuring they're all displayed
       appContent = `function App() {
   console.log('App rendering, checking components:', [${allComponents.map(c => `'${c}'`).join(', ')}]);
   
-  // Check each component exists - try window first, then global scope
+  // Check each component exists - try multiple strategies
   ${allComponents.map(c => `
-  const ${c}Component = typeof ${c} !== 'undefined' ? ${c} : (typeof window !== 'undefined' && typeof window.${c} !== 'undefined' ? window.${c} : null);`).join('')}
+  let ${c}Component = null;
+  try {
+    // Strategy 1: Direct reference
+    if (typeof ${c} !== 'undefined') {
+      ${c}Component = ${c};
+    }
+    // Strategy 2: Window object
+    else if (typeof window !== 'undefined' && typeof window.${c} !== 'undefined') {
+      ${c}Component = window.${c};
+    }
+    // Strategy 3: Eval (last resort)
+    else {
+      try {
+        ${c}Component = eval('${c}');
+      } catch(e) {}
+    }
+  } catch(e) {
+    console.warn('Failed to load component ${c}:', e);
+  }`).join('')}
   
   const availableComponents = [${allComponents.map(c => `{ name: '${c}', component: ${c}Component }`).join(', ')}];
   console.log('Components status:', availableComponents.map(c => ({ name: c.name, available: c.component !== null })));
   
-  // Only render components that are actually available
+  // Render ALL components - even if some fail, show what we have
   const validComponents = availableComponents.filter(c => c.component !== null);
-  if (validComponents.length === 0) {
-    return React.createElement('div', { style: { padding: '40px', textAlign: 'center' } },
-      React.createElement('h1', null, 'No Components Loaded'),
-      React.createElement('p', null, 'Expected: ' + [${allComponents.map(c => `'${c}'`).join(', ')}].join(', ')),
-      React.createElement('p', { style: { fontSize: '12px', color: '#666', marginTop: '20px' } }, 'Check console for details')
-    );
-  }
   
   return (
-    <div className="min-h-screen">
-      ${allComponents.map((c) => {
-        return `{${c}Component ? React.createElement(${c}Component) : React.createElement('div', { key: '${c}', style: { padding: '20px', border: '1px solid #ef4444', margin: '10px', backgroundColor: '#fee' } }, 'Component ${c} not loaded - check exports')}`;
-      }).join(',\n      ')}
+    <div className="min-h-screen bg-gray-50">
+      ${allComponents.map((c, idx) => {
+        return `<div key="${c}-${idx}" className="component-wrapper">
+        {${c}Component ? (
+          React.createElement(${c}Component)
+        ) : (
+          <div style={{ padding: '20px', border: '2px dashed #ef4444', margin: '10px', backgroundColor: '#fee', borderRadius: '8px' }}>
+            <h3 style={{ color: '#ef4444', marginBottom: '10px' }}>⚠️ Component "${c}" not loaded</h3>
+            <p style={{ fontSize: '12px', color: '#666' }}>Check console for details. Make sure ${c} is exported correctly.</p>
+          </div>
+        )}
+      </div>`;
+      }).join('\n      ')}
     </div>
   );
 }`;
@@ -408,11 +651,40 @@ function processAppFile(appFile: any, componentFiles: any[]): { processed: strin
     const jsxContent = returnMatch ? returnMatch[0] : appContent;
     const componentsInOrder = extractComponentsFromJSX(jsxContent, componentFiles);
 
-    if (componentsInOrder.length > 0) {
+    // CRITICAL: Also get ALL components from componentFiles, not just those referenced
+    // This ensures we render everything the user created
+    const allComponentNames = new Set(componentsInOrder);
+    componentFiles.forEach((file) => {
+      const fileName = file.name.replace(/\.(js|jsx)$/, '');
+      if (fileName.match(/^[A-Z]/)) {
+        allComponentNames.add(fileName);
+      }
+    });
+    
+    const allComponentsToRender = Array.from(allComponentNames);
+
+    if (allComponentsToRender.length > 0) {
       appContent = `function App() {
+  console.log('App rendering components:', [${allComponentsToRender.map(c => `'${c}'`).join(', ')}]);
+  
+  // Load all components
+  ${allComponentsToRender.map(c => `
+  const ${c}Component = typeof ${c} !== 'undefined' ? ${c} : (typeof window !== 'undefined' && typeof window.${c} !== 'undefined' ? window.${c} : null);`).join('')}
+  
   return (
-    <div className="App">
-      ${componentsInOrder.map((c) => `<${c} />`).join('\n      ')}
+    <div className="min-h-screen bg-gray-50">
+      ${allComponentsToRender.map((c, idx) => {
+        return `<div key="${c}-${idx}">
+        {${c}Component ? (
+          React.createElement(${c}Component)
+        ) : (
+          <div style={{ padding: '20px', border: '2px dashed #ef4444', margin: '10px', backgroundColor: '#fee', borderRadius: '8px' }}>
+            <h3 style={{ color: '#ef4444' }}>⚠️ Component "${c}" not loaded</h3>
+            <p style={{ fontSize: '12px', color: '#666' }}>Check console for details.</p>
+          </div>
+        )}
+      </div>`;
+      }).join('\n      ')}
     </div>
   );
 }`;
@@ -578,7 +850,13 @@ function generatePreview(project: any): string {
 
   // Separate files by type
   const htmlFiles = files.filter((f: any) => f.path.endsWith('.html'));
-  const jsFiles = files.filter((f: any) => f.path.endsWith('.js') || f.path.endsWith('.jsx'));
+  // Include both JavaScript and TypeScript files
+  const jsFiles = files.filter((f: any) => 
+    f.path.endsWith('.js') || 
+    f.path.endsWith('.jsx') || 
+    f.path.endsWith('.ts') || 
+    f.path.endsWith('.tsx')
+  );
   const cssFiles = files.filter((f: any) => f.path.endsWith('.css'));
   const mainFileForFallback = files.find((f: any) => f.isMain) || files[0];
 
@@ -614,12 +892,56 @@ function generatePreview(project: any): string {
     let combinedJs = '';
     let usesReactRouter = false;
     
-    // Add component files first
+    // CRITICAL: Add component files FIRST so they're available when App runs
     const componentResult = processComponentFiles(componentFiles as any[], appFile);
     combinedJs += componentResult.processed;
     usesReactRouter = usesReactRouter || componentResult.usesRouter;
+    
+    // Add a small delay/check to ensure components are loaded
+    combinedJs += `\n// Ensure all components are loaded before App runs
+console.log('📦 All components loaded, checking availability...');
+const loadedComponents = Object.keys(window).filter(k => 
+  typeof window[k] === 'function' && 
+  k[0] === k[0].toUpperCase() && 
+  !k.startsWith('_') &&
+  !['React', 'ReactDOM', 'Babel', 'BrowserRouter', 'Routes', 'Route', 'Link', 'NavLink'].includes(k)
+);
+console.log('✅ Components loaded:', loadedComponents);
 
-    // Add App file
+// CRITICAL: Validate all components are functions before proceeding
+loadedComponents.forEach(compName => {
+  if (typeof window[compName] !== 'function') {
+    console.warn('⚠️ Component ' + compName + ' is not a function:', typeof window[compName]);
+  }
+});
+
+// Ensure all components are available in global scope for JSX
+loadedComponents.forEach(compName => {
+  try {
+    if (typeof window[compName] === 'function') {
+      // Make available globally using multiple strategies
+      if (typeof globalThis !== 'undefined') {
+        globalThis[compName] = window[compName];
+      }
+      // Use Function constructor for strict mode compatibility
+      try {
+        new Function('window', compName + ' = window.' + compName)(window);
+      } catch(e) {
+        // Fallback to eval
+        try {
+          eval('if (typeof ' + compName + ' === "undefined") { var ' + compName + ' = window.' + compName + '; }');
+        } catch(e2) {
+          console.warn('⚠️ Could not make ' + compName + ' globally available');
+        }
+      }
+    }
+  } catch(e) {
+    console.warn('⚠️ Error making ' + compName + ' available:', e.message);
+  }
+});
+\n`;
+
+    // Add App file AFTER components are loaded
     if (appFile) {
       const appResult = processAppFile(appFile as any, componentFiles as any[]);
       combinedJs += appResult.processed;
@@ -634,6 +956,23 @@ function generatePreview(project: any): string {
       const finalName = componentName || 'App';
       combinedJs += `\n// Using ${firstFile.path} as App\n${cleaned}\nconst App = ${finalName};\n`;
     }
+    
+    // FINAL CLEANUP: Remove any remaining orphaned exports from combined code
+    // This catches "Default Header;" and similar patterns that might have slipped through
+    combinedJs = combinedJs.replace(/\n\s*Default\s+\w+\s*;\s*\n/g, '\n');
+    combinedJs = combinedJs.replace(/\n\s*Default\s+\w+\s*;\s*$/gm, '');
+    combinedJs = combinedJs.replace(/^\s*Default\s+\w+\s*;\s*\n/gm, '');
+    
+    // Also remove orphaned "export default ComponentName;" without definitions
+    combinedJs = combinedJs.replace(/\n\s*export\s+default\s+(\w+)\s*;\s*\n/g, (match, name) => {
+      // Check if component is defined anywhere in combined code
+      const componentDefined = combinedJs.match(new RegExp(`(?:function|const|class|var|let)\\s+${name}\\s*[=(]`));
+      if (!componentDefined) {
+        console.warn(`⚠️ Removing orphaned export from combined code: export default ${name};`);
+        return '\n';
+      }
+      return match;
+    });
     
     // Detect if JS code uses Tailwind classes
     const jsUsesTailwind = detectTailwindInJS(combinedJs);
@@ -847,6 +1186,39 @@ function generatePreview(project: any): string {
       );
       console.log('📦 Available components after loading:', allComponents);
       
+      // CRITICAL FIX: Make all components available in global scope (not just window)
+      // This allows direct references like <Dashboard /> to work in JSX
+      allComponents.forEach(compName => {
+        try {
+          if (window[compName] && typeof window[compName] === 'function') {
+            // Make it available as a global variable using eval in non-strict mode
+            // This allows JSX to reference it directly
+            (function() {
+              'use strict';
+              try {
+                // Try to assign to global scope
+                if (typeof globalThis !== 'undefined') {
+                  globalThis[compName] = window[compName];
+                }
+                // Use Function constructor to create global variable (works in strict mode)
+                new Function(compName + ' = window.' + compName)();
+                console.log('✅ Made ' + compName + ' available in global scope');
+              } catch(e) {
+                // Fallback: try direct assignment
+                try {
+                  eval('var ' + compName + ' = window.' + compName);
+                  console.log('✅ Made ' + compName + ' available via eval');
+                } catch(e2) {
+                  console.warn('⚠️ Could not make ' + compName + ' global:', e2.message);
+                }
+              }
+            })();
+          }
+        } catch(e) {
+          console.warn('⚠️ Error making ' + compName + ' global:', e);
+        }
+      });
+      
       // Check for common component names that might be defined but not on window
       const commonComponentNames = ['Navbar', 'Navigation', 'Home', 'About', 'Contact', 'Footer', 'Header', 'Pricing', 'Gallery'];
       commonComponentNames.forEach(name => {
@@ -860,22 +1232,84 @@ function generatePreview(project: any): string {
         }
       });
       
-      // Ensure App is defined
+      // CRITICAL FIX: Make all components available in local scope before App runs
+      // This ensures JSX references like <Dashboard /> can find the component
+      allComponents.forEach(compName => {
+        try {
+          if (window[compName] && typeof window[compName] === 'function') {
+            // Create local variable that references window component
+            // This allows JSX transpiled code to find it
+            (function() {
+              try {
+                // Use Function constructor to create variable in current scope
+                new Function('window', 'var ' + compName + ' = window.' + compName + ';')(window);
+                console.log('✅ Made ' + compName + ' available in local scope');
+              } catch(e) {
+                // Fallback: try eval
+                try {
+                  eval('if (typeof ' + compName + ' === "undefined") { var ' + compName + ' = window.' + compName + '; }');
+                } catch(e2) {
+                  console.warn('⚠️ Could not make ' + compName + ' available:', e2.message);
+                }
+              }
+            })();
+          }
+        } catch(e) {
+          console.warn('⚠️ Error making ' + compName + ' available:', e);
+        }
+      });
+      
+      // Ensure App is defined - CRITICAL for rendering
       if (typeof App === 'undefined') {
         console.warn('⚠️ App component not found, searching for alternatives...');
         console.log('Available components:', allComponents);
+        console.log('Checking window object:', Object.keys(window).filter(k => k[0] === k[0].toUpperCase()));
         
-        const appComponent = allComponents.find(c => c.toLowerCase() === 'app') || allComponents[0];
-        if (appComponent) {
-          console.log('✅ Using', appComponent, 'as App');
+        // Try multiple strategies to find App
+        let appComponent = null;
+        
+        // Strategy 1: Look for exact "App" match (case-insensitive)
+        appComponent = allComponents.find(c => c.toLowerCase() === 'app');
+        if (appComponent && window[appComponent]) {
+          console.log('✅ Found App component:', appComponent);
           window.App = window[appComponent];
-        } else {
+        }
+        
+        // Strategy 2: Check if App exists but isn't on window
+        if (!window.App) {
+          try {
+            if (typeof eval('App') === 'function') {
+              window.App = eval('App');
+              console.log('✅ Found App in scope');
+            }
+          } catch (e) {
+            // App not in scope
+          }
+        }
+        
+        // Strategy 3: Use first available component
+        if (!window.App && allComponents.length > 0) {
+          appComponent = allComponents[0];
+          console.log('✅ Using first component as App:', appComponent);
+          window.App = window[appComponent];
+        }
+        
+        // Strategy 4: Create fallback App that renders available components
+        if (!window.App) {
           console.error('❌ No App component found! Available:', allComponents);
-          // Create a simple fallback App
           window.App = function App() {
+            if (allComponents.length > 0) {
+              // Try to render first component
+              const FirstComponent = window[allComponents[0]];
+              if (FirstComponent) {
+                return React.createElement(FirstComponent);
+              }
+            }
+            // Fallback message
             return React.createElement('div', { style: { padding: '40px', textAlign: 'center' } },
               React.createElement('h1', null, 'Preview'),
-              React.createElement('p', null, 'App component not found. Available components: ' + allComponents.join(', ')),
+              React.createElement('p', null, 'App component not found.'),
+              allComponents.length > 0 && React.createElement('p', null, 'Available components: ' + allComponents.join(', ')),
               React.createElement('p', { style: { marginTop: '20px', fontSize: '12px', color: '#666' } }, 
                 'Check browser console for details.'
               )
@@ -885,8 +1319,50 @@ function generatePreview(project: any): string {
       }
       
       console.log('✅ App component found:', typeof App);
-      if (App && App.toString) {
-        console.log('App function preview:', App.toString().substring(0, 300));
+      if (window.App && window.App.toString) {
+        console.log('App function preview:', window.App.toString().substring(0, 300));
+      }
+      
+      // CRITICAL: Ensure all components are available before rendering App
+      // Re-check and make components available one more time right before render
+      const allComponentNames = Object.keys(window).filter(k => 
+        typeof window[k] === 'function' && 
+        k[0] === k[0].toUpperCase() && 
+        !k.startsWith('_') &&
+        !['React', 'ReactDOM', 'Babel', 'BrowserRouter', 'Routes', 'Route', 'Link', 'NavLink', 'App'].includes(k)
+      );
+      
+      console.log('🔧 Final check - Components available before render:', allComponentNames);
+      
+      // Make components available in global scope one final time
+      allComponentNames.forEach(compName => {
+        try {
+          if (window[compName]) {
+            // Use Function constructor to create global variable
+            (function() {
+              try {
+                // Create a function that assigns to global scope
+                const assignFn = new Function('window', compName + ' = window.' + compName);
+                assignFn(window);
+                console.log('✅ Final assignment: ' + compName + ' available globally');
+              } catch(e) {
+                // Try eval as fallback
+                try {
+                  eval('if (typeof ' + compName + ' === "undefined") { ' + compName + ' = window.' + compName + '; }');
+                } catch(e2) {
+                  console.warn('⚠️ Could not assign ' + compName + ':', e2.message);
+                }
+              }
+            })();
+          }
+        } catch(e) {
+          console.warn('⚠️ Error in final component assignment for ' + compName + ':', e);
+        }
+      });
+      
+      // Ensure App is accessible
+      if (!window.App) {
+        throw new Error('App component is not defined and could not be found');
       }
       
       // Check if root element exists
@@ -898,10 +1374,75 @@ function generatePreview(project: any): string {
       
       // Render App with error boundary
       console.log('🎨 Rendering App...');
+      console.log('App type:', typeof window.App);
+      console.log('App available:', !!window.App);
+      console.log('Components available for App:', allComponentNames);
+      
       try {
         const root = ReactDOM.createRoot(rootElement);
-        root.render(React.createElement(App));
-        console.log('✅ Preview render completed successfully');
+        // Use window.App to ensure we're using the correct reference
+        const AppComponent = window.App || App;
+        if (!AppComponent) {
+          throw new Error('App component is not available');
+        }
+        
+        // Wrap render in try-catch to catch component reference errors
+        try {
+          // Validate App component before rendering
+          if (typeof AppComponent !== 'function') {
+            const appType = typeof AppComponent;
+            throw new Error('App component is not a function (type: ' + appType + ')');
+          }
+          
+          root.render(React.createElement(AppComponent));
+          console.log('✅ Preview render completed successfully');
+          
+          // Verify something was rendered
+          setTimeout(() => {
+            const renderedContent = rootElement.innerHTML;
+            if (!renderedContent || renderedContent.trim().length === 0) {
+              console.warn('⚠️ Root element is empty after render - App may not have returned content');
+            } else {
+              console.log('✅ Content rendered successfully, length:', renderedContent.length);
+            }
+          }, 100);
+        } catch (renderError: any) {
+          console.error('❌ Error during React render:', renderError);
+          console.error('Render error details:', {
+            message: renderError.message,
+            stack: renderError.stack,
+            availableComponents: allComponentNames,
+            appType: typeof AppComponent,
+            appString: AppComponent?.toString?.()?.substring(0, 200)
+          });
+          
+          // Show helpful error message with more details
+          // Use string concatenation instead of template literals to avoid parsing issues
+          const errorMessage = renderError.message || 'Unknown error';
+          const componentsList = allComponentNames.join(', ') || 'none';
+          const appTypeStr = typeof AppComponent;
+          const componentsCount = allComponentNames.length.toString();
+          
+          const errorHtml = '<div style="padding: 20px; color: #ef4444; font-family: monospace; background: #1a1a1a; border-radius: 8px; margin: 20px; max-width: 800px;">' +
+            '<h2 style="margin-bottom: 10px; color: #ef4444;">⚠️ Render Error</h2>' +
+            '<p style="margin-bottom: 10px;"><strong>Error:</strong> ' + errorMessage + '</p>' +
+            '<div style="margin-top: 15px; padding: 10px; background: #2a2a2a; border-radius: 4px; font-size: 11px;">' +
+            '<p style="margin: 5px 0;"><strong>Available components:</strong> ' + componentsList + '</p>' +
+            '<p style="margin: 5px 0;"><strong>App type:</strong> ' + appTypeStr + '</p>' +
+            '<p style="margin: 5px 0;"><strong>Total components loaded:</strong> ' + componentsCount + '</p>' +
+            '</div>' +
+            '<p style="margin-top: 15px; font-size: 12px; color: #9ca3af;">' +
+            '💡 <strong>Tips:</strong><br>' +
+            '• Check browser console (F12) for detailed error messages<br>' +
+            '• Ensure all components are properly exported<br>' +
+            '• Verify component names match imports in App.jsx' +
+            '</p>' +
+            '</div>';
+          rootElement.innerHTML = errorHtml;
+          
+          // Don't throw - show error in UI instead
+          console.error('Render error displayed in UI');
+        }
         
         // Double-check if something was rendered
         setTimeout(() => {

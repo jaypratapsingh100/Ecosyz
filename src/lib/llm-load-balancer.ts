@@ -5,7 +5,7 @@
  * and provide redundancy. Optimized for 1000+ requests/hour.
  */
 
-export type Provider = 'openai' | 'groq' | 'together' | 'huggingface' | 'deepseek' | 'ollama' | 'openrouter' | 'perplexity' | 'cohere' | 'anthropic';
+export type Provider = 'openai' | 'groq' | 'together' | 'huggingface' | 'deepseek' | 'azure-deepseek' | 'ollama' | 'openrouter' | 'perplexity' | 'cohere' | 'anthropic';
 
 export interface ProviderConfig {
   name: Provider;
@@ -53,6 +53,15 @@ class LLMLoadBalancer {
           requestsPerHour: 1800,
         },
         enabled: true,
+      },
+      {
+        name: 'azure-deepseek',
+        priority: 0, // Highest priority - use Azure DeepSeek first if available
+        rateLimit: {
+          requestsPerMinute: 60, // Higher limit since it's self-hosted
+          requestsPerHour: 3600,
+        },
+        enabled: !!process.env.AZURE_DEEPSEEK_URL, // Only enabled if URL is set
       },
       {
         name: 'deepseek',

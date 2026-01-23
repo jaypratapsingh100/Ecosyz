@@ -8,7 +8,7 @@ import { Container } from '../components/ui/Container';
 import AuthModal from '../components/AuthModal';
 import SaveToWorkspace from '../components/workspace/SaveToWorkspace';
 import OpenResourcesChat from '../components/OpenResourcesChat';
-import { useSupabaseUser } from '../../src/lib/useSupabaseUser';
+import { useAuth } from '@/lib/auth/client';
 
 const TABS = [
   { label: 'All', value: 'all' },
@@ -84,7 +84,7 @@ function OpenResourcesPage() {
   const [activeCardTabs, setActiveCardTabs] = useState<Record<string, 'overview' | 'qa' | 'mindmap'>>({});
 
   // Authentication and modal state
-  const { user, loading: authLoading } = useSupabaseUser();
+  const { user, loading: authLoading } = useAuth();
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [resourceToSave, setResourceToSave] = useState<any>(null);
   const [showSaveModal, setShowSaveModal] = useState(false);

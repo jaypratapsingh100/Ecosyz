@@ -1,14 +1,13 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import ChatSettings from '../ChatSettings';
-import { getStoredApiKey, getStoredModel, getStoredProvider } from '../chatUtils';
 
 interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  extractingFiles?: boolean;
 }
 
 interface AppChatProps {
@@ -23,16 +22,57 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
     {
       id: '1',
       role: 'assistant',
-      content: "Hello! I'm your AI Code Assistant powered by **DeepSeek Coder** via OpenRouter. I can help you generate, modify, and explain professional, production-ready code.\n\n**🚀 Using DeepSeek Coder:**\n- Specifically designed for code generation\n- Matches GPT-4 quality on coding benchmarks\n- 128K token context window\n- Professional, production-ready code output\n\n**💡 API Key:** Configured from environment variable (\`OPENROUTER_API_KEY\`).\n\nWhat would you like to build?",
+      content: "Hello! I'm your AI Code Assistant powered by **Azure DeepSeek**. I can help you generate, modify, and explain professional, production-ready code.\n\nWhat would you like to build?",
       timestamp: new Date(),
     },
   ]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Load chat history from database on mount
+  useEffect(() => {
+    const loadChatHistory = async () => {
+      if (!projectId) return;
+      
+      try {
+        setIsLoadingHistory(true);
+        const response = await fetch(`/api/app-projects/${projectId}/chat`, {
+          method: 'GET',
+          credentials: 'include',
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.messages && data.messages.length > 0) {
+            // Convert database messages to component format
+            const loadedMessages: Message[] = data.messages.map((msg: any, idx: number) => ({
+              id: msg.id || `loaded-${idx}`,
+              role: msg.role,
+              content: msg.content,
+              timestamp: new Date(msg.timestamp),
+            }));
+            
+            setMessages(loadedMessages);
+            console.log('✅ Loaded chat history:', loadedMessages.length, 'messages');
+          } else {
+            console.log('📝 No chat history found, using default message');
+          }
+        } else {
+          console.warn('⚠️ Failed to load chat history:', response.status);
+        }
+      } catch (error) {
+        console.error('❌ Error loading chat history:', error);
+      } finally {
+        setIsLoadingHistory(false);
+      }
+    };
+
+    loadChatHistory();
+  }, [projectId]);
 
   useEffect(() => {
     // Auto-scroll to bottom when new messages arrive
@@ -84,22 +124,6 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
               const responseData = JSON.parse(autoResponse);
               let responseContent = responseData.response || 'Files are being generated...';
               
-              // Add provider/model info if available
-              if (responseData.provider || responseData.model) {
-                const providerInfo = [];
-                if (responseData.provider) {
-                  providerInfo.push(`**Provider:** ${responseData.provider}`);
-                }
-                if (responseData.model) {
-                  providerInfo.push(`**Model:** ${responseData.model}`);
-                }
-                if (responseData.usedFallback) {
-                  providerInfo.push(`⚠️ *Using fallback model*`);
-                }
-                if (providerInfo.length > 0) {
-                  responseContent = `🤖 ${providerInfo.join(' | ')}\n\n---\n\n${responseContent}`;
-                }
-              }
               
               const assistantMessage: Message = {
                 id: `auto-response-${timestamp}`,
@@ -197,6 +221,82 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
     };
   }, [projectId, onFilesCreated]);
 
+  const handleExtractFiles = async (text: string, messageId: string) => {
+    if (!projectId || !text) return;
+
+    // Update message state to show loading
+    setMessages((prev) =>
+      prev.map((msg) =>
+        msg.id === messageId ? { ...msg, extractingFiles: true } : msg
+      )
+    );
+
+    try {
+      console.log('📤 Extracting files from message:', messageId);
+      const response = await fetch(`/api/app-projects/${projectId}/extract-files`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ text }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to extract files: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ Files extracted:', data);
+
+      // Refresh file list immediately
+      if (onFilesCreated) {
+        onFilesCreated();
+      }
+
+      // Dispatch events
+      window.dispatchEvent(new CustomEvent('files-updated', {
+        detail: { projectId, filesCreated: data.filesCreated?.map((f: any) => f.path) || [] }
+      }));
+      window.dispatchEvent(new CustomEvent('preview-updated', { detail: { projectId } }));
+
+      // Show success message with details
+      const successfulFiles = data.filesCreated?.filter((f: any) => f.success) || [];
+      const failedFiles = data.filesCreated?.filter((f: any) => !f.success) || [];
+      
+      let successContent = `✅ **Files Extracted Successfully!**\n\n`;
+      if (successfulFiles.length > 0) {
+        successContent += `Created ${successfulFiles.length} file(s):\n${successfulFiles.map((f: any) => `- \`${f.path}\` ✓`).join('\n')}\n\n`;
+      }
+      if (failedFiles.length > 0) {
+        successContent += `⚠️ Failed to create ${failedFiles.length} file(s):\n${failedFiles.map((f: any) => `- \`${f.path}\`: ${f.error || 'Unknown error'}`).join('\n')}\n\n`;
+      }
+      successContent += `Files are now available in the Files panel. Click the refresh button (↻) if they don't appear.`;
+
+      const successMessage: Message = {
+        id: `extract-${Date.now()}`,
+        role: 'assistant',
+        content: successContent,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, successMessage]);
+    } catch (error: any) {
+      console.error('❌ Error extracting files:', error);
+      const errorMessage: Message = {
+        id: `extract-error-${Date.now()}`,
+        role: 'assistant',
+        content: `❌ **Failed to extract files**\n\nError: ${error.message}\n\nPlease check the code format and try again.`,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      // Remove loading state
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === messageId ? { ...msg, extractingFiles: false } : msg
+        )
+      );
+    }
+  };
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputValue.trim() || isLoading || !projectId) return;
@@ -214,44 +314,105 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
     setIsLoading(true);
 
     try {
-      const userApiKey = getStoredApiKey();
-      const userModel = getStoredModel();
-      const userProvider = getStoredProvider();
-
-      console.log('💬 Chat request:', {
-        provider: userProvider,
-        model: userModel,
-        hasApiKey: !!userApiKey,
-        messageLength: currentInput.length
-      });
-
-      // Build request body - backend will use .env API key if user key not provided
+      // Build request body - Azure DeepSeek only
       const requestBody: any = {
         message: currentInput,
         currentFile: currentFile?.path,
-        provider: userProvider, // Always send provider
+        conversationHistory: messages.map(msg => ({
+          role: msg.role,
+          content: msg.content,
+        })),
       };
 
-      // Always include model (backend will use default if not provided)
-      if (userModel) {
-        requestBody.model = userModel;
-      }
+      let response: Response;
       
-      // Include API key if user has one set (otherwise backend uses .env)
-      if (userApiKey) {
-        requestBody.apiKey = userApiKey;
+      // ============================================
+      // DETAILED REQUEST LOGGING FOR DEBUGGING
+      // ============================================
+      console.log('\n' + '='.repeat(60));
+      console.log('📤 CHAT REQUEST - FULL DETAILS');
+      console.log('='.repeat(60));
+      console.log('Endpoint:', `/api/app-projects/${projectId}/chat`);
+      console.log('Message Length:', requestBody.message?.length, 'characters');
+      console.log('\n📝 FULL MESSAGE BEING SENT:');
+      console.log('-'.repeat(40));
+      console.log(requestBody.message);
+      console.log('-'.repeat(40));
+      console.log('='.repeat(60) + '\n');
+      
+      try {
+        response = await fetch(`/api/app-projects/${projectId}/chat`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include', // Important: Include cookies for authentication
+          body: JSON.stringify(requestBody),
+        });
+        
+        console.log('📥 Response received:', {
+          status: response.status,
+          statusText: response.statusText,
+          ok: response.ok,
+        });
+      } catch (fetchError: any) {
+        // Handle network/fetch errors (before response is received)
+        console.error('❌ Fetch error (network/CORS):', {
+          error: fetchError,
+          message: fetchError?.message,
+          name: fetchError?.name,
+          stack: fetchError?.stack,
+        });
+        throw new Error(`Network error: ${fetchError?.message || 'Failed to connect to server. Please check your connection.'}`);
       }
-
-      const response = await fetch(`/api/app-projects/${projectId}/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      });
 
       if (response.ok) {
-        const data = await response.json();
+        let data: any;
+        try {
+          data = await response.json();
+          
+          // CRITICAL: Log response to debug file creation
+          console.log('\n' + '='.repeat(60));
+          console.log('📥 CHAT API RESPONSE RECEIVED');
+          console.log('='.repeat(60));
+          console.log('Response keys:', Object.keys(data));
+          console.log('Has filesCreated:', !!data.filesCreated);
+          console.log('filesCreated length:', data.filesCreated?.length || 0);
+          console.log('filesCreated details:', JSON.stringify(data.filesCreated, null, 2));
+          console.log('Response summary:', data.summary);
+          
+          // CRITICAL: Verify filesCreated structure
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AppChat.tsx:385',message:'Frontend received response with filesCreated',data:{hasFilesCreated:!!data.filesCreated,isArray:Array.isArray(data.filesCreated),length:data.filesCreated?.length||0,filePaths:data.filesCreated?.map((f:any)=>f.path)||[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+          // #endregion
+          if (data.filesCreated && Array.isArray(data.filesCreated)) {
+            const successful = data.filesCreated.filter((f: any) => f.success);
+            console.log('✅ Successful files:', successful.length);
+            successful.forEach((f: any, idx: number) => {
+              console.log(`  ${idx + 1}. ${f.path} - ${f.success ? '✅' : '❌'}`);
+            });
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AppChat.tsx:390',message:'Successful files extracted',data:{successfulCount:successful.length,successfulPaths:successful.map((f:any)=>f.path)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+            // #endregion
+          } else {
+            console.warn('⚠️ filesCreated is not an array or missing!');
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AppChat.tsx:392',message:'filesCreated missing or not array',data:{hasFilesCreated:!!data.filesCreated,type:typeof data.filesCreated},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+            // #endregion
+          }
+          console.log('='.repeat(60) + '\n');
+        } catch (jsonError: any) {
+          console.error('❌ Failed to parse response JSON:', jsonError);
+          throw new Error('Invalid response format from server');
+        }
+        
+        console.log('📥 Chat response received:', {
+          provider: data.provider,
+          model: data.model,
+          filesCreated: data.filesCreated?.length || 0,
+          successfulFiles: data.filesCreated?.filter((f: any) => f.success).length || 0,
+          filePaths: data.filesCreated?.map((f: any) => f.path) || []
+        });
         
         // Show load balancer info if available
         if (data.loadBalancerStats) {
@@ -299,64 +460,170 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
               responseContent += `- \`${file.path}\`: ${file.error || 'Unknown error'}\n`;
             });
             
-            // Auto-fix: Automatically attempt to fix failed file creations
-            responseContent += `\n\n🔧 **Auto-fixing errors...**\n`;
-            setTimeout(async () => {
-              try {
-                const userApiKey = getStoredApiKey();
-                const userModel = getStoredModel();
-                const userProvider = getStoredProvider();
-                
-                const fixPrompt = `The following files failed to create. Please analyze and fix the errors:\n\n${failedFiles.map((f: any) => `- ${f.path}: ${f.error || 'Unknown error'}`).join('\n')}\n\nPlease provide corrected code for these files.`;
-                
-                const fixRequestBody: any = {
-                  message: fixPrompt,
-                  currentFile: currentFile?.path,
-                };
-                
-                if (userApiKey) {
-                  fixRequestBody.apiKey = userApiKey;
-                  fixRequestBody.provider = userProvider;
-                }
-                if (userModel) {
-                  fixRequestBody.model = userModel;
-                }
-                
-                const fixResponse = await fetch(`/api/app-projects/${projectId}/chat`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(fixRequestBody),
-                });
-                
-                if (fixResponse.ok) {
-                  const fixData = await fixResponse.json();
-                  setMessages((prev) => [...prev, {
-                    id: Date.now().toString(),
-                    role: 'assistant',
-                    content: `🔧 **Auto-fix applied:**\n${fixData.response}`,
-                    timestamp: new Date(),
-                  }]);
-                  
-                  // Refresh file list after auto-fix
-                  if (onFilesCreated) {
-                    setTimeout(() => {
-                      onFilesCreated();
-                    }, 500);
-                  }
-                }
-              } catch (fixError) {
-                console.error('Auto-fix failed:', fixError);
-              }
-            }, 1500);
           }
           
-          // Refresh file list
-          if (onFilesCreated && successfulFiles.length > 0) {
+          // CRITICAL: Refresh file list IMMEDIATELY - Cursor-like smooth flow
+          if (successfulFiles.length > 0) {
+            console.log('\n' + '='.repeat(80));
+            console.log('🔄 REFRESHING UI AFTER FILE CREATION');
+            console.log('='.repeat(80));
+            console.log('Successful files:', successfulFiles.length);
+            console.log('File paths:', successfulFiles.map((f: any) => f.path));
+            console.log('Has callback:', !!onFilesCreated);
+            console.log('Project ID:', projectId);
+            
+            // IMMEDIATE: Multiple refresh methods for reliability
+            const refreshFiles = () => {
+              console.log('🔄 Calling refreshFiles()...');
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AppChat.tsx:467',message:'BEFORE refreshFiles execution',data:{hasOnFilesCreated:!!onFilesCreated,successfulFilesCount:successfulFiles.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+              // #endregion
+              console.log('  - Calling onFilesCreated callback:', !!onFilesCreated);
+              if (onFilesCreated) {
+                try {
+                  onFilesCreated();
+                  console.log('  ✅ onFilesCreated callback executed');
+                  // #region agent log
+                  fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AppChat.tsx:472',message:'onFilesCreated callback executed',data:{success:true},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+                  // #endregion
+                } catch (err) {
+                  console.error('  ❌ Error calling onFilesCreated:', err);
+                  // #region agent log
+                  fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AppChat.tsx:475',message:'onFilesCreated callback error',data:{error:String(err)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+                  // #endregion
+                }
+              } else {
+                console.warn('  ⚠️ onFilesCreated callback is not available');
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AppChat.tsx:478',message:'onFilesCreated callback missing',data:{hasOnFilesCreated:false},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+                // #endregion
+              }
+              
+              console.log('  - Dispatching files-updated event...');
+              const event = new CustomEvent('files-updated', {
+                detail: { 
+                  projectId,
+                  filesCreated: successfulFiles.map((f: any) => f.path)
+                }
+              });
+              window.dispatchEvent(event);
+              console.log('  ✅ files-updated event dispatched:', event.detail);
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AppChat.tsx:489',message:'files-updated event dispatched',data:{projectId,filesCreated:successfulFiles.map((f:any)=>f.path)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+              // #endregion
+            };
+            
+            const refreshPreview = () => {
+              console.log('🔄 Calling refreshPreview()...');
+              window.dispatchEvent(new CustomEvent('preview-updated', { detail: { projectId } }));
+              window.dispatchEvent(new CustomEvent('auto-refresh-preview', {
+                detail: { projectId, filesCreated: successfulFiles.map((f: any) => f.path) }
+              }));
+              console.log('  ✅ Preview refresh events dispatched');
+            };
+            
+            // Execute immediately (no delays for smooth Cursor-like experience)
+            console.log('\n🚀 Executing immediate refresh...');
+            refreshFiles();
+            refreshPreview();
+            
+            // Also refresh after delays to catch any race conditions
             setTimeout(() => {
-              onFilesCreated();
+              console.log('\n🔄 Delayed refresh (500ms)...');
+              refreshFiles();
             }, 500);
+            
+            setTimeout(() => {
+              console.log('\n🔄 Delayed refresh (1500ms)...');
+              refreshFiles();
+              refreshPreview();
+            }, 1500);
+            
+            setTimeout(() => {
+              console.log('\n🔄 Final refresh (3000ms)...');
+              refreshFiles();
+            }, 3000);
+            
+            console.log('\n✅ All refresh events dispatched');
+            console.log('='.repeat(80) + '\n');
+            
+            // CRITICAL: Also trigger a visual update by scrolling to show new files
+            setTimeout(() => {
+              // Scroll chat to bottom to show success message
+              if (messagesContainerRef.current) {
+                messagesContainerRef.current.scrollTo({
+                  top: messagesContainerRef.current.scrollHeight,
+                  behavior: 'smooth'
+                });
+              }
+            }, 100);
+          } else {
+            console.warn('\n⚠️ No successful files to refresh:', {
+              totalFiles: data.filesCreated?.length || 0,
+              successfulFiles: successfulFiles.length,
+              failedFiles: failedFiles.length
+            });
+            
+            // Still try to refresh - files might have been created but not in response
+            console.log('🔄 Refresh attempt: No files in response, refreshing anyway...');
+            if (onFilesCreated) {
+              setTimeout(() => {
+                console.log('  - Calling onFilesCreated callback...');
+                onFilesCreated();
+                window.dispatchEvent(new CustomEvent('files-updated', { detail: { projectId } }));
+                console.log('  ✅ Refresh attempted');
+              }, 1000);
+            } else {
+              console.warn('  ⚠️ onFilesCreated callback not available');
+            }
+          }
+        } else {
+          console.warn('\n⚠️ NO FILES CREATED - filesCreated array is empty!');
+          console.warn('This might mean:');
+          console.warn('  1. AI response didn\'t contain code blocks');
+          console.warn('  2. File parsing failed');
+          console.warn('  3. Files weren\'t saved to database');
+          console.warn('\n💡 Try clicking "Extract Files" button if code is visible in chat');
+          
+          // CRITICAL: Still try to refresh - files might have been created but not reported
+          // This is important because sometimes files are created but the response doesn't include them
+          console.log('\n🔄 Refresh attempt: Empty filesCreated, refreshing anyway...');
+          console.log('  - This ensures we check the database for any new files');
+          
+          if (onFilesCreated) {
+            // Multiple refresh attempts
+            setTimeout(() => {
+              console.log('  - Refresh attempt 1 (500ms)...');
+              onFilesCreated();
+              window.dispatchEvent(new CustomEvent('files-updated', { detail: { projectId } }));
+            }, 500);
+            
+            setTimeout(() => {
+              console.log('  - Refresh attempt 2 (2000ms)...');
+              onFilesCreated();
+              window.dispatchEvent(new CustomEvent('files-updated', { detail: { projectId } }));
+            }, 2000);
+            
+            setTimeout(() => {
+              console.log('  - Refresh attempt 3 (5000ms)...');
+              onFilesCreated();
+              window.dispatchEvent(new CustomEvent('files-updated', { detail: { projectId } }));
+            }, 5000);
+          } else {
+            console.warn('  ⚠️ onFilesCreated callback not available');
           }
         }
+        
+        // CRITICAL: ALWAYS refresh after chat response, even if filesCreated is empty
+        // This ensures we catch any files that were created but not reported
+        console.log('\n🔄 Final refresh check: Always refreshing after chat response...');
+        setTimeout(() => {
+          if (onFilesCreated) {
+            console.log('  - Final refresh (3000ms after response)...');
+            onFilesCreated();
+            window.dispatchEvent(new CustomEvent('files-updated', { detail: { projectId } }));
+          }
+        }, 3000);
         
         const assistantMessage: Message = {
           id: (Date.now() + 1).toString(),
@@ -366,84 +633,113 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
         };
         setMessages((prev) => [...prev, assistantMessage]);
       } else {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to get response');
+        // Try to get detailed error from response
+        let errorData: any = {};
+        try {
+          const text = await response.text();
+          try {
+            errorData = JSON.parse(text);
+          } catch {
+            errorData = { error: text || `HTTP ${response.status} ${response.statusText}` };
+          }
+        } catch {
+          errorData = { error: `HTTP ${response.status} ${response.statusText}` };
+        }
+        
+        console.error('❌ Chat API error response:', {
+          status: response.status,
+          statusText: response.statusText,
+          errorData,
+          url: `/api/app-projects/${projectId}/chat`
+        });
+        
+        // Handle specific HTTP status codes
+        if (response.status === 401) {
+          throw new Error('Not authenticated: Please sign in to use the chat.');
+        } else if (response.status === 403) {
+          throw new Error('Not authorized: You do not have permission to access this project.');
+        } else if (response.status === 404) {
+          throw new Error('Project not found: The project may have been deleted.');
+        } else if (response.status === 500 || response.status === 503) {
+          const serverError = errorData.error || errorData.message || 'Server error';
+          throw new Error(`Server error: ${serverError}`);
+        }
+        
+        // Extract detailed error message
+        const detailedError = errorData.error || errorData.message || errorData.details || `HTTP ${response.status}`;
+        throw new Error(detailedError);
       }
     } catch (error: any) {
-      let errorMessage = error.message || 'Unknown error';
-      let shouldAutoFix = false;
+      // Better error logging - handle empty or malformed error objects
+      let errorMessage = 'Unknown error occurred';
+      let errorName = 'Error';
+      let errorStack = '';
       
-      // Handle rate limit errors with helpful message
-      if (error.message?.includes('Rate limit') || error.message?.includes('429')) {
-        errorMessage = `⚠️ Rate Limit Exceeded\n\nYou've hit the rate limit. Here are quick fixes:\n\n1. Wait 1-3 minutes and try again\n2. Switch to a different provider (Groq, OpenRouter) in chat settings\n3. Upgrade your plan for higher limits\n\nYou can continue editing code manually while waiting.`;
-      } else if (error.message?.includes('Insufficient Balance') || error.message?.includes('402') || error.message?.includes('insufficient balance')) {
-        errorMessage = `⚠️ Insufficient Balance\n\nYour DeepSeek account has insufficient balance. Please:\n\n1. Add credits at https://platform.deepseek.com/account\n2. Or switch to a free provider:\n   - Groq (free & fast)\n   - OpenRouter (free models)\n   - Ollama (100% free, local)\n\nClick ⚙️ in chat settings to change provider.`;
+      // Try multiple ways to extract error information
+      if (error) {
+        if (typeof error === 'string') {
+          errorMessage = error;
+        } else if (error instanceof Error) {
+          errorMessage = error.message || errorMessage;
+          errorName = error.name || errorName;
+          errorStack = error.stack || errorStack;
+        } else if (error?.message) {
+          errorMessage = error.message;
+          errorName = error.name || errorName;
+          errorStack = error.stack || errorStack;
+        } else {
+          // Try to stringify the error
+          try {
+            const errorStr = String(error);
+            if (errorStr && errorStr !== '[object Object]' && errorStr !== '[object Error]') {
+              errorMessage = errorStr;
+            }
+          } catch {
+            // If stringification fails, try JSON
+            try {
+              const errorJson = JSON.stringify(error);
+              if (errorJson && errorJson !== '{}') {
+                errorMessage = `Error: ${errorJson}`;
+              }
+            } catch {
+              // Last resort
+              errorMessage = 'An unknown error occurred. Please check server logs.';
+            }
+          }
+        }
+      }
+      
+      console.error('❌ Chat error caught:', {
+        errorType: error?.constructor?.name || typeof error,
+        errorName,
+        errorMessage,
+        errorStack: errorStack || error?.stack,
+        errorObject: error,
+        // Log raw error for debugging
+        rawError: error,
+      });
+      
+      // Handle specific error types
+      if (error.message?.includes('401') || error.message?.includes('Not authenticated') || error.message?.includes('authentication')) {
+        errorMessage = `❌ Authentication Error\n\nYou are not logged in or your session has expired.\n\n**Please:**\n1. Sign in to your account\n2. Refresh the page and try again`;
+      } else if (error.message?.includes('403') || error.message?.includes('Not authorized')) {
+        errorMessage = `❌ Authorization Error\n\nYou don't have permission to access this project.\n\n**Please:**\n1. Ensure you're signed in with the correct account\n2. Check that you own this project`;
+      } else if (error.message?.includes('404') || error.message?.includes('not found')) {
+        errorMessage = `❌ Azure DeepSeek endpoint not found\n\nPlease check:\n- AZURE_DEEPSEEK_URL is configured\n- Service is running\n- Check server logs for details`;
       } else if (error.message?.includes('Failed to fetch') || error.message?.includes('network')) {
-        errorMessage = `⚠️ Network Error\n\nConnection failed. Please check your internet connection and try again.`;
-      } else if (error.message?.includes('API key') || error.message?.includes('401') || error.message?.includes('403')) {
-        errorMessage = `⚠️ Authentication Error\n\nPlease check your API key settings. Click ⚙️ to configure.`;
+        errorMessage = `❌ Network Error\n\nUnable to connect to server. Please check your connection and try again.`;
       } else {
-        // For other errors, attempt auto-fix
-        shouldAutoFix = true;
+        errorMessage = `❌ Error: ${error.message || 'Unknown error occurred'}\n\nPlease check server logs for details.`;
       }
       
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: `I encountered an error: ${errorMessage}\n\n${error.message?.includes('Rate limit') ? '' : 'Please check your API key settings or try again.'}`,
+        content: errorMessage,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, assistantMessage]);
       
-      // Auto-fix: If it's a code-related error, try to fix it automatically
-      if (shouldAutoFix && currentInput && !error.message?.includes('Rate limit')) {
-        setTimeout(async () => {
-          try {
-            const userApiKey = getStoredApiKey();
-            const userModel = getStoredModel();
-            const userProvider = getStoredProvider();
-            
-            const fixPrompt = `I encountered this error: "${errorMessage}". Please analyze what went wrong and provide a fix. The original request was: "${currentInput}"`;
-            
-            const fixRequestBody: any = {
-              message: fixPrompt,
-              currentFile: currentFile?.path,
-            };
-            
-            if (userApiKey) {
-              fixRequestBody.apiKey = userApiKey;
-              fixRequestBody.provider = userProvider;
-            }
-            if (userModel) {
-              fixRequestBody.model = userModel;
-            }
-            
-            const fixResponse = await fetch(`/api/app-projects/${projectId}/chat`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(fixRequestBody),
-            });
-            
-            if (fixResponse.ok) {
-              const fixData = await fixResponse.json();
-              setMessages((prev) => [...prev, {
-                id: Date.now().toString(),
-                role: 'assistant',
-                content: `🔧 **Auto-fix attempt:**\n${fixData.response}`,
-                timestamp: new Date(),
-              }]);
-              
-              if (onFilesCreated) {
-                setTimeout(() => {
-                  onFilesCreated();
-                }, 500);
-              }
-            }
-          } catch (fixError) {
-            console.error('Auto-fix failed:', fixError);
-          }
-        }, 2000);
-      }
     } finally {
       setIsLoading(false);
     }
@@ -461,19 +757,8 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="text-white font-medium text-sm">AI Code Assistant</h3>
-            <p className="text-xs text-gray-400">Chat-based code generation</p>
+            <p className="text-xs text-gray-400">Powered by Azure DeepSeek</p>
           </div>
-          <button
-            onClick={() => setSettingsOpen(true)}
-            className="p-1.5 rounded-md hover:bg-gray-700 text-gray-400 hover:text-gray-200 transition-colors"
-            aria-label="Open settings"
-            title="Settings"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-          </button>
         </div>
       </div>
 
@@ -492,7 +777,12 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
           WebkitOverflowScrolling: 'touch',
         }}
       >
-        {messages.map((message) => (
+        {isLoadingHistory && (
+          <div className="flex justify-center items-center py-8">
+            <div className="text-gray-400 text-sm">Loading chat history...</div>
+          </div>
+        )}
+        {!isLoadingHistory && messages.map((message) => (
           <div key={message.id}>
             {message.role === 'assistant' ? (
               <div className="flex gap-3 items-start">
@@ -502,7 +792,34 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
                   </svg>
                 </div>
                 <div className="flex-1">
-                  <div className="text-white font-semibold text-sm mb-1">Assistant</div>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="text-white font-semibold text-sm">Assistant</div>
+                    {message.role === 'assistant' && (message.content.includes('```') || message.content.includes('File:')) && (
+                      <button
+                        onClick={() => handleExtractFiles(message.content, message.id)}
+                        disabled={message.extractingFiles || isLoading}
+                        className="px-3 py-1 text-xs bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 rounded-lg border border-emerald-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-1.5"
+                        title="Extract files from this message"
+                      >
+                        {message.extractingFiles ? (
+                          <>
+                            <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Extracting...
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            Extract Files
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
                   <div className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap break-words">
                     {message.content}
                   </div>
@@ -571,9 +888,6 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
           </div>
         </form>
       </div>
-
-      {/* Settings Modal */}
-      <ChatSettings isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 }

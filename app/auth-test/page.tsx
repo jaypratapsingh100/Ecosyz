@@ -1,4 +1,4 @@
-import { getCurrentUser, getUid } from '@/src/lib/auth';
+import { getCurrentUser, getUid } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 

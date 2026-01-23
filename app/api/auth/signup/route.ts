@@ -42,8 +42,32 @@ export async function POST(req: NextRequest) {
     });
 
     if (error) {
+      // Provide more helpful error messages
+      let errorMessage = error.message;
+      
+      // Map common Supabase errors to user-friendly messages
+      if (error.message.includes('already registered') || error.message.includes('already exists') || error.message.includes('User already registered')) {
+        errorMessage = 'An account with this email already exists. Please sign in instead.';
+      } else if (error.message.includes('Password')) {
+        errorMessage = 'Password must be at least 6 characters long.';
+      } else if (error.message.includes('email')) {
+        errorMessage = 'Please enter a valid email address.';
+      } else if (error.message.includes('Invalid')) {
+        errorMessage = 'Invalid input. Please check your information and try again.';
+      }
+      
+      console.error('Sign up error:', {
+        message: error.message,
+        status: error.status,
+        email: email,
+      });
+      
       return NextResponse.json(
-        { error: error.message },
+        { 
+          error: errorMessage,
+          code: error.status || 'AUTH_ERROR',
+          originalError: process.env.NODE_ENV === 'development' ? error.message : undefined,
+        },
         { status: 400 }
       );
     }

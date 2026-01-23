@@ -438,32 +438,20 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
           ? localStorage.getItem('ai_model')
           : null;
         
-        // Hardcoded: Only OpenRouter + DeepSeek Coder
-        const provider = 'openrouter';
-        const model = 'deepseek/deepseek-coder';
+        // Use Azure DeepSeek (self-hosted)
+        const provider = 'azure-deepseek';
+        const model = 'deepseek-coder';
         
         const requestBody: any = {
           message: buildPrompt,
-          provider: provider,
+          // Provider and model are handled by backend using environment variables
+          // No need to send them - backend defaults to Azure DeepSeek
         };
         
-        // Always include API key if available (required for DeepSeek)
-        if (userApiKey) {
-          requestBody.apiKey = userApiKey;
-        }
-        if (model) {
-          requestBody.model = model;
-        }
+        console.log('🤖 Using Azure DeepSeek (self-hosted)');
         
-        console.log('🤖 Using AI provider:', provider, 'with model:', model);
-        console.log('🔑 API Key present:', !!userApiKey, '| Provider:', provider);
-        
-        // Note: API key check removed - backend will use environment variables as fallback
-        // This allows the request to proceed even without user-provided API key
-        // The backend will handle API key resolution (user key > env vars)
-        if (!userApiKey) {
-          console.log('ℹ️ No user API key provided, backend will use environment variables if available');
-        }
+        // Azure DeepSeek is self-hosted - no API key needed
+        console.log('ℹ️ Using self-hosted Azure DeepSeek - no API key required');
         
         // Store generation start time and trigger loading overlay
         const generationStartTime = Date.now();
@@ -482,6 +470,7 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
         fetch(`/api/app-projects/${project.id}/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include', // Include cookies for authentication
           body: JSON.stringify(requestBody),
         }).then(async (chatResponse) => {
           console.log('📡 Chat API response received:', {
@@ -647,18 +636,46 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
             // Only log errors for actual HTTP errors (4xx, 5xx) and when request hasn't completed
             if (chatResponse.status >= 400 && !requestCompleted) {
               // Create error log with guaranteed values - capture variables from outer scope
-              const errorLog: Record<string, string> = {
-                status: String(chatResponse.status || 'unknown'),
-                statusText: String(chatResponse.statusText || 'Unknown'),
-                error: String(errorMessage || 'Unknown error'),
-                provider: String(provider || 'unknown'),
-                model: String(model || 'unknown'),
-                projectId: String(project?.id || 'unknown'),
+              // Ensure all values are properly captured and never undefined
+              const errorLog: Record<string, any> = {
+                status: chatResponse.status || 'unknown',
+                statusText: chatResponse.statusText || 'Unknown',
+                error: errorMessage || 'Unknown error',
+                errorData: finalErrorData,
+                provider: provider || 'unknown',
+                model: model || 'unknown',
+                projectId: project?.id || 'unknown',
                 timestamp: new Date().toISOString(),
-                responsePreview: String(responseText?.substring(0, 100) || 'no response')
+                responsePreview: responseText?.substring(0, 200) || 'no response',
+                url: `/api/app-projects/${project?.id}/chat`,
+                requestBody: {
+                  hasMessage: !!requestBody.message,
+                  messageLength: requestBody.message?.length || 0,
+                  provider: requestBody.provider,
+                  model: requestBody.model,
+                  hasApiKey: !!requestBody.apiKey
+                }
               };
 
+              // Ensure errorLog is never empty
+              if (Object.keys(errorLog).length === 0) {
+                errorLog.fallback = 'Error log was empty - this should not happen';
+                errorLog.status = chatResponse.status || 500;
+                errorLog.error = 'Unknown error occurred';
+              }
+
               console.error('❌ AI chat request failed:', errorLog);
+              
+              // Also log individual fields for easier debugging
+              console.error('❌ Error details:', {
+                status: chatResponse.status,
+                statusText: chatResponse.statusText,
+                errorMessage,
+                provider,
+                model,
+                projectId: project?.id,
+                responseText: responseText?.substring(0, 200)
+              });
             }
             
             sessionStorage.setItem(`auto-error-${project.id}`, JSON.stringify({
@@ -673,6 +690,17 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
           let errorMessage = 'Connection error';
           let errorDetails = '';
           let errorType = 'unknown';
+          
+          console.error('❌ Fetch error caught:', {
+            error: chatError,
+            errorType: typeof chatError,
+            isError: chatError instanceof Error,
+            message: chatError instanceof Error ? chatError.message : String(chatError),
+            stack: chatError instanceof Error ? chatError.stack : undefined,
+            provider,
+            model,
+            projectId: project?.id
+          });
           
           // Safely extract error information
           if (chatError instanceof Error) {
@@ -702,7 +730,7 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
           }
           
           // Ensure we always log meaningful information - all values must be serializable strings
-          const errorInfo: Record<string, string> = {
+          const errorInfo: Record<string, any> = {
             errorType: String(errorType || 'unknown'),
             errorMessage: String(errorMessage || 'Unknown error'),
             errorDetails: String(errorDetails || 'No additional details'),
@@ -711,7 +739,19 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
             model: String(model || 'unknown'),
             hasApiKey: String(Boolean(userApiKey)),
             timestamp: String(new Date().toISOString()),
+            url: `/api/app-projects/${project?.id}/chat`,
+            originalError: chatError instanceof Error ? {
+              name: chatError.name,
+              message: chatError.message,
+              stack: chatError.stack?.substring(0, 500) // Limit stack trace length
+            } : String(chatError)
           };
+          
+          // Ensure errorInfo is never empty
+          if (Object.keys(errorInfo).length === 0) {
+            errorInfo.fallback = 'Error info was empty - this should not happen';
+            errorInfo.errorMessage = 'Unknown error occurred';
+          }
           
           // Safely add error object details if available
           if (chatError instanceof Error) {

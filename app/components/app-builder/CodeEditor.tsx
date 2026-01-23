@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import Editor from '@monaco-editor/react';
+import Editor, { OnMount } from '@monaco-editor/react';
+import * as monaco from 'monaco-editor';
 
 interface File {
   id: string;
@@ -51,27 +52,75 @@ export default function CodeEditor({ file, projectId, onChange }: CodeEditorProp
       return;
     }
 
+    if (!file.id) {
+      console.error('Cannot save: file.id is missing', { file });
+      return;
+    }
+
     setSaving(true);
     try {
       const url = `/api/app-projects/${projectId}/files/${file.id}`;
-      console.log('Saving file:', url);
+      console.log('Saving file:', {
+        url,
+        fileId: file.id,
+        fileName: file.name,
+        contentLength: contentToSave.length,
+        projectId
+      });
       
       const res = await fetch(url, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', // CRITICAL: Include cookies for authentication
         body: JSON.stringify({ content: contentToSave }),
       });
 
       if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        console.error('Save failed:', res.status, errorData);
-        throw new Error(errorData.error || `Failed to save file (${res.status})`);
+        let errorData: any = {};
+        try {
+          const contentType = res.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            errorData = await res.json();
+          } else {
+            const textError = await res.text().catch(() => '');
+            errorData = { error: textError || `HTTP ${res.status}: ${res.statusText || 'Unknown error'}` };
+          }
+        } catch (parseError) {
+          errorData = { error: `HTTP ${res.status}: ${res.statusText || 'Unknown error'}` };
+        }
+        
+        console.error('Save failed:', {
+          status: res.status,
+          statusText: res.statusText,
+          error: errorData.error || errorData.message || 'Unknown error',
+          url
+        });
+        throw new Error(errorData.error || errorData.message || `Failed to save file (${res.status})`);
       }
       
       console.log('File saved successfully');
     } catch (error: any) {
-      console.error('Failed to save file:', error);
+      console.error('Failed to save file:', {
+        error: error,
+        message: error?.message,
+        name: error?.name,
+        file: file?.name,
+        projectId,
+        url: `/api/app-projects/${projectId}/files/${file?.id}`
+      });
+      
+      // Check if it's a network error
+      if (error?.message === 'Failed to fetch' || error?.name === 'TypeError') {
+        console.error('Network error - possible causes:', {
+          serverDown: 'Check if server is running',
+          cors: 'Check CORS configuration',
+          auth: 'Check authentication cookies',
+          url: `/api/app-projects/${projectId}/files/${file?.id}`
+        });
+      }
+      
       // Don't show error to user for auto-save failures, just log
+      // But log more details for debugging
       if (error.message && !error.message.includes('Failed to fetch')) {
         console.warn('Save error:', error.message);
       }
@@ -97,6 +146,35 @@ export default function CodeEditor({ file, projectId, onChange }: CodeEditorProp
     };
 
     return file.language || langMap[ext || ''] || 'plaintext';
+  };
+
+  // Configure Monaco Editor when it mounts - enable validation and diagnostics
+  const handleEditorDidMount: OnMount = (editor, monacoInstance) => {
+    // Enable validation and diagnostics for JavaScript/TypeScript
+    const language = getLanguage();
+    
+    if (language === 'javascript' || language === 'typescript') {
+      // Configure TypeScript/JavaScript compiler options
+      monacoInstance.languages.typescript.javascriptDefaults.setCompilerOptions({
+        target: monacoInstance.languages.typescript.ScriptTarget.ES2020,
+        allowNonTsExtensions: true,
+        checkJs: true, // Enable type checking for JavaScript
+        jsx: language === 'javascript' ? monacoInstance.languages.typescript.JsxEmit.React : undefined,
+      });
+
+      // Set diagnostics options - show errors and warnings
+      monacoInstance.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
+        noSemanticValidation: false, // Enable semantic validation
+        noSyntaxValidation: false,   // Enable syntax validation
+        noSuggestionDiagnostics: false, // Show suggestion diagnostics
+      });
+
+      // Add extra library definitions if needed (React, etc.)
+      // monacoInstance.languages.typescript.javascriptDefaults.addExtraLib(...)
+    }
+
+    // For other languages, Monaco provides basic syntax validation automatically
+    console.log('Monaco Editor mounted with validation enabled for:', language);
   };
 
   if (!file) {
@@ -129,6 +207,7 @@ export default function CodeEditor({ file, projectId, onChange }: CodeEditorProp
           language={getLanguage()}
           value={content}
           onChange={handleEditorChange}
+          onMount={handleEditorDidMount}
           theme="vs-dark"
           options={{
             minimap: { enabled: true },
@@ -138,6 +217,16 @@ export default function CodeEditor({ file, projectId, onChange }: CodeEditorProp
             automaticLayout: true,
             tabSize: 2,
             wordWrap: 'on',
+            // Enable validation and error markers
+            quickSuggestions: true,
+            suggestOnTriggerCharacters: true,
+            acceptSuggestionOnEnter: 'on',
+            tabCompletion: 'on',
+            wordBasedSuggestions: 'allDocuments',
+            // Show errors and warnings
+            renderValidationDecorations: 'on',
+            // Enable semantic highlighting
+            'semanticHighlighting.enabled': true,
           }}
         />
       </div>

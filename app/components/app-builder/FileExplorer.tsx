@@ -28,27 +28,81 @@ export default function FileExplorer({ projectId, onSelectFile, selectedFileId, 
     }
   }, [projectId]);
 
-  // Listen for files-updated event to refresh files automatically
+  // Listen for files-updated event to refresh files automatically (Cursor-like)
   useEffect(() => {
-    const handleFilesUpdated = () => {
+    const handleFilesUpdated = (event?: CustomEvent) => {
       if (projectId) {
-        fetchFiles();
+        const eventProjectId = event?.detail?.projectId;
+        // Refresh if event is for this project or no projectId specified
+        if (!eventProjectId || eventProjectId === projectId) {
+          console.log('\n' + '='.repeat(60));
+          console.log('🔄 FileExplorer: Received refresh event');
+          console.log('='.repeat(60));
+          console.log('Event type:', event?.type);
+          console.log('Event detail:', event?.detail);
+          console.log('Project ID:', projectId);
+          console.log('Event Project ID:', eventProjectId);
+          console.log('Calling fetchFiles()...');
+          console.log('='.repeat(60) + '\n');
+          
+          // CRITICAL: Add small delay to ensure database write is complete
+          setTimeout(() => {
+            fetchFiles();
+          }, 100);
+        } else {
+          console.log('⏭️ FileExplorer: Skipping refresh - different project:', {
+            current: projectId,
+            event: eventProjectId
+          });
+        }
+      } else {
+        console.warn('⚠️ FileExplorer: No projectId, skipping refresh');
       }
     };
 
-    window.addEventListener('files-updated', handleFilesUpdated);
+    // Listen to multiple events for reliability
+    window.addEventListener('files-updated', handleFilesUpdated as EventListener);
+    window.addEventListener('preview-updated', handleFilesUpdated as EventListener);
+    window.addEventListener('auto-refresh-preview', handleFilesUpdated as EventListener);
+    
+    console.log('👂 FileExplorer: Event listeners registered for project:', projectId);
+    
     return () => {
-      window.removeEventListener('files-updated', handleFilesUpdated);
+      window.removeEventListener('files-updated', handleFilesUpdated as EventListener);
+      window.removeEventListener('preview-updated', handleFilesUpdated as EventListener);
+      window.removeEventListener('auto-refresh-preview', handleFilesUpdated as EventListener);
     };
   }, [projectId]);
 
   const fetchFiles = async () => {
-    if (!projectId) return;
+    if (!projectId) {
+      console.warn('⚠️ FileExplorer: No projectId, skipping fetch');
+      return;
+    }
+    
+    console.log('🔄 FileExplorer: Fetching files for project:', projectId);
+    setLoading(true);
     
     try {
-      const res = await fetch(`/api/app-projects/${projectId}/files`);
+      const res = await fetch(`/api/app-projects/${projectId}/files`, {
+        credentials: 'include', // CRITICAL: Include cookies for authentication
+      });
+      console.log('📥 FileExplorer: API response:', {
+        status: res.status,
+        ok: res.ok,
+        statusText: res.statusText
+      });
+      
       if (res.ok) {
         const data = await res.json();
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FileExplorer.tsx:97',message:'FileExplorer fetched files from API',data:{projectId,filesCount:data.length,filePaths:data.map((f:File)=>f.path)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
+        console.log('✅ FileExplorer: Files fetched:', {
+          count: data.length,
+          files: data.map((f: File) => ({ path: f.path, name: f.name }))
+        });
+        
         setFiles(data);
         
         // Auto-expand paths
@@ -62,9 +116,13 @@ export default function FileExplorer({ projectId, onSelectFile, selectedFileId, 
           });
         });
         setExpandedPaths(paths);
+        
+        console.log('✅ FileExplorer: Files updated in UI');
+      } else {
+        console.error('❌ FileExplorer: Failed to fetch files:', res.status, res.statusText);
       }
     } catch (error) {
-      console.error('Failed to fetch files:', error);
+      console.error('❌ FileExplorer: Error fetching files:', error);
     } finally {
       setLoading(false);
     }
@@ -74,6 +132,7 @@ export default function FileExplorer({ projectId, onSelectFile, selectedFileId, 
       const response = await fetch(`/api/app-projects/${projectId}/files/${file.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', // CRITICAL: Include cookies for authentication
         body: JSON.stringify({ isMain: !file.isMain }),
       });
       
@@ -130,6 +189,7 @@ export default function FileExplorer({ projectId, onSelectFile, selectedFileId, 
     try {
       const res = await fetch(`/api/app-projects/${projectId}/files/${fileId}`, {
         method: 'DELETE',
+        credentials: 'include', // CRITICAL: Include cookies for authentication
       });
 
       if (res.ok) {
@@ -225,8 +285,25 @@ export default function FileExplorer({ projectId, onSelectFile, selectedFileId, 
 
   return (
     <div className="h-full flex flex-col bg-[#0a0a0a] border-r border-white/10 overflow-hidden">
-      <div className="p-3 border-b border-white/10 flex-shrink-0">
+      <div className="p-3 border-b border-white/10 flex-shrink-0 flex items-center justify-between">
         <h3 className="text-white font-semibold text-sm">Files</h3>
+        <button
+          onClick={fetchFiles}
+          disabled={loading}
+          className="p-1.5 text-gray-400 hover:text-white hover:bg-white/5 rounded transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Refresh files"
+        >
+          {loading ? (
+            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+          ) : (
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          )}
+        </button>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto p-2">
         {files.length === 0 ? (

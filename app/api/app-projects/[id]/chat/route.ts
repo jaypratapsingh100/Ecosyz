@@ -2,313 +2,117 @@ import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { prisma } from '@/lib/db';
 import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
-import { getLoadBalancer, getProviderWithFallback } from '@/lib/llm-load-balancer';
 
-// Provider configuration
-type Provider = 'openai' | 'groq' | 'together' | 'huggingface' | 'deepseek' | 'ollama' | 'openrouter' | 'perplexity' | 'cohere' | 'anthropic';
+// ============================================
+// AZURE DEEPSEEK CONFIGURATION (ONLY PROVIDER)
+// ============================================
+// Your self-hosted DeepSeek API on Azure
+// Model: deepseek-coder (from deepseek_api_optimized.py)
+// Endpoint: http://74.225.138.116:8000/v1/chat/completions
 
-interface ProviderConfig {
-  baseURL: string;
-  defaultModel: string;
-  models: string[];
+const AZURE_DEEPSEEK_URL = process.env.AZURE_DEEPSEEK_URL || 'http://74.225.138.116:8000';
+const AZURE_DEEPSEEK_MODEL = 'deepseek-coder'; // From your FastAPI: /v1/models returns "deepseek-coder"
+
+// Create OpenAI-compatible client for Azure DeepSeek
+function createAzureDeepSeekClient() {
+  console.log('🔧 Creating Azure DeepSeek client:', {
+    baseURL: `${AZURE_DEEPSEEK_URL}/v1`,
+    model: AZURE_DEEPSEEK_MODEL,
+  });
+  
+  return new OpenAI({
+    baseURL: `${AZURE_DEEPSEEK_URL}/v1`,
+    apiKey: 'not-required', // Your FastAPI doesn't require API key
+  });
 }
 
-// GROQ_MODEL_MAP: Maps UI-friendly names to valid Groq model IDs
-const GROQ_MODEL_MAP: Record<string, string> = {
-  // Llama models for Groq
-  'llama': 'llama-3.3-70b-versatile',
-  'llama3': 'llama-3.3-70b-versatile',
-  'llama3.2': 'llama-3.3-70b-versatile', // Groq doesn't have llama3.2, use 3.3
-  'llama3.3': 'llama-3.3-70b-versatile',
-  'llama-3.2': 'llama-3.3-70b-versatile',
-  'llama-3.3': 'llama-3.3-70b-versatile',
-  'llama-small': 'llama-3.1-8b-instant',
-  'llama-3.1': 'llama-3.1-8b-instant',
-  'llama-3.1-8b': 'llama-3.1-8b-instant',
-  'llama-fast': 'llama-3.1-8b-instant',
-  
-  // Mixtral models for Groq
-  'mixtral': 'mixtral-8x7b-32768',
-  'mixtral-8x7b': 'mixtral-8x7b-32768',
-  
-  // Gemma models for Groq
-  'gemma': 'gemma2-9b-it',
-  'gemma2': 'gemma2-9b-it',
-};
-
-// MODEL_MAP: Maps UI-friendly names to valid OpenRouter model IDs
-// NEVER send raw user-provided model names to OpenRouter - always normalize through this map
-const MODEL_MAP: Record<string, string> = {
-  // Llama models
-  'llama': 'meta-llama/llama-3.2-70b-instruct',
-  'llama3': 'meta-llama/llama-3.2-70b-instruct',
-  'llama3.2': 'meta-llama/llama-3.2-70b-instruct',
-  'llama-3.2': 'meta-llama/llama-3.2-70b-instruct',
-  'llama-small': 'meta-llama/llama-3.1-8b-instruct',
-  'llama-3.1': 'meta-llama/llama-3.1-8b-instruct',
-  'llama-3.1-8b': 'meta-llama/llama-3.1-8b-instruct',
-  
-  // DeepSeek models
-  'deepseek': 'deepseek/deepseek-chat',
-  'deepseek-chat': 'deepseek/deepseek-chat',
-  'deepseek-coder': 'deepseek/deepseek-coder',
-  'deepseekcoder': 'deepseek/deepseek-coder',
-  
-  // Grok models
-  'grok': 'x-ai/grok-2',
-  'grok-2': 'x-ai/grok-2',
-  'grok-beta': 'x-ai/grok-beta',
-  
-  // Mixtral models
-  'mixtral': 'mistralai/mixtral-8x7b-instruct',
-  'mixtral-8x7b': 'mistralai/mixtral-8x7b-instruct',
-  'mixtral-8x22b': 'mistralai/mixtral-8x22b-instruct',
-  
-  // Mistral models
-  'mistral': 'mistralai/mistral-7b-instruct',
-  'mistral-7b': 'mistralai/mistral-7b-instruct',
-  'mistral-large': 'mistralai/mistral-large',
-  
-  // GPT models (OpenRouter format)
-  'gpt-4': 'openai/gpt-4',
-  'gpt-4-turbo': 'openai/gpt-4-turbo',
-  'gpt-4o': 'openai/gpt-4o',
-  'gpt-4o-mini': 'openai/gpt-4o-mini',
-  'gpt-3.5': 'openai/gpt-3.5-turbo',
-  'gpt-3.5-turbo': 'openai/gpt-3.5-turbo',
-  
-  // Claude models
-  'claude': 'anthropic/claude-3-haiku',
-  'claude-3-haiku': 'anthropic/claude-3-haiku',
-  'claude-3-sonnet': 'anthropic/claude-3-sonnet',
-  'claude-3-opus': 'anthropic/claude-3-opus',
-  
-  // Free models
-  'llama-free': 'meta-llama/llama-3.2-3b-instruct:free',
-  'gemma-free': 'google/gemma-2-2b-it:free',
-  'mistral-free': 'mistralai/mistral-7b-instruct:free',
-};
-
-// Normalize model name to valid provider-specific model ID
-function normalizeModelName(modelName: string | undefined, provider: Provider): string {
-  if (!modelName) {
-    return PROVIDER_CONFIGS[provider].defaultModel;
-  }
-  
-  const modelKey = modelName.toLowerCase();
-  
-  // If provider is Groq, normalize through GROQ_MODEL_MAP
-  if (provider === 'groq') {
-    const normalized = GROQ_MODEL_MAP[modelKey];
-    if (normalized) {
-      console.log(`🔄 Normalized Groq model: "${modelName}" → "${normalized}"`);
-      return normalized;
+// GET endpoint to fetch chat history
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    
-    // Check if it's already a valid Groq model name (contains hyphens, no slashes)
-    // Groq models are like: llama-3.3-70b-versatile, mixtral-8x7b-32768
-    if (!modelName.includes('/') && (modelName.includes('-') || PROVIDER_CONFIGS.groq.models.includes(modelName))) {
-      return modelName;
-    }
-    
-    // Unknown model name - default to safe fallback
-    console.warn(`⚠️ Unknown model name "${modelName}" for Groq, using default: ${PROVIDER_CONFIGS[provider].defaultModel}`);
-    return PROVIDER_CONFIGS[provider].defaultModel;
-  }
-  
-  // If provider is OpenRouter, normalize through MODEL_MAP
-  if (provider === 'openrouter') {
-    const normalized = MODEL_MAP[modelKey];
-    if (normalized) {
-      console.log(`🔄 Normalized OpenRouter model: "${modelName}" → "${normalized}"`);
-      return normalized;
-    }
-    
-    // If model already looks like a valid OpenRouter ID (contains /), use it
-    if (modelName.includes('/')) {
-      return modelName;
-    }
-    
-    // Unknown model name - default to safe fallback
-    console.warn(`⚠️ Unknown model name "${modelName}" for OpenRouter, using default: ${PROVIDER_CONFIGS[provider].defaultModel}`);
-    return PROVIDER_CONFIGS[provider].defaultModel;
-  }
-  
-  // For other providers, check if model exists in their models list
-  const providerModels = PROVIDER_CONFIGS[provider].models;
-  if (providerModels.includes(modelName)) {
-    return modelName;
-  }
-  
-  // Unknown model - use default
-  console.warn(`⚠️ Unknown model name "${modelName}" for ${provider}, using default: ${PROVIDER_CONFIGS[provider].defaultModel}`);
-  return PROVIDER_CONFIGS[provider].defaultModel;
-}
 
-const PROVIDER_CONFIGS: Record<Provider, ProviderConfig> = {
-  openai: {
-    baseURL: 'https://api.openai.com/v1',
-    defaultModel: 'gpt-4o-mini',
-    models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
-  },
-  groq: {
-    baseURL: 'https://api.groq.com/openai/v1',
-    defaultModel: 'llama-3.3-70b-versatile',
-    models: [
-      'llama-3.3-70b-versatile',
-      'llama-3.1-8b-instant',
-      'mixtral-8x7b-32768',
-      'gemma2-9b-it',
-    ],
-  },
-  together: {
-    baseURL: 'https://api.together.xyz/v1',
-    defaultModel: 'meta-llama/Llama-3-8b-chat-hf',
-    models: [
-      'meta-llama/Llama-3-8b-chat-hf',
-      'meta-llama/Llama-3-70b-chat-hf',
-      'mistralai/Mixtral-8x7B-Instruct-v0.1',
-    ],
-  },
-  huggingface: {
-    baseURL: 'https://api-inference.huggingface.co/v1',
-    defaultModel: 'meta-llama/Llama-3-8b-chat-hf',
-    models: ['meta-llama/Llama-3-8b-chat-hf'],
-  },
-  deepseek: {
-    baseURL: 'https://api.deepseek.com/v1',
-    defaultModel: 'deepseek-chat',
-    models: ['deepseek-chat', 'deepseek-coder'],
-  },
-  ollama: {
-    baseURL: 'http://localhost:11434/v1', // Local Ollama instance
-    defaultModel: 'llama3.2',
-    models: [
-      'llama3.2',
-      'llama3.1',
-      'mistral',
-      'codellama',
-      'phi3',
-      'gemma2',
-      'qwen2.5',
-    ],
-  },
-  openrouter: {
-    baseURL: 'https://openrouter.ai/api/v1',
-    defaultModel: 'deepseek/deepseek-coder', // Best for code generation quality
-    models: [
-      'meta-llama/llama-3.2-70b-instruct',
-      'meta-llama/llama-3.1-8b-instruct',
-      'deepseek/deepseek-chat',
-      'deepseek/deepseek-coder',
-      'x-ai/grok-2',
-      'mistralai/mixtral-8x7b-instruct',
-      'mistralai/mistral-7b-instruct',
-      'openai/gpt-4o',
-      'openai/gpt-4o-mini',
-      'anthropic/claude-3-haiku',
-      // Free models
-      'meta-llama/llama-3.2-3b-instruct:free',
-      'google/gemma-2-2b-it:free',
-    ],
-  },
-  perplexity: {
-    baseURL: 'https://api.perplexity.ai',
-    defaultModel: 'llama-3.1-sonar-small-128k-online',
-    models: [
-      'llama-3.1-sonar-small-128k-online',
-      'llama-3.1-sonar-large-128k-online',
-      'llama-3.1-sonar-huge-128k-online',
-    ],
-  },
-  cohere: {
-    baseURL: 'https://api.cohere.ai/v1',
-    defaultModel: 'command-r-plus',
-    models: [
-      'command-r-plus',
-      'command-r',
-      'command',
-      'command-light',
-    ],
-  },
-  anthropic: {
-    baseURL: 'https://api.anthropic.com/v1',
-    defaultModel: 'claude-3-haiku-20240307',
-    models: [
-      'claude-3-haiku-20240307',
-      'claude-3-sonnet-20240229',
-      'claude-3-opus-20240229',
-    ],
-  },
-};
+    await ensureUserInDb(user);
 
-// Detect provider from API key format or explicit provider
-function detectProvider(apiKey: string, explicitProvider?: string): Provider {
-  if (explicitProvider && ['openai', 'groq', 'together', 'huggingface', 'deepseek', 'ollama', 'openrouter', 'perplexity', 'cohere', 'anthropic'].includes(explicitProvider)) {
-    return explicitProvider as Provider;
-  }
-  
-  // Detect by API key prefix
-  if (apiKey.startsWith('gsk_')) return 'groq';
-  if (apiKey.startsWith('hf_')) return 'huggingface';
-  if (apiKey.startsWith('sk-or-')) return 'openrouter'; // OpenRouter uses sk-or- prefix
-  if (apiKey.startsWith('pplx-')) return 'perplexity'; // Perplexity uses pplx- prefix
-  if (apiKey.startsWith('sk-ant-')) return 'anthropic'; // Anthropic uses sk-ant- prefix
-  if (apiKey.startsWith('sk-') && apiKey.length > 50) {
-    // Could be DeepSeek or OpenAI, check length/format
-    return 'deepseek'; // Default to DeepSeek for sk- keys
-  }
-  if (apiKey.length > 50 && !apiKey.startsWith('sk-')) return 'together';
-  
-  // Default to OpenAI
-  return 'openai';
-}
+    const { id } = await params;
+    const prismaUser = await prisma.user.findUnique({
+      where: { supabaseId: user.id },
+    });
 
-// Get provider config and create client
-function createClient(apiKey: string, provider: Provider, model?: string) {
-  const config = PROVIDER_CONFIGS[provider];
-  
-  // Normalize model name - CRITICAL for OpenRouter to prevent invalid model errors
-  const selectedModel = normalizeModelName(model, provider);
-  
-  // For Ollama, API key is not needed (uses localhost)
-  // For other providers, API key is required
-  const clientConfig: any = {
-    baseURL: config.baseURL,
-  };
-  
-  if (provider !== 'ollama') {
-    clientConfig.apiKey = apiKey || process.env.OPENROUTER_API_KEY;
+    if (!prismaUser) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    // Load project WITH FILES - CRITICAL FIX
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:52',message:'Loading project - BEFORE query',data:{projectId:id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    const project = await prisma.appProject.findUnique({
+      where: { id },
+      include: { 
+        chats: { orderBy: { updatedAt: 'desc' }, take: 1 },
+        files: { orderBy: { path: 'asc' } } // ✅ FIX: Include files to check existing files
+      },
+    });
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:58',message:'Project loaded - checking files',data:{projectId:id,hasFiles:!!project?.files,filesLength:project?.files?.length||0,filesIncluded:project?.files!==undefined,filePaths:project?.files?.map((f:any)=>f.path)||[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+
+    if (!project) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
+
+    // Check authorization
+    if (project.ownerId !== prismaUser.id) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    // Get the most recent chat (or create empty one)
+    const chat = project.chats[0];
+    const messages = chat ? (chat.messages as any[]) : [];
+
+    return NextResponse.json({
+      messages: messages.map((msg: any, idx: number) => ({
+        id: `msg-${idx}`,
+        role: msg.role,
+        content: msg.content,
+        timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
+      })),
+    });
+  } catch (error: any) {
+    console.error('Error fetching chat history:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch chat history', message: error.message },
+      { status: 500 }
+    );
   }
-  
-  // OpenRouter requires special headers - MUST be set correctly
-  if (provider === 'openrouter') {
-    clientConfig.defaultHeaders = {
-      'HTTP-Referer': process.env.NEXT_PUBLIC_SITE_URL || process.env.VERCEL_URL 
-        ? `https://${process.env.VERCEL_URL}` 
-        : 'http://localhost:3000',
-      'X-Title': 'Open Idea - AI App Builder',
-    };
-  }
-  
-  return {
-    client: new OpenAI(clientConfig),
-    model: selectedModel,
-  };
 }
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  // Hardcoded: Only OpenRouter + DeepSeek Coder
-  const provider: Provider = 'openrouter';
-  const DEFAULT_MODEL = 'deepseek/deepseek-coder';
-  let apiKey: string | undefined; // Declare outside try block for error handling
-  let requestedModel: string | undefined; // Store requested model for error handling
+  console.log('\n' + '='.repeat(60));
+  console.log('🚀 AZURE DEEPSEEK CHAT API - REQUEST RECEIVED');
+  console.log('='.repeat(60));
   
   try {
-    const user = await getCurrentUser();
+    // Step 1: Authentication
+    let user;
+    try {
+      user = await getCurrentUser();
+    } catch (authError: any) {
+      console.error('❌ Authentication error:', authError);
+      return NextResponse.json(
+        { error: 'Authentication failed', message: authError?.message || 'Failed to authenticate user' },
+        { status: 401 }
+      );
+    }
 
     if (!user) {
       return NextResponse.json(
@@ -317,10 +121,30 @@ export async function POST(
       );
     }
 
-    await ensureUserInDb(user);
-    const prismaUser = await prisma.user.findUnique({
-      where: { supabaseId: user.id },
-    });
+    // Step 2: Ensure user in database
+    try {
+      await ensureUserInDb(user);
+    } catch (dbError: any) {
+      console.error('❌ Database error (ensureUserInDb):', dbError);
+      return NextResponse.json(
+        { error: 'Database error', message: 'Failed to ensure user in database' },
+        { status: 500 }
+      );
+    }
+    
+    // Step 3: Get user from database
+    let prismaUser;
+    try {
+      prismaUser = await prisma.user.findUnique({
+        where: { supabaseId: user.id },
+      });
+    } catch (dbError: any) {
+      console.error('❌ Database error (findUnique user):', dbError);
+      return NextResponse.json(
+        { error: 'Database error', message: 'Failed to fetch user from database' },
+        { status: 500 }
+      );
+    }
 
     if (!prismaUser) {
       return NextResponse.json(
@@ -329,32 +153,53 @@ export async function POST(
       );
     }
 
-    const { id } = await params;
-    const project = await prisma.appProject.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        ownerId: true, // Required for authorization check
-        title: true,
-        description: true,
-        type: true,
-        framework: true,
-        config: true,
-        questionnaireData: true,
-        appType: true,
-        targetAudience: true,
-        designStyle: true,
-        colorScheme: true,
-        layoutStyle: true,
-        requiredFeatures: true,
-        brandName: true,
-        tagline: true,
-        keyPoints: true,
-        files: {
-          orderBy: { path: 'asc' },
+    // Step 4: Get project ID and load project
+    let id: string;
+    try {
+      const paramsObj = await params;
+      id = paramsObj.id;
+    } catch (paramsError: any) {
+      console.error('❌ Error getting params:', paramsError);
+      return NextResponse.json(
+        { error: 'Invalid request', message: 'Failed to get project ID from request' },
+        { status: 400 }
+      );
+    }
+    
+    let project;
+    try {
+      project = await prisma.appProject.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          ownerId: true, // Required for authorization check
+          title: true,
+          description: true,
+          type: true,
+          framework: true,
+          config: true,
+          questionnaireData: true,
+          appType: true,
+          targetAudience: true,
+          designStyle: true,
+          colorScheme: true,
+          layoutStyle: true,
+          requiredFeatures: true,
+          brandName: true,
+          tagline: true,
+          keyPoints: true,
+          files: {
+            orderBy: { path: 'asc' },
+          },
         },
-      },
-    });
+      });
+    } catch (projectError: any) {
+      console.error('❌ Database error (findUnique project):', projectError);
+      return NextResponse.json(
+        { error: 'Database error', message: 'Failed to load project from database' },
+        { status: 500 }
+      );
+    }
 
     if (!project) {
       return NextResponse.json(
@@ -402,17 +247,31 @@ export async function POST(
       );
     }
 
-    const body = await req.json();
-    let { 
-      message, 
-      apiKey: userApiKey, 
-      model: userModel, 
-      provider: userProvider,
-      currentFile 
-    } = body;
+    // Step 5: Parse request body
+    let body: any;
+    try {
+      body = await req.json();
+    } catch (parseError: any) {
+      console.error('❌ Error parsing request body:', parseError);
+      return NextResponse.json(
+        { error: 'Invalid request', message: 'Failed to parse request body' },
+        { status: 400 }
+      );
+    }
     
-    // Store userModel for error handling (before it might be overwritten)
-    requestedModel = userModel; // Assign to outer scope variable
+    let { message, currentFile } = body;
+    
+    // Validate message
+    if (!message || typeof message !== 'string') {
+      return NextResponse.json(
+        { error: 'Invalid request', message: 'Message is required and must be a string' },
+        { status: 400 }
+      );
+    }
+    
+    // currentFile can be a path string or undefined
+    const currentFilePath = typeof currentFile === 'string' ? currentFile : currentFile?.path;
+    // Note: userApiKey, userModel, userProvider are ignored - only using Azure DeepSeek
 
     if (!message || typeof message !== 'string') {
       return NextResponse.json(
@@ -421,1478 +280,265 @@ export async function POST(
       );
     }
 
-    // Auto-enhance simple website creation requests with professional prompt
-    const questionnaireData = project.questionnaireData as any;
-    const lowerMessage = message.toLowerCase().trim();
-    const websiteCreationKeywords = [
-      'create website', 'build website', 'make website', 'generate website',
-      'create app', 'build app', 'make app', 'generate app',
-      'create site', 'build site', 'make site',
-      'create a website', 'build a website', 'make a website',
-      'create an app', 'build an app', 'make an app',
-      'start building', 'start creating', 'generate the app', 'generate the website'
-    ];
+    // ============================================
+    // AZURE DEEPSEEK - OPTIMIZED FOR 6.7B MODEL
+    // ============================================
+    // Model: deepseek-coder-6.7b-instruct
+    // Max Context: 16K tokens
+    // Max New Tokens: 4000 (capped by model)
+    // Strategy: Simple system prompt + focused user message
+    // ============================================
     
-    const isWebsiteCreationRequest = websiteCreationKeywords.some(keyword => 
-      lowerMessage.includes(keyword)
-    );
+    console.log('✅ Using Azure DeepSeek:', {
+      url: AZURE_DEEPSEEK_URL,
+      model: AZURE_DEEPSEEK_MODEL,
+      maxContext: '16K tokens',
+      maxNewTokens: '4000'
+    });
+    
+    // Step 6: Create Azure DeepSeek client
+    let client;
+    try {
+      client = createAzureDeepSeekClient();
+    } catch (clientError: any) {
+      console.error('❌ Error creating Azure DeepSeek client:', clientError);
+      return NextResponse.json(
+        { error: 'Configuration error', message: 'Failed to create Azure DeepSeek client' },
+        { status: 500 }
+      );
+    }
+    
+    const model = AZURE_DEEPSEEK_MODEL;
+    
+    const questionnaireData = project.questionnaireData as any;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:312',message:'Checking project files and questionnaire',data:{projectId:id,hasQuestionnaireData:!!questionnaireData,projectFilesCount:project.files?.length||0,projectFilesPaths:project.files?.map((f:any)=>f.path)||[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    
+    // Determine language from questionnaire or default to JavaScript
+    const projectLanguage = questionnaireData?.language || 'javascript';
+    const useTypeScript = projectLanguage === 'typescript';
+    const fileExtension = useTypeScript ? 'tsx' : 'jsx';
+    const indexExtension = useTypeScript ? 'ts' : 'js';
+    
+    // Check for existing files to prevent duplicates
+    const existingFiles = project.files || [];
+    const hasAppJsx = existingFiles.some(f => f.path.includes('App.jsx'));
+    const hasAppTsx = existingFiles.some(f => f.path.includes('App.tsx'));
+    const hasIndexJs = existingFiles.some(f => f.path.includes('index.js'));
+    const hasIndexTs = existingFiles.some(f => f.path.includes('index.ts'));
+    
+    // Determine which files exist and should be used/updated
+    const shouldUseAppJsx = hasAppJsx && !useTypeScript;
+    const shouldUseAppTsx = hasAppTsx && useTypeScript;
+    const shouldUseIndexJs = hasIndexJs && !useTypeScript;
+    const shouldUseIndexTs = hasIndexTs && useTypeScript;
+    
+    const hasScaffoldFiles = hasAppJsx || hasAppTsx || hasIndexJs || hasIndexTs || 
+      project.files?.some(f => f.path.includes('App.css')) || false;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:315',message:'Scaffold files check result',data:{hasScaffoldFiles,projectFilesAvailable:!!project.files},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    
+    // SYSTEM PROMPT - Optimized for DeepSeek 6.7B to generate proper file format
+    // Model: deepseek-coder-6.7b-instruct
+    // Strategy: Clear format instructions to ensure files are properly formatted
+    // DECLARE FIRST to avoid "Cannot access before initialization" error
+    const systemPrompt = `You are an intelligent React code generator. Your job is to:
 
-    // If user asks to create website/app, enhance the prompt with professional requirements
-    if (isWebsiteCreationRequest) {
-      const designStyle = questionnaireData?.designStyle || project.designStyle || 'creative';
-      const colorScheme = questionnaireData?.colorScheme || project.colorScheme || 'purple';
-      const layoutStyle = questionnaireData?.layoutStyle || project.layoutStyle || 'multi-page';
-      const targetAudience = questionnaireData?.targetAudience || project.targetAudience || 'general';
-      const brandName = questionnaireData?.brandName || project.brandName || project.title || 'Your Brand';
-      const tagline = questionnaireData?.tagline || project.tagline || 'Your tagline';
-      const keyPoints = questionnaireData?.keyPoints || project.keyPoints || 'Your key points';
-      const requiredSections = questionnaireData?.requiredSections || ['hero', 'features', 'about', 'testimonials', 'pricing', 'contact'];
-      const specialFeatures = questionnaireData?.specialFeatures || ['responsive-design', 'modern-ui', 'animations'];
+1. IDENTIFY ALL components and features needed from the user's request
+2. CREATE complete, production-ready files in ONE response
+3. ENSURE all components are properly structured and exported
+4. UPDATE App file to import and render ALL components
 
-      // Build comprehensive internal prompt with Lovable/Cursor-quality standards
-      const colorPalette = colorScheme === 'purple' 
-        ? { primary: '#8B5CF6', secondary: '#7C3AED', accent: '#EC4899', bg: '#F5F3FF', text: '#4C1D95' }
-        : colorScheme === 'blue'
-        ? { primary: '#3B82F6', secondary: '#2563EB', accent: '#10B981', bg: '#F8FAFC', text: '#0F172A' }
-        : colorScheme === 'orange-red'
-        ? { primary: '#F97316', secondary: '#EF4444', accent: '#F59E0B', bg: '#FFF7ED', text: '#1C1917' }
-        : colorScheme === 'green-teal'
-        ? { primary: '#10B981', secondary: '#14B8A6', accent: '#06B6D4', bg: '#ECFDF5', text: '#064E3B' }
-        : { primary: '#8B5CF6', secondary: '#7C3AED', accent: '#EC4899', bg: '#F5F3FF', text: '#4C1D95' };
-
-      message = `You are building a production-ready, market-grade ${project.appType || 'web'} application that MUST match the quality of Lovable.dev, Cursor, Stripe, Linear, Vercel, and Notion. This is NOT a template - it's a professional SaaS product.
-
-**BRAND & CONTENT:**
-- Brand Name: ${brandName}
-- Tagline: ${tagline}
-- Key Points: ${keyPoints}
-- Target Audience: ${targetAudience}
-
-**DESIGN SYSTEM (STRICT REQUIREMENTS):**
-- Design Style: ${designStyle}
-- Color Scheme: ${colorScheme}
-  * Primary: ${colorPalette.primary}
-  * Secondary: ${colorPalette.secondary}
-  * Accent: ${colorPalette.accent}
-  * Background: ${colorPalette.bg}
-  * Text: ${colorPalette.text}
-- Layout: ${layoutStyle}
-
-**REQUIRED SECTIONS (CREATE ALL AS SEPARATE COMPONENTS):**
-${requiredSections.map((s: string) => `- ${s.charAt(0).toUpperCase() + s.slice(1)}`).join('\n')}
-
-**SPECIAL FEATURES (IMPLEMENT ALL):**
-${specialFeatures.map((f: string) => `- ${f.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}`).join('\n')}
-
-**🚨 QUALITY STANDARD: LOVABLE/CURSOR LEVEL (NON-NEGOTIABLE) 🚨**
-
-Your output MUST be indistinguishable from:
-- Lovable.dev (lovable.dev) - Modern, polished, professional
-- Cursor (cursor.com) - Clean, sophisticated, developer-focused
-- Stripe (stripe.com) - Perfect spacing, typography, interactions
-- Linear (linear.app) - Modern gradients, smooth animations
-- Vercel (vercel.com) - Professional design system
-- Notion (notion.so) - Clean, elegant, polished
-
-**VISUAL QUALITY REQUIREMENTS (MANDATORY):**
-
-1. **Hero Section (if included):**
-   - Large, bold typography: text-6xl md:text-8xl font-bold with gradient text
-   - Gradient text effect: bg-gradient-to-r from-[${colorPalette.primary}] to-[${colorPalette.accent}] bg-clip-text text-transparent
-   - Subtle background: bg-gradient-to-br from-[${colorPalette.bg}] via-white to-[${colorPalette.bg}]
-   - CTA buttons: rounded-full px-8 py-4 bg-gradient-to-r from-[${colorPalette.primary}] to-[${colorPalette.secondary}] text-white font-semibold shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-300
-   - Animated elements: fade-in, slide-up animations using CSS transforms
-   - Example structure:
-     \`\`\`jsx
-     <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-br from-[${colorPalette.bg}] via-white to-[${colorPalette.bg}]">
-       <div className="absolute inset-0 bg-grid-pattern opacity-5"></div>
-       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 md:py-32">
-         <h1 className="text-6xl md:text-8xl font-bold mb-6 bg-gradient-to-r from-[${colorPalette.primary}] to-[${colorPalette.accent}] bg-clip-text text-transparent">
-           ${brandName}
-         </h1>
-         <p className="text-xl md:text-2xl text-gray-600 mb-8 max-w-2xl">${tagline}</p>
-         <button className="rounded-full px-8 py-4 bg-gradient-to-r from-[${colorPalette.primary}] to-[${colorPalette.secondary}] text-white font-semibold shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-300">
-           Get Started
-         </button>
-       </div>
-     </section>
-     \`\`\`
-
-2. **Feature Cards (if included):**
-   - Modern card design: rounded-2xl p-8 bg-white shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-2
-   - Icon containers: w-16 h-16 rounded-xl bg-gradient-to-br from-[${colorPalette.primary}] to-[${colorPalette.secondary}] flex items-center justify-center mb-4
-   - Typography: text-2xl font-bold mb-3 text-gray-900, text-gray-600 for descriptions
-   - Grid layout: grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8
-   - Example:
-     \`\`\`jsx
-     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-       {features.map((feature, idx) => (
-         <div key={idx} className="rounded-2xl p-8 bg-white shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-2">
-           <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-[${colorPalette.primary}] to-[${colorPalette.secondary}] flex items-center justify-center mb-4">
-             <FeatureIcon className="w-8 h-8 text-white" />
-           </div>
-           <h3 className="text-2xl font-bold mb-3 text-gray-900">{feature.title}</h3>
-           <p className="text-gray-600">{feature.description}</p>
-         </div>
-       ))}
-     </div>
-     \`\`\`
-
-3. **Testimonials (if included):**
-   - Professional card: rounded-2xl p-8 bg-gradient-to-br from-white to-[${colorPalette.bg}] shadow-xl border border-gray-100
-   - Avatar: w-16 h-16 rounded-full ring-4 ring-[${colorPalette.primary}] ring-opacity-20
-   - Quote styling: text-lg italic text-gray-700 before:content-['"'] after:content-['"']
-   - Author info: font-semibold text-gray-900, text-sm text-gray-500
-   - Carousel/slider with smooth transitions
-
-4. **Pricing Tables (if included):**
-   - Card design: rounded-2xl p-8 bg-white shadow-xl border-2 border-gray-100 hover:border-[${colorPalette.primary}] transition-all duration-300
-   - Featured plan: border-[${colorPalette.primary}] ring-4 ring-[${colorPalette.primary}] ring-opacity-20 scale-105
-   - Price display: text-5xl font-bold bg-gradient-to-r from-[${colorPalette.primary}] to-[${colorPalette.secondary}] bg-clip-text text-transparent
-   - Feature list: space-y-4 with checkmark icons
-   - CTA button: w-full rounded-xl py-4 font-semibold transition-all duration-300
-
-5. **Contact Forms (if included):**
-   - Modern inputs: rounded-xl border-2 border-gray-200 focus:border-[${colorPalette.primary}] focus:ring-4 focus:ring-[${colorPalette.primary}] focus:ring-opacity-20 px-4 py-3 transition-all duration-300
-   - Labels: text-sm font-semibold text-gray-700 mb-2
-   - Submit button: rounded-xl bg-gradient-to-r from-[${colorPalette.primary}] to-[${colorPalette.secondary}] text-white font-semibold py-4 px-8 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300
-   - Form validation states: error borders, success states
-
-6. **Navigation (MANDATORY):**
-   - Sticky header: fixed top-0 z-50 bg-white/80 backdrop-blur-lg border-b border-gray-200 shadow-sm
-   - Logo: text-2xl font-bold bg-gradient-to-r from-[${colorPalette.primary}] to-[${colorPalette.secondary}] bg-clip-text text-transparent
-   - Nav links: text-gray-700 hover:text-[${colorPalette.primary}] transition-colors duration-200 font-medium
-   - Mobile menu: hamburger icon, slide-in menu with backdrop
-   - Active state: text-[${colorPalette.primary}] font-semibold border-b-2 border-[${colorPalette.primary}]
-
-7. **Footer (MANDATORY):**
-   - Multi-column layout: grid grid-cols-2 md:grid-cols-4 gap-8
-   - Links: text-gray-600 hover:text-[${colorPalette.primary}] transition-colors
-   - Social icons: w-10 h-10 rounded-full bg-gray-100 hover:bg-[${colorPalette.primary}] hover:text-white transition-all duration-300
-   - Copyright: text-center text-gray-500 pt-8 border-t border-gray-200
-
-**CODE ARCHITECTURE REQUIREMENTS:**
-
-1. **Component Structure:**
-   \`\`\`
-   src/
-   ├── components/
-   │   ├── layout/
-   │   │   ├── Navigation.jsx
-   │   │   └── Footer.jsx
-   │   ├── sections/
-   │   │   ├── Hero.jsx
-   │   │   ├── Features.jsx
-   │   │   ├── Testimonials.jsx
-   │   │   ├── Pricing.jsx
-   │   │   └── Contact.jsx
-   │   └── common/
-   │       ├── Button.jsx
-   │       └── Card.jsx
-   ├── App.jsx
-   └── index.js
-   \`\`\`
-
-2. **Component Best Practices:**
-   - Functional components ONLY (NO class components)
-   - Use React Hooks (useState, useEffect) appropriately
-   - Extract reusable components (Button, Card, Input)
-   - Props destructuring: const Component = ({ title, description, ...props }) => {}
-   - Conditional rendering: {condition && <Component />} or {condition ? <A /> : <B />}
-   - Map for lists: {items.map((item, idx) => <Item key={idx} {...item} />)}
-
-3. **Styling Requirements:**
-   - Use Tailwind CSS classes ONLY (NO inline styles, NO separate CSS files)
-   - Use Tailwind's color system: from-[${colorPalette.primary}], to-[${colorPalette.secondary}]
-   - Responsive classes: sm:, md:, lg:, xl: breakpoints
-   - Hover states: hover:shadow-xl, hover:scale-105, hover:text-[${colorPalette.primary}]
-   - Transitions: transition-all duration-300 ease-in-out
-   - Dark mode support (optional): dark: classes
-
-4. **Routing (if multi-page):**
-   - Install: npm install react-router-dom
-   - Structure:
-     \`\`\`jsx
-     import { BrowserRouter, Routes, Route } from 'react-router-dom';
-     
-     function App() {
-       return (
-         <BrowserRouter>
-           <Navigation />
-           <Routes>
-             <Route path="/" element={<Home />} />
-             <Route path="/about" element={<About />} />
-             <Route path="/contact" element={<Contact />} />
-           </Routes>
-           <Footer />
-         </BrowserRouter>
-       );
-     }
-     \`\`\`
-
-**RESPONSIVE DESIGN (MANDATORY):**
-- Mobile-first: Base styles for mobile (320px+), then md: (768px+), lg: (1024px+), xl: (1280px+)
-- Typography scaling: text-4xl md:text-6xl lg:text-8xl
-- Grid responsiveness: grid-cols-1 md:grid-cols-2 lg:grid-cols-3
-- Padding: p-4 md:p-8 lg:p-12
-- Container: max-w-7xl mx-auto px-4 sm:px-6 lg:px-8
-- NO horizontal overflow at ANY viewport size
-
-**ANIMATIONS & INTERACTIONS:**
-- Smooth transitions: transition-all duration-300 ease-in-out
-- Hover effects: hover:scale-105, hover:shadow-xl, hover:-translate-y-2
-- Fade-in animations: opacity-0 animate-fade-in (use CSS keyframes or Tailwind animate)
-- Scroll animations: Use Intersection Observer or CSS scroll-timeline
-- Loading states: Skeleton loaders or spinners
-- Button feedback: active:scale-95
-
-**CONTENT QUALITY:**
-- NO "Lorem ipsum" - Use real, meaningful content related to ${brandName}
-- NO placeholder text - Every text should be relevant and professional
-- NO markdown in JSX - Use proper HTML/JSX elements
-- NO chatty explanations - Just clean, professional code
-- Realistic data: Use arrays of objects with proper structure
-
-**FAILURE CONDITIONS (AUTO-REJECT):**
-❌ Generic template-looking design
-❌ Missing components or incomplete sections
-❌ Poor code quality (console.logs, inline styles, magic numbers)
-❌ Broken responsiveness (horizontal scroll, poor mobile experience)
-❌ No animations or interactions (static, boring UI)
-❌ Placeholder content ("Lorem ipsum", "Sample text")
-❌ Missing routing (if multi-page layout)
-❌ Inconsistent design system (different button styles, spacing)
-
-**CRITICAL FILE FORMAT - FOLLOW EXACTLY:**
-Generate ALL files using this EXACT format:
-\`\`\`file:src/App.jsx
-[complete React component code here]
-\`\`\`
-
-\`\`\`file:src/index.js
-[complete index.js code here]
-\`\`\`
-
-\`\`\`file:src/components/Portfolio.jsx
+MANDATORY FILE FORMAT - USE THIS FOR EVERY FILE:
+\`\`\`file:src/components/ComponentName.${fileExtension}
 [complete component code here]
 \`\`\`
 
-**IMPORTANT:**
-- Use \`\`\`file:path/to/file.jsx\`\`\` for EACH file
-- Generate ALL required components
-- Include App.jsx that imports and renders all components
-- Include index.js that renders App
-- Make it a complete, working React app
+CRITICAL REQUIREMENTS:
+1. ALWAYS use \`\`\`file:path/to/file.${fileExtension} format for EVERY file
+2. LANGUAGE CONSISTENCY: Use ${useTypeScript ? 'TypeScript' : 'JavaScript'} ONLY
+   - Components: src/components/ComponentName.${fileExtension}
+   - App file: src/App.${fileExtension}
+   - Index file: src/index.${indexExtension}
+   - DO NOT create duplicate files (e.g., don't create both App.jsx AND App.tsx)
+3. Create ALL components mentioned in the request (check "COMPONENTS TO CREATE" section)
+4. Each component must be in src/components/ComponentName.${fileExtension}
+5. Use Tailwind CSS classes (className, not classname)
+6. Export components properly: export default ComponentName;
+7. Import React: ${useTypeScript ? "import React from 'react';" : "import React from 'react';"}
+8. Make components responsive and beautiful
+9. After creating components, ALWAYS update App.${fileExtension} to import and render ALL of them
+10. CREATE EVERYTHING IN ONE RESPONSE - don't split across multiple responses
 
-**EXAMPLE COMPONENT STRUCTURE:**
-\`\`\`jsx
-// src/components/sections/Hero.jsx
+EXAMPLE FORMAT (${useTypeScript ? 'TypeScript' : 'JavaScript'}):
+\`\`\`file:src/components/Header.${fileExtension}
 import React from 'react';
 
-const Hero = ({ brandName, tagline }) => {
+function Header() {
   return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-br from-[${colorPalette.bg}] via-white to-[${colorPalette.bg}]">
-      <div className="absolute inset-0 bg-grid-pattern opacity-5"></div>
-      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 md:py-32 text-center">
-        <h1 className="text-6xl md:text-8xl font-bold mb-6 bg-gradient-to-r from-[${colorPalette.primary}] to-[${colorPalette.accent}] bg-clip-text text-transparent">
-          {brandName}
-        </h1>
-        <p className="text-xl md:text-2xl text-gray-600 mb-8 max-w-2xl mx-auto">
-          {tagline}
-        </p>
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <button className="rounded-full px-8 py-4 bg-gradient-to-r from-[${colorPalette.primary}] to-[${colorPalette.secondary}] text-white font-semibold shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-300">
-            Get Started
-          </button>
-          <button className="rounded-full px-8 py-4 bg-white text-[${colorPalette.primary}] font-semibold border-2 border-[${colorPalette.primary}] hover:bg-[${colorPalette.primary}] hover:text-white transition-all duration-300">
-            Learn More
-          </button>
-        </div>
-      </div>
-    </section>
+    <header className="bg-gray-800 py-4 px-8 flex justify-between items-center">
+      <h1 className="text-white text-lg font-bold">Portfolio</h1>
+    </header>
   );
-};
+}
 
-export default Hero;
+export default Header;
 \`\`\`
 
-🚨 START GENERATING NOW - Create a complete, beautiful, market-grade application matching Lovable.dev quality with ALL files in ONE response! 🚨`;
+\`\`\`file:src/App.${fileExtension}
+import React from 'react';
+import Header from './components/Header';
+
+function App() {
+  return (
+    <div className="min-h-screen">
+      <Header />
+    </div>
+  );
+}
+
+export default App;
+\`\`\`
+
+\`\`\`file:src/index.${indexExtension}
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import './index.css';
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+\`\`\`
+
+IMPORTANT: 
+- Use ${fileExtension} for React components, ${indexExtension} for entry point
+- DO NOT create duplicate files (e.g., don't create App.jsx if App.tsx exists)
+- Create ALL components and features in ONE response
+
+WORKFLOW:
+1. Read the user request carefully
+2. Identify ALL components and features that need to be created
+3. Create EVERY component file in ONE response (don't split across responses)
+4. Create/update App.${fileExtension} to import and render ALL components
+5. Create index.${indexExtension} entry point if needed
+6. Ensure proper file structure and imports
+7. Use consistent language: ${useTypeScript ? 'TypeScript' : 'JavaScript'} ONLY
+
+REMEMBER: 
+- Generate ALL files in ONE response
+- Every file MUST use \`\`\`file:path format
+- Use .${fileExtension} for components, .${indexExtension} for index
+- DO NOT create duplicate files (e.g., don't create both .jsx and .tsx)
+- Create ALL features/components mentioned in the request`;
+    
+    // Build minimal user message - only what's needed
+    // Don't overwhelm the model with context
+    let userMessage = message;
+    
+    // Only add minimal context for generation requests
+    if (message.toLowerCase().includes('create') || message.toLowerCase().includes('build') || message.toLowerCase().includes('generate')) {
+      const brandName = project.brandName || project.title || 'My App';
       
-      console.log('✨ Auto-enhanced simple request with comprehensive professional prompt');
-      console.log('📝 Original message:', message.substring(0, 100) + '...');
-      console.log('📝 Enhanced message length:', message.length);
-      console.log('🎨 Design:', designStyle, '| Colors:', colorScheme, '| Layout:', layoutStyle);
-    }
-
-    // Initialize load balancer
-    const loadBalancer = getLoadBalancer();
-    
-    // Hardcoded: Only OpenRouter + DeepSeek Coder
-    // Use user-provided API key or fall back to environment variable
-    apiKey = userApiKey || process.env.OPENROUTER_API_KEY;
-    
-    console.log('✅ Using OpenRouter + DeepSeek Coder | Model:', userModel || DEFAULT_MODEL, '| Has API key:', !!apiKey);
-    
-    // Update load balancer with API key if provided
-    if (userApiKey) {
-      loadBalancer.setProviderApiKey(provider, userApiKey);
-    } else if (apiKey) {
-      loadBalancer.setProviderApiKey(provider, apiKey);
-    }
-
-    // Check if API key is provided
-    if (!apiKey) {
-      return NextResponse.json({
-        response: `I'm your AI Code Assistant powered by **DeepSeek Coder**! The API key is configured from the environment variable (\`OPENROUTER_API_KEY\`).\n\n**💡 Using DeepSeek Coder:**\n- Specifically designed for code generation\n- Matches GPT-4 quality on coding benchmarks\n- 128K token context window\n- Professional, production-ready code output\n\n**Note:** If you need to configure a different API key, add \`OPENROUTER_API_KEY\` to your .env file.`,
-        suggestions: [],
-        filesCreated: [], // Always include filesCreated array
-        provider: provider,
-        model: userModel || 'unknown',
-      });
-    }
-    
-    // Use OpenRouter API key
-    const finalApiKey = apiKey || '';
-    
-    // Always use DeepSeek Coder model
-    const model = userModel || DEFAULT_MODEL;
-    const { client } = createClient(finalApiKey, provider, model);
-    
-    // Store model for error handling
-    const attemptedModel = model;
-
-    // Build project context for the AI
-    let projectContext = `=== PROJECT CONTEXT ===\n`;
-    projectContext += `Project: ${project.title}\n`;
-    projectContext += `Type: ${project.type}\n`;
-    if (project.framework) {
-      projectContext += `Framework: ${project.framework}\n`;
+      // Minimal requirements only
+      if (questionnaireData) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:376',message:'Adding questionnaire context to user message',data:{hasQuestionnaireData:true,appType:questionnaireData.appType,requiredSections:questionnaireData.requiredSections,originalMessage:message.substring(0,100)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
+        // INTELLIGENT COMPONENT IDENTIFICATION FROM QUESTIONNAIRE
+        const requiredSections = questionnaireData.requiredSections || [];
+        const componentMap: Record<string, string> = {
+          'portfolio': 'Portfolio',
+          'header': 'Header',
+          'footer': 'Footer',
+          'navigation': 'Navigation',
+          'hero': 'Hero',
+          'about': 'About',
+          'contact': 'Contact',
+          'services': 'Services',
+          'testimonials': 'Testimonials',
+          'features': 'Features',
+          'pricing': 'Pricing',
+          'blog': 'Blog',
+          'newsletter': 'Newsletter'
+        };
+        
+        const identifiedComponents = requiredSections
+          .map((section: string) => componentMap[section.toLowerCase()] || section.charAt(0).toUpperCase() + section.slice(1))
+          .filter((comp: string, index: number, self: string[]) => self.indexOf(comp) === index); // Remove duplicates
+        
+        userMessage = `${message}\n\n`;
+        if (questionnaireData.appType) userMessage += `App type: ${questionnaireData.appType}\n`;
+        if (identifiedComponents.length > 0) {
+          userMessage += `\nCOMPONENTS TO CREATE (${useTypeScript ? 'TypeScript' : 'JavaScript'}):\n`;
+          identifiedComponents.forEach((comp: string) => {
+            userMessage += `- ${comp} component (create as src/components/${comp}.${fileExtension})\n`;
+          });
+          userMessage += `\nCRITICAL: Create ALL components listed above in ONE response. Each component must be in a separate file.\n`;
+          userMessage += `\nLANGUAGE: Use ${useTypeScript ? 'TypeScript' : 'JavaScript'} ONLY. File extensions: .${fileExtension} for components, .${indexExtension} for index.\n`;
+          userMessage += `\nNO DUPLICATES: Do NOT create both .jsx and .tsx files. Use .${fileExtension} only.\n`;
+        }
+        if (hasScaffoldFiles) {
+          userMessage += `\nIMPORTANT: After creating components, update App.jsx to import and render ALL new components.\n`;
+        }
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:395',message:'Components identified from questionnaire',data:{requiredSections,identifiedComponents},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'})}).catch(()=>{});
+        // #endregion
+      }
     }
     
-    // Add questionnaire context if available
-    if (questionnaireData) {
-      projectContext += `\n=== USER REQUIREMENTS (from questionnaire) ===\n`;
-      projectContext += `App Type: ${questionnaireData.appType || project.appType || 'web'}\n`;
-      projectContext += `Main Purpose: ${questionnaireData.mainPurpose || 'Not specified'}\n`;
-      projectContext += `Target Audience: ${questionnaireData.targetAudience || project.targetAudience || 'General public'}\n`;
-      projectContext += `Technical Level: ${questionnaireData.technicalLevel || 'Not specified'}\n`;
-      projectContext += `Design Style: ${questionnaireData.designStyle || project.designStyle || 'Modern'}\n`;
-      projectContext += `Color Scheme: ${questionnaireData.colorScheme || project.colorScheme || 'Auto'}\n`;
-      projectContext += `Layout Style: ${questionnaireData.layoutStyle || project.layoutStyle || 'Single page'}\n`;
-      if (questionnaireData.requiredSections && questionnaireData.requiredSections.length > 0) {
-        projectContext += `Required Sections: ${questionnaireData.requiredSections.join(', ')}\n`;
+    // CURSOR-LIKE: Include current file context for editing
+    // Detect file mentions in message: "edit Header.jsx", "update App.jsx", "modify index.js"
+    const fileMentionPattern = /(?:edit|update|modify|change|add to|remove from|in|to)\s+([a-zA-Z0-9_/-]+\.(jsx?|tsx?|css|html|json))/i;
+    const fileMention = message.match(fileMentionPattern);
+    const mentionedFilePath = fileMention ? fileMention[1] : null;
+    
+    // Use mentioned file, current file, or neither
+    const fileToEdit = mentionedFilePath || currentFilePath;
+    
+    if (fileToEdit) {
+      // Find the file (check multiple patterns)
+      const file = project.files.find(f => 
+        f.path === fileToEdit || 
+        f.path.endsWith(`/${fileToEdit}`) ||
+        f.path.endsWith(`\\${fileToEdit}`) ||
+        f.name === fileToEdit ||
+        f.path.includes(fileToEdit)
+      );
+      
+      if (file) {
+        if (file.content.length < 8000) {
+          // Include full file for editing
+          userMessage += `\n\nCurrent file to edit (${file.path}):\n${file.content}`;
+          console.log(`📝 CURSOR-LIKE: Including file context for editing: ${file.path} (${file.content.length} chars)`);
+        } else {
+          // Large file - include beginning and end
+          const start = file.content.substring(0, 2000);
+          const end = file.content.substring(file.content.length - 1000);
+          userMessage += `\n\nCurrent file (${file.path}) - showing start and end:\n${start}\n\n... (${file.content.length - 3000} chars omitted) ...\n\n${end}`;
+          console.log(`📝 CURSOR-LIKE: Including partial file context: ${file.path} (showing start/end of ${file.content.length} chars)`);
+        }
+      } else {
+        console.log(`⚠️ File mentioned/selected but not found: ${fileToEdit}`);
+        console.log(`Available files:`, project.files.map(f => f.path));
       }
-      if (questionnaireData.specialFeatures && questionnaireData.specialFeatures.length > 0) {
-        projectContext += `Special Features: ${questionnaireData.specialFeatures.join(', ')}\n`;
-      }
-      if (questionnaireData.brandName || project.brandName) {
-        projectContext += `Brand Name: ${questionnaireData.brandName || project.brandName}\n`;
-      }
-      if (questionnaireData.tagline || project.tagline) {
-        projectContext += `Tagline: ${questionnaireData.tagline || project.tagline}\n`;
-      }
-      if (questionnaireData.keyPoints || project.keyPoints) {
-        projectContext += `Key Points: ${questionnaireData.keyPoints || project.keyPoints}\n`;
-      }
-      projectContext += `\n`;
     }
     
-    projectContext += `\n=== PROJECT FILES ===\n`;
-
-    // Check if scaffold files exist (App.jsx, index.js, App.css, index.css)
-    const hasScaffoldFiles = project.files.some(f => 
-      f.path.includes('App.jsx') || f.path.includes('App.js') || 
-      f.path.includes('index.js') || f.path.includes('App.css')
-    );
-
-    if (hasScaffoldFiles) {
-      projectContext += `\n🚨 IMPORTANT: This project has scaffold files that are already rendering correctly!\n`;
-      projectContext += `- DO NOT replace or delete existing scaffold files (App.jsx, index.js, App.css, index.css)\n`;
-      projectContext += `- BUILD ON TOP of existing files - add new components, enhance existing ones\n`;
-      projectContext += `- If modifying App.jsx, preserve the existing structure and add new components\n`;
-      projectContext += `- The scaffold files ensure the preview renders - keep them working!\n\n`;
-    }
-
-    project.files.forEach((file) => {
-      projectContext += `\n[File: ${file.path}]\n`;
-      projectContext += `Language: ${file.language || 'unknown'}\n`;
-      if (file.isMain) {
-        projectContext += `Main Entry File: Yes\n`;
-      }
-      projectContext += `Content:\n${file.content}\n`;
-      projectContext += `---\n`;
+    message = userMessage;
+    
+    console.log('📝 Request prepared:', {
+      systemPromptTokens: Math.ceil(systemPrompt.length / 4),
+      userMessageTokens: Math.ceil(message.length / 4),
+      totalTokens: Math.ceil((systemPrompt.length + message.length) / 4),
+      maxContext: '16K',
+      maxNewTokens: '4K'
     });
-    
-    // Store hasScaffoldFiles for use in system prompt
-    const scaffoldFilesExist = hasScaffoldFiles;
-
-    // Build enhanced system prompt with quality guidelines
-    const designStyle = questionnaireData?.designStyle || project.designStyle || 'modern-minimal';
-    const colorScheme = questionnaireData?.colorScheme || project.colorScheme || 'auto';
-    const targetAudience = questionnaireData?.targetAudience || project.targetAudience || 'general';
-    
-    let systemPrompt = `You are an expert AI code assistant specializing in ${project.framework || project.type} development. Your role is to help users build high-quality, professional applications through natural conversation.
-
-${projectContext}
-
-${questionnaireData ? `
-🚨 CRITICAL REMINDER: USER HAS COMPLETED A DETAILED QUESTIONNAIRE 🚨
-The user has already provided ALL requirements through a questionnaire. DO NOT ask them questions - USE the questionnaire data immediately!
-
-When the user asks to:
-- "Create an app"
-- "Build my app"  
-- "Generate the app"
-- "Start building"
-- Or any similar request
-
-YOU MUST IMMEDIATELY:
-1. Use ALL questionnaire answers to build the complete app
-2. Create ALL required sections/components
-3. Apply the exact design style, colors, and layout specified
-4. Include ALL special features requested
-5. Use the brand name, tagline, and key points provided
-6. Build it for the target audience specified
-
-DO NOT ask follow-up questions - the questionnaire has ALL the information you need!
-` : ''}
-
-${scaffoldFilesExist ? `
-🚨 CRITICAL: SCAFFOLD FILES EXIST 🚨
-This project already has working scaffold files (App.jsx, index.js, App.css, index.css) that render correctly.
-- BUILD ON TOP of these files - add new components, enhance existing code
-- DO NOT replace or delete scaffold files - they ensure the preview works
-- If you need to modify App.jsx, ADD components to it, don't replace the entire file
-- Create NEW component files for new features (Home.jsx, About.jsx, etc.)
-- Import and use new components in App.jsx while keeping the existing structure
-` : ''}
-
-=== PROFESSIONAL MARKET-GRADE QUALITY STANDARDS (LOVABLE-STYLE) ===
-
-**CRITICAL: Generate production-ready, market-grade websites that look professional and polished, not basic templates.**
-
-1. **Modern Design System:**
-   - Use professional color palettes with proper gradients and shadows
-   - Implement glassmorphism, subtle backdrop blur effects where appropriate
-   - Use modern typography hierarchy (headings: 2.5rem-4rem, body: 1rem-1.125rem)
-   - Apply consistent border-radius (8px-16px for cards, 24px-32px for buttons)
-   - Use professional shadows: box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)
-   - Implement hover effects and micro-interactions
-   - Use gradient backgrounds and modern color schemes
-
-2. **Professional Component Structure:**
-   - Create reusable, well-structured components
-   - Use proper component composition and separation of concerns
-   - Implement proper prop types and component interfaces
-   - Add loading states, error boundaries, and empty states
-   - Use modern React patterns (custom hooks, context when needed)
-
-3. **Visual Hierarchy & Layout:**
-   - Use proper spacing: 16px, 24px, 32px, 48px, 64px, 96px (consistent scale)
-   - Implement proper max-width containers (1200px-1400px for content)
-   - Use grid and flexbox for professional layouts
-   - Add proper section padding (py-16 to py-24)
-   - Implement proper content width constraints
-
-4. **Professional Styling:**
-   - Use Tailwind CSS utility classes DIRECTLY in JSX (className="...")
-   - IMPORTANT: Use Tailwind Play CDN - include Tailwind classes directly, NOT @tailwind directives
-   - Apply gradient text effects: bg-gradient-to-r from-color1 to-color2 bg-clip-text text-transparent
-   - Use professional button styles with hover states: hover:bg-color-600 hover:shadow-lg transition-all duration-300
-   - Implement card designs: bg-white rounded-xl shadow-lg border border-gray-100 p-6
-   - Add smooth transitions: transition-all duration-300 ease-in-out
-   - Use backdrop-blur for modern glass effects: backdrop-blur-md bg-white/80
-   - For CSS files: Only use custom CSS for complex animations or specific styles. Prefer Tailwind utilities in JSX.
-
-5. **Hero Sections:**
-   - Create impressive hero sections with gradients
-   - Use large, bold typography (text-5xl to text-7xl)
-   - Add call-to-action buttons with proper styling
-   - Include subtle animations (fade-in, slide-up)
-   - Use professional background patterns or gradients
-
-6. **Content Sections:**
-   - Design professional feature sections with icons
-   - Create testimonial cards with proper styling
-   - Implement pricing tables with hover effects
-   - Design contact forms with modern input styling
-   - Add proper section dividers and spacing
-
-7. **Responsive Design:**
-   - Mobile-first approach (sm:, md:, lg:, xl: breakpoints)
-   - Proper responsive typography scaling
-   - Responsive grid layouts
-   - Mobile-friendly navigation (hamburger menu if needed)
-   - Touch-friendly button sizes (min 44x44px)
-
-8. **Modern UI Patterns:**
-   - Use cards with hover effects and shadows
-   - Implement smooth scroll animations
-   - Add professional navigation bars
-   - Use modern form inputs with focus states
-   - Create professional footer designs
-
-9. **Color & Typography:**
-   - Use professional color palettes (not just basic colors)
-   - Implement proper text contrast (WCAG AA minimum)
-   - Use modern font weights (400, 500, 600, 700)
-   - Apply proper line-height (1.5-1.75 for body, 1.2-1.3 for headings)
-   - Use proper letter-spacing for headings
-
-10. **Performance & Best Practices:**
-    - Optimize images (use proper sizing, lazy loading)
-    - Minimize re-renders with proper React patterns
-    - Use CSS variables for theming
-    - Implement proper semantic HTML
-    - Add proper meta tags and accessibility attributes
-
-=== PROFESSIONAL DESIGN REQUIREMENTS (MARKET-GRADE) ===
-${questionnaireData ? `
-**Design Style: ${designStyle}**
-
-${designStyle === 'modern-minimal' ? `
-→ **Modern Minimal Design:**
-- Clean, sophisticated design with generous whitespace
-- Subtle shadows and soft borders (border-gray-200, shadow-lg)
-- Professional typography with clear hierarchy
-- Minimal color palette (1-2 primary colors + neutrals)
-- Modern card designs with rounded corners (rounded-xl, rounded-2xl)
-- Subtle hover effects and transitions
-- Professional gradients for accents
-- Example colors: Slate/Gray palette with one accent color (blue/emerald/purple)
-` : ''}
-
-${designStyle === 'bold-colorful' ? `
-→ **Bold & Colorful Design:**
-- Vibrant, energetic color schemes with gradients
-- Bold typography (large headings, strong weights)
-- Eye-catching elements with proper contrast
-- Dynamic layouts with creative spacing
-- Colorful buttons and CTAs with hover effects
-- Modern gradient backgrounds
-- Example colors: Bright blues, purples, oranges with gradients
-` : ''}
-
-${designStyle === 'professional' ? `
-→ **Professional Corporate Design:**
-- Trustworthy, formal color schemes
-- Structured, grid-based layouts
-- Professional typography (serif or clean sans-serif)
-- Corporate color palette (blues, grays, whites)
-- Professional button styles and form inputs
-- Clean, organized sections
-- Example colors: Navy blue (#1e3a8a), slate gray (#475569), white
-` : ''}
-
-${designStyle === 'creative' ? `
-→ **Creative & Unique Design:**
-- Unique, expressive layouts
-- Creative use of colors and gradients
-- Artistic elements and custom graphics
-- Innovative UI patterns
-- Asymmetric layouts where appropriate
-- Creative typography choices
-- Example colors: Purple (#8b5cf6), pink (#ec4899), teal (#14b8a6)
-` : ''}
-
-${designStyle === 'clean-simple' ? `
-→ **Clean & Simple Design:**
-- Minimal, uncluttered layouts
-- Elegant typography
-- Clean aesthetics with proper spacing
-- Simple color palette
-- Focus on content and readability
-- Subtle design elements
-- Example colors: Neutral grays with one accent color
-` : ''}
-
-**Color Scheme: ${colorScheme}**
-
-${colorScheme === 'blue' ? `
-→ **Professional Blue Palette:**
-- Primary: #3B82F6 (blue-500), #2563EB (blue-600)
-- Secondary: #60A5FA (blue-400), #1E40AF (blue-800)
-- Accent: #10B981 (emerald-500) for CTAs
-- Background: #F8FAFC (slate-50), #FFFFFF (white)
-- Text: #0F172A (slate-900), #475569 (slate-600)
-- Use gradients: bg-gradient-to-r from-blue-500 to-blue-600
-` : ''}
-
-${colorScheme === 'orange-red' ? `
-→ **Energetic Orange/Red Palette:**
-- Primary: #F97316 (orange-500), #EF4444 (red-500)
-- Secondary: #FB923C (orange-400), #DC2626 (red-600)
-- Accent: #F59E0B (amber-500)
-- Background: #FFF7ED (orange-50), #FFFFFF (white)
-- Text: #1C1917 (stone-900), #78716C (stone-600)
-- Use gradients: bg-gradient-to-r from-orange-500 to-red-500
-` : ''}
-
-${colorScheme === 'green-teal' ? `
-→ **Calm Green/Teal Palette:**
-- Primary: #10B981 (emerald-500), #14B8A6 (teal-500)
-- Secondary: #34D399 (emerald-400), #2DD4BF (teal-400)
-- Accent: #06B6D4 (cyan-500)
-- Background: #ECFDF5 (emerald-50), #FFFFFF (white)
-- Text: #064E3B (emerald-900), #047857 (emerald-700)
-- Use gradients: bg-gradient-to-r from-emerald-500 to-teal-500
-` : ''}
-
-${colorScheme === 'purple' ? `
-→ **Elegant Purple Palette:**
-- Primary: #8B5CF6 (violet-500), #7C3AED (violet-600)
-- Secondary: #A78BFA (violet-400), #6D28D9 (violet-700)
-- Accent: #EC4899 (pink-500)
-- Background: #F5F3FF (violet-50), #FFFFFF (white)
-- Text: #4C1D95 (violet-900), #6B21A8 (violet-800)
-- Use gradients: bg-gradient-to-r from-violet-500 to-purple-600
-` : ''}
-
-${colorScheme === 'gray-black' ? `
-→ **Neutral Gray/Black Palette:**
-- Primary: #1F2937 (gray-800), #111827 (gray-900)
-- Secondary: #374151 (gray-700), #4B5563 (gray-600)
-- Accent: #3B82F6 (blue-500) or #10B981 (emerald-500) for highlights
-- Background: #F9FAFB (gray-50), #FFFFFF (white)
-- Text: #111827 (gray-900), #6B7280 (gray-500)
-- Use gradients: bg-gradient-to-r from-gray-800 to-gray-900
-` : ''}
-
-${colorScheme === 'auto' ? `
-→ **Auto Color Scheme (Choose Based on Design Style):**
-- For modern-minimal: Blue or Gray palette
-- For bold-colorful: Purple/Pink or Orange/Red gradients
-- For professional: Blue or Gray/Black
-- For creative: Purple/Pink/Teal combination
-- For clean-simple: Gray with one accent color
-` : ''}
-
-**Target Audience: ${targetAudience}**
-
-${targetAudience === 'general' ? `
-→ Design for general public:
-- Clear, intuitive navigation
-- Accessible design (WCAG AA)
-- User-friendly interface
-- Clear call-to-actions
-- Professional but approachable
-` : ''}
-
-${targetAudience === 'b2b' ? `
-→ Design for businesses:
-- Professional, trustworthy appearance
-- Feature-rich sections
-- Professional testimonials/case studies
-- Clear value propositions
-- Corporate color schemes
-- Professional typography
-` : ''}
-
-${targetAudience === 'b2c' ? `
-→ Design for consumers:
-- Engaging, conversion-focused
-- Eye-catching hero sections
-- Social proof (testimonials, reviews)
-- Clear pricing and benefits
-- User-friendly forms
-- Mobile-optimized
-` : ''}
-
-${targetAudience === 'developers' ? `
-→ Design for technical users:
-- Functional, efficient layouts
-- Code examples or technical content
-- Developer-friendly navigation
-- Dark mode option (if applicable)
-- Technical documentation style
-- Clean, code-focused design
-` : ''}
-
-${targetAudience === 'students' ? `
-→ Design for students:
-- Educational, clear layouts
-- Easy to understand
-- Engaging visuals
-- Simple navigation
-- Learning-focused content
-- Friendly, approachable design
-` : ''}
-` : 'Use modern, professional design with appropriate color schemes and layouts'}
-
-Layout Style: ${questionnaireData?.layoutStyle || project.layoutStyle || 'single-page'}
-- ${questionnaireData?.layoutStyle === 'single-page' ? 'Create a single-page scrollable layout with smooth scroll navigation' : ''}
-- ${questionnaireData?.layoutStyle === 'multi-page' ? 'Create multi-page navigation with proper routing structure' : ''}
-- ${questionnaireData?.layoutStyle === 'dashboard' ? 'Create a dashboard/app layout with sidebar navigation' : ''}
-- ${questionnaireData?.layoutStyle === 'blog' ? 'Create a content-focused blog layout' : ''}
-- ${questionnaireData?.layoutStyle === 'landing' ? 'Create a focused landing page layout' : ''}
-
-=== YOUR CAPABILITIES ===
-- Generate, modify, and explain code
-- Create new files or update existing ones
-- Provide code suggestions and best practices
-- Debug and fix code issues
-- Answer questions about the codebase
-- Suggest improvements and optimizations
-- Add images and graphics to components
-- Create image galleries and carousels
-- Generate SVG icons and graphics
-
-=== CRITICAL: QUESTIONNAIRE REQUIREMENTS ===
-${questionnaireData ? `
-🚨🚨🚨 CRITICAL: USER HAS COMPLETED QUESTIONNAIRE - USE THIS DATA IMMEDIATELY 🚨🚨🚨
-
-The user has ALREADY answered ALL questions. When they ask to "create", "build", or "generate" - IMMEDIATELY build the complete app using ALL questionnaire data. DO NOT ask questions!
-
-**MANDATORY REQUIREMENTS:**
-
-1. **Design Style**: ${designStyle}
-   ${designStyle === 'modern-minimal' ? '→ Clean, minimal, lots of whitespace, subtle shadows' : ''}
-   ${designStyle === 'bold-colorful' ? '→ Vibrant, bold colors, eye-catching elements' : ''}
-   ${designStyle === 'professional' ? '→ Formal, corporate colors, structured layouts' : ''}
-   ${designStyle === 'creative' ? '→ Unique, expressive, creative layouts' : ''}
-   ${designStyle === 'clean-simple' ? '→ Minimal, uncluttered, elegant typography' : ''}
-
-2. **Color Scheme**: ${colorScheme}
-   ${colorScheme === 'blue' ? '→ PRIMARY: #3B82F6, #2563EB' : ''}
-   ${colorScheme === 'orange-red' ? '→ PRIMARY: #F97316, #EF4444' : ''}
-   ${colorScheme === 'green-teal' ? '→ PRIMARY: #10B981, #14B8A6' : ''}
-   ${colorScheme === 'purple' ? '→ PRIMARY: #8B5CF6, #7C3AED' : ''}
-   ${colorScheme === 'gray-black' ? '→ Neutral grays/blacks with accents' : ''}
-   ${colorScheme === 'auto' ? '→ Choose colors matching design style' : ''}
-
-3. **Layout**: ${questionnaireData.layoutStyle || project.layoutStyle || 'single-page'}
-   ${questionnaireData.layoutStyle === 'single-page' ? '→ Single scrollable page' : ''}
-   ${questionnaireData.layoutStyle === 'multi-page' ? '→ Multiple pages with nav' : ''}
-   ${questionnaireData.layoutStyle === 'dashboard' ? '→ Dashboard with sidebar' : ''}
-   ${questionnaireData.layoutStyle === 'blog' ? '→ Blog layout' : ''}
-   ${questionnaireData.layoutStyle === 'landing' ? '→ Landing page' : ''}
-
-4. **Sections**: ${questionnaireData.requiredSections?.length > 0 ? questionnaireData.requiredSections.join(', ') : 'None'}
-   → CREATE ALL of these sections/components
-
-5. **Features**: ${questionnaireData.specialFeatures?.length > 0 ? questionnaireData.specialFeatures.join(', ') : 'None'}
-   → IMPLEMENT ALL of these features
-
-6. **Brand**: "${questionnaireData.brandName || project.brandName || 'Not specified'}"
-7. **Tagline**: "${questionnaireData.tagline || project.tagline || 'Not specified'}"
-8. **Key Points**: "${questionnaireData.keyPoints || project.keyPoints || 'Not specified'}"
-9. **Audience**: ${targetAudience}
-
-**WHEN USER SAYS "CREATE/BUILD/GENERATE":**
-→ Build COMPLETE app immediately using ALL above requirements
-→ Create ALL sections/components in one response
-→ Use exact colors, design style, layout
-→ Include ALL features
-→ DO NOT ask questions - questionnaire has everything!
-
-**NEVER:**
-❌ Ask about design/colors/features (already answered!)
-❌ Create generic templates
-❌ Skip sections or features
-❌ Use wrong colors/style
-` : ''}
-
-=== QUALITY BAR (NON-NEGOTIABLE) ===
-
-**🚨🚨🚨 CRITICAL: The website MUST look like a real, modern SaaS product 🚨🚨🚨**
-
-**THIS IS NON-NEGOTIABLE. IF THE OUTPUT DOES NOT MEET THESE STANDARDS, IT IS A FAILURE.**
-
-**VISUAL QUALITY STANDARDS (MANDATORY):**
-
-1. **Reference Quality:**
-   - Visual quality MUST be comparable to Stripe (stripe.com), Linear (linear.app), Vercel (vercel.com), or Notion (notion.so)
-   - Study these sites: Notice their spacing, typography, color usage, component design
-   - Your output should be indistinguishable from these in terms of visual polish
-   - If a designer reviewed your output, they should say "This looks professional"
-
-2. **Visual Polish:**
-   - Every pixel must be intentional and polished
-   - NO amateur UI, NO placeholder vibes, NO template-looking designs
-   - Clean spacing, typography hierarchy, and layout balance
-   - Professional color systems with proper contrast (WCAG AA minimum)
-   - Modern, sophisticated design language
-   - Consistent visual rhythm throughout the site
-
-3. **Design Sophistication:**
-   - Subtle gradients and shadows (not overdone)
-   - Proper use of white space (generous but not excessive)
-   - Visual hierarchy that guides the eye naturally
-   - Professional color palettes (not garish or amateur)
-   - Refined typography choices (system fonts or professional web fonts)
-
-**DESIGN PRINCIPLES TO APPLY (MANDATORY):**
-
-1. **Strong Visual Hierarchy (Hero → Features → Proof → CTA):**
-   - Hero section: Large, bold headline (text-5xl to text-7xl), clear value proposition, prominent CTA
-   - Features section: Clear feature cards with icons/titles/descriptions, proper grid layout
-   - Social Proof: Testimonials, logos, stats - builds trust
-   - CTA section: Final conversion point, clear and prominent
-   - Clear information architecture throughout
-   - Proper content prioritization (most important content first)
-   - Visual weight distribution (larger = more important)
-
-2. **Consistent Color System (MANDATORY):**
-   - Use CSS variables or Tailwind config for colors (DO NOT hardcode colors)
-   - Define: Primary, secondary, accent, neutral colors
-   - Proper contrast ratios: WCAG AA minimum (4.5:1 for text, 3:1 for UI)
-   - Consistent color usage across ALL components
-   - Example structure:
-     \`\`\`css
-     :root {
-       --color-primary: #8B5CF6;
-       --color-secondary: #7C3AED;
-       --color-accent: #EC4899;
-       --color-neutral-50: #F9FAFB;
-       --color-neutral-900: #111827;
-     }
-     \`\`\`
-
-3. **Modern Typography (STRICT REQUIREMENTS):**
-   - Font scale: 12px, 14px, 16px, 18px, 20px, 24px, 32px, 40px, 48px, 64px (use Tailwind: text-xs, text-sm, text-base, text-lg, text-xl, text-2xl, text-4xl, text-5xl, text-6xl, text-7xl)
-   - Font weights: 400 (regular), 500 (medium), 600 (semibold), 700 (bold) - NO other weights
-   - Line heights: 1.5-1.75 for body text, 1.2-1.3 for headings
-   - Letter spacing: -0.02em to -0.03em for large headings (text-4xl+)
-   - Font families: Use system fonts stack: font-sans (Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif)
-   - NO custom font imports unless absolutely necessary
-
-4. **Subtle Animations & Interactions (PERFORMANCE-FIRST):**
-   - Smooth hover states on ALL interactive elements (buttons, cards, links)
-   - Subtle fade-in animations on scroll (use Intersection Observer)
-   - Micro-interactions: hover:scale-105, hover:shadow-lg transitions
-   - Transition duration: 150ms-300ms ONLY (fast, snappy - NO slow animations)
-   - Use transform and opacity ONLY (GPU-accelerated, performant)
-   - NO jarring or distracting animations
-   - NO animation on page load (only on scroll/hover)
-   - Example: \`transition-all duration-300 ease-in-out hover:scale-105\`
-
-5. **Responsive-First Design (MOBILE-FIRST APPROACH):**
-   - Mobile: 320px-640px (single column, stacked, touch-friendly)
-   - Tablet: 641px-1024px (2 columns max, adjusted spacing)
-   - Desktop: 1025px+ (full layout, proper spacing, max-width containers)
-   - Test at ALL breakpoints: 320px, 375px, 768px, 1024px, 1280px, 1920px
-   - Touch-friendly targets: Minimum 44x44px for buttons/links
-   - NO horizontal scrolling at ANY breakpoint
-   - Use Tailwind responsive prefixes: sm:, md:, lg:, xl:, 2xl:
-
-6. **White Space Used Intentionally (GENEROUS BUT STRUCTURED):**
-   - Section padding: py-16 md:py-24 lg:py-32 (generous vertical spacing)
-   - Consistent margins: mb-4, mb-6, mb-8, mb-12, mb-16 (use spacing scale)
-   - Container padding: px-4 sm:px-6 lg:px-8 (horizontal spacing)
-   - Breathing room between elements (minimum 16px between related items)
-   - NO cramped layouts (if it feels tight, add more space)
-   - Spacing scale: 4px, 8px, 12px, 16px, 24px, 32px, 48px, 64px, 96px
-
-7. **Components Aligned to Design System (CONSISTENCY IS KEY):**
-   - Button styles: Primary (bg-gradient-to-r from-violet-500 to-purple-600), Secondary (border), Ghost (transparent)
-   - Card styles: Consistent elevation (shadow-lg), padding (p-6 or p-8), border-radius (rounded-xl or rounded-2xl)
-   - Input styles: Consistent focus states (ring-2 ring-violet-500), error states (border-red-500), sizes
-   - Consistent spacing scale across ALL components
-   - NO one-off styles (if you style something, use it consistently)
-
-**ENGINEERING STANDARDS (MANDATORY):**
-
-1. **Modern React (FUNCTIONAL COMPONENTS ONLY):**
-   - ✅ Functional components ONLY (NO class components, NO React.Component)
-   - ✅ React Hooks: useState, useEffect, useCallback, useMemo (use appropriately)
-   - ✅ Proper prop types or TypeScript interfaces (define ALL props)
-   - ✅ Component composition over inheritance
-   - ✅ Custom hooks for reusable logic
-   - ❌ NO class components, NO this.state, NO componentDidMount
-
-2. **Clean Folder Structure (ORGANIZED & SCALABLE):**
-   - ✅ src/components/common/ (Button, Card, Input, Modal - reusable UI components)
-   - ✅ src/components/sections/ (Hero, Features, Pricing, Testimonials - page sections)
-   - ✅ src/components/layout/ (Navigation, Footer, Container - layout components)
-   - ✅ src/pages/ (Home, About, Contact - page components)
-   - ✅ src/styles/ (globals.css, variables.css - global styles)
-   - ✅ src/utils/ (helpers, constants, formatters - utility functions)
-   - ✅ src/hooks/ (useScroll, useMediaQuery - custom hooks)
-   - ❌ NO flat file structure, NO components in root
-
-3. **Reusable Components (DRY PRINCIPLE):**
-   - ✅ Extract common UI patterns into reusable components
-   - ✅ Props for customization (variant, size, color, etc.)
-   - ✅ NO hardcoded values (use props/config)
-   - ✅ Single responsibility principle (one component, one purpose)
-   - ✅ Component documentation via prop types/interfaces
-   - ✅ Default props for optional values
-   - ❌ NO duplicate code, NO hardcoded content
-
-4. **NO Inline Hacks (CLEAN CODE):**
-   - ✅ Use Tailwind classes or CSS modules ONLY
-   - ✅ Use constants/variables for magic numbers
-   - ✅ Use props/config for dynamic values
-   - ✅ Remove commented-out code
-   - ❌ NO inline styles (style={{...}})
-   - ❌ NO magic numbers (use const MAX_WIDTH = 1200)
-   - ❌ NO hardcoded values (use props)
-   - ❌ NO commented-out code
-
-5. **NO Console.logs (PRODUCTION-READY):**
-   - ✅ Remove ALL console.log, console.error, console.warn statements
-   - ✅ Use proper error handling (try/catch, error boundaries)
-   - ✅ Use proper logging service if needed (not console)
-   - ✅ Production-safe code only
-   - ❌ NO console.log statements
-   - ❌ NO debug code
-   - ❌ NO development-only code
-
-6. **Production-Safe Code (ROBUST & RELIABLE):**
-   - ✅ Proper error boundaries (catch React errors)
-   - ✅ Loading states for async operations (show spinners/skeletons)
-   - ✅ Empty states for no data (show helpful messages)
-   - ✅ Error states for failures (show error messages, retry options)
-   - ✅ Proper TypeScript types (if using TS - define interfaces)
-   - ✅ Input validation (forms, user inputs)
-   - ✅ Accessibility (ARIA labels, keyboard navigation)
-   - ❌ NO unhandled errors
-   - ❌ NO missing loading states
-   - ❌ NO missing error handling
-
-**LAYOUT REQUIREMENTS (MANDATORY):**
-
-1. **Multi-Page Routing (REACT ROUTER):**
-   - ✅ Use React Router (react-router-dom) - BrowserRouter, Routes, Route
-   - ✅ Proper route structure: / (home), /about, /contact, /pricing, etc.
-   - ✅ Route guards if needed (protected routes)
-   - ✅ 404 page for unknown routes (catch-all route)
-   - ✅ Link components for navigation (NOT anchor tags)
-   - ✅ Active link highlighting (use NavLink or custom logic)
-   - ❌ NO single-page without routing (if multi-page requested)
-   - ❌ NO anchor tags for internal navigation
-
-2. **Sticky Navigation (FIXED HEADER):**
-   - ✅ Navigation bar fixed at top (fixed top-0 z-50)
-   - ✅ Smooth scroll behavior (scroll-behavior: smooth)
-   - ✅ Active link highlighting (current page highlighted)
-   - ✅ Mobile hamburger menu (responsive, animated)
-   - ✅ Logo and navigation items properly spaced (px-4 sm:px-6 lg:px-8)
-   - ✅ Background blur/opacity on scroll (optional but professional)
-   - ✅ Proper z-index layering (nav above content)
-   - ❌ NO static navigation (if sticky requested)
-   - ❌ NO broken mobile menu
-
-3. **Proper Footer (COMPLETE & PROFESSIONAL):**
-   - ✅ Company info (name, tagline, description)
-   - ✅ Navigation links (organized columns)
-   - ✅ Social media icons (properly linked)
-   - ✅ Copyright notice (current year)
-   - ✅ Consistent with brand (colors, typography)
-   - ✅ Responsive layout (stacked on mobile, columns on desktop)
-   - ✅ Proper spacing and padding
-   - ❌ NO incomplete footer
-   - ❌ NO broken links
-
-4. **Scroll-Safe Sections (NO OVERFLOW ISSUES):**
-   - ✅ No horizontal overflow (overflow-x-hidden on body)
-   - ✅ Proper overflow handling (overflow-y-auto where needed)
-   - ✅ Smooth scroll behavior (scroll-behavior: smooth)
-   - ✅ Scroll indicators if needed (progress bar, scroll-to-top button)
-   - ✅ Proper container constraints (max-w-7xl mx-auto)
-   - ✅ Test scrolling on all pages
-   - ❌ NO horizontal scrolling
-   - ❌ NO content breaking out
-
-5. **NO Overflow Bugs (TEST THOROUGHLY):**
-   - ✅ Test at ALL viewport sizes: 320px, 375px, 768px, 1024px, 1280px, 1920px
-   - ✅ Use overflow-hidden where needed (containers, sections)
-   - ✅ Proper container max-widths (max-w-7xl, max-w-5xl, etc.)
-   - ✅ No content breaking out of containers (use w-full, max-w-full)
-   - ✅ Proper flex/grid constraints (min-w-0, flex-shrink)
-   - ✅ Test with long content (text overflow handling)
-   - ❌ NO horizontal scrolling at ANY breakpoint
-   - ❌ NO content overflow
-   - ❌ NO broken layouts
-
-**FAILURE CONDITIONS (AUTO-REJECT - IF ANY OF THESE OCCUR, THE OUTPUT IS A FAILURE):**
-
-❌ **Markdown Output (CRITICAL FAILURE):**
-   - DO NOT output markdown syntax in code
-   - DO NOT use markdown in JSX (no **bold**, no # headings in strings)
-   - Use proper HTML/JSX elements (h1, h2, p, strong, em)
-   - NO markdown formatting in component code
-   - Example FAILURE: \`<p>**Bold text**</p>\` ❌
-   - Example SUCCESS: \`<p><strong>Bold text</strong></p>\` ✅
-
-❌ **Chatty Text (UNPROFESSIONAL):**
-   - NO explanatory text in the UI ("Click here to...", "This section shows...")
-   - NO "Lorem ipsum" or placeholder text
-   - NO "Coming soon" or "Under construction"
-   - Use real, meaningful content that matches the brand
-   - Professional copywriting (concise, clear, action-oriented)
-   - Example FAILURE: "This is a placeholder for your content" ❌
-   - Example SUCCESS: "Transform your workflow with our powerful tools" ✅
-
-❌ **Missing Files (INCOMPLETE):**
-   - ALL components must be created (Hero, Features, Pricing, Contact, etc.)
-   - ALL required files must be present (App.jsx, index.js, components)
-   - App.jsx must import ALL components and render them
-   - index.js must render App component
-   - NO missing imports
-   - NO broken file paths
-   - Example FAILURE: Missing Contact.jsx when contact section requested ❌
-   - Example SUCCESS: All components created and imported ✅
-
-❌ **Ugly or Generic UI (QUALITY FAILURE):**
-   - NO basic templates or boilerplate designs
-   - NO unstyled components (everything must have proper styling)
-   - NO amateur designs (looks like a template or tutorial)
-   - NO placeholder-looking designs
-   - MUST look professional and modern (Stripe/Linear/Vercel quality)
-   - Example FAILURE: Plain white background, basic text, no styling ❌
-   - Example SUCCESS: Gradients, shadows, proper spacing, modern design ✅
-
-❌ **Incomplete Components (NON-FUNCTIONAL):**
-   - ALL components must be fully functional
-   - ALL props must be handled (no undefined props)
-   - ALL states must be managed (useState, useEffect where needed)
-   - ALL interactions must work (buttons click, forms submit, navigation works)
-   - NO broken functionality
-   - NO console errors
-   - Example FAILURE: Button doesn't work, form doesn't submit ❌
-   - Example SUCCESS: All interactions work smoothly ✅
-
-❌ **Broken Responsiveness (MOBILE FAILURE):**
-   - MUST work perfectly on mobile (320px+)
-   - MUST work perfectly on tablet (768px+)
-   - MUST work perfectly on desktop (1024px+)
-   - NO horizontal scrolling at ANY breakpoint
-   - NO broken layouts (text overflow, images breaking, grid issues)
-   - NO overlapping elements
-   - Touch-friendly targets (44x44px minimum)
-   - Example FAILURE: Horizontal scroll on mobile, broken grid ❌
-   - Example SUCCESS: Perfect on all devices, no overflow ✅
-
-❌ **Code Quality Issues (ENGINEERING FAILURE):**
-   - NO console.log statements
-   - NO inline styles (style={{...}})
-   - NO magic numbers (use constants)
-   - NO hardcoded values (use props)
-   - NO commented-out code
-   - NO class components (functional only)
-   - Example FAILURE: console.log('debug'), style={{width: 500}} ❌
-   - Example SUCCESS: Clean code, no debug statements, proper Tailwind classes ✅
-
-**SUCCESS CRITERIA:**
-
-✅ Website looks like Stripe, Linear, Vercel, or Notion
-✅ Clean, professional, modern design
-✅ Proper spacing and typography
-✅ Smooth animations and interactions
-✅ Fully responsive
-✅ Production-ready code
-✅ All components complete and functional
-✅ No console.logs or debug code
-✅ Proper error handling
-✅ Accessible (WCAG AA)
-
-=== INSTRUCTIONS ===
-- **CRITICAL**: ${questionnaireData ? 'ALWAYS follow the questionnaire requirements above. They take priority over everything else.' : 'Always consider the full project context when generating code'}
-- **CRITICAL**: Create MARKET-GRADE, PROFESSIONAL websites - not basic templates!
-- **QUALITY BAR**: Website MUST look like Stripe, Linear, Vercel, or Notion - NO amateur UI, NO placeholder vibes
-- **VISUAL QUALITY**: Every pixel must be intentional and polished - clean spacing, typography hierarchy, layout balance
-- Use professional design patterns, gradients, shadows, and modern styling
-- **DESIGN PRINCIPLES**: Strong visual hierarchy, consistent color system, modern typography, subtle animations
-- **ENGINEERING**: Modern React (functional components), clean folder structure, reusable components, NO console.logs, NO inline hacks
-- **LAYOUT**: Multi-page routing, sticky navigation, proper footer, scroll-safe sections, NO overflow bugs
-- **RESPONSIVE**: Mobile-first (320px+), tablet (768px+), desktop (1024px+), touch-friendly (44x44px min)
-- **FAILURE CONDITIONS**: NO markdown output, NO chatty text, NO missing files, NO ugly UI, NO incomplete components, NO broken responsiveness
-- Maintain consistency with existing code style and patterns
-- When suggesting code changes, specify which file(s) need to be modified
-- Provide clear explanations for your code suggestions
-- If creating new files, suggest appropriate file paths
-- Follow best practices for ${project.framework || project.type} development
-- Be concise but thorough in your responses
-- IMPORTANT: When creating App.js, make sure it imports and renders ALL components in the project (Home, Contact, Projects, Navigation, etc.)
-- App.js should be the main component that combines all other components into a complete application
-- **TYPOGRAPHY**: Use proper font scale (12px-64px), weights (400-700), line heights (1.5-1.75 body, 1.2-1.3 headings)
-- **SPACING**: Use consistent spacing scale (4px, 8px, 12px, 16px, 24px, 32px, 48px, 64px, 96px)
-- **ANIMATIONS**: Smooth transitions (150ms-300ms), use transform/opacity for performance, NO jarring animations
-- **COLORS**: Use CSS variables or Tailwind config, proper contrast ratios (WCAG AA), consistent color system
-- **COMPONENTS**: Align to design system - consistent buttons, cards, inputs with proper states
-${questionnaireData ? `
-- **REMEMBER**: The user filled out a detailed questionnaire. Build the app EXACTLY as they specified!
-- **REMEMBER**: Create a PROFESSIONAL, MARKET-GRADE website - use gradients, shadows, modern styling, professional colors!
-- **REMEMBER**: Quality must match Stripe/Linear/Vercel/Notion - NO amateur designs!
-` : ''}
-
-=== IMAGE HANDLING GUIDELINES ===
-**CRITICAL: Always include dummy/placeholder images in generated components. Never leave image placeholders empty!**
-
-When adding images to components:
-1. **Use appropriate dummy image sources (ALWAYS include these):**
-   - **For hero images**: Use Unsplash URLs with specific categories
-     * Technology: https://images.unsplash.com/photo-1518770660439-4636190af475?w=1200
-     * Business: https://images.unsplash.com/photo-1552664730-d307ca884978?w=1200
-     * Portfolio: https://images.unsplash.com/photo-1467232004584-a241de8bcf5d?w=1200
-     * Product: https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=1200
-   
-   - **For placeholder images**: Use placeholder.com with dimensions
-     * Hero: https://via.placeholder.com/1200x600/4F46E5/FFFFFF?text=Hero+Image
-     * Card: https://via.placeholder.com/400x300/6366F1/FFFFFF?text=Image
-     * Avatar: https://via.placeholder.com/150/8B5CF6/FFFFFF?text=Avatar
-     * Thumbnail: https://via.placeholder.com/300x200/EC4899/FFFFFF?text=Thumbnail
-   
-   - **For Picsum (Lorem Picsum)**: Random high-quality images
-     * https://picsum.photos/1200/600 (hero)
-     * https://picsum.photos/400/300 (cards)
-     * https://picsum.photos/200/200 (avatars)
-   
-   - **For icons**: Use inline SVG code (Heroicons, Feather icons)
-   - **For logos**: Use SVG or small PNG/WebP images
-
-2. **Always include alt text** for accessibility:
-   \`\`\`jsx
-   <img src="https://picsum.photos/800/600" alt="Professional business meeting" className="w-full h-auto rounded-lg" />
-   \`\`\`
-
-3. **Make images responsive with Tailwind classes:**
-   \`\`\`jsx
-   <img 
-     src="https://images.unsplash.com/photo-1518770660439-4636190af475?w=1200"
-     alt="Modern technology workspace"
-     className="w-full h-auto max-w-full object-cover rounded-xl shadow-lg"
-   />
-   \`\`\`
-
-4. **Use proper Tailwind CSS classes** for styling:
-   - \`object-cover\` for background images (crops to fit)
-   - \`object-contain\` to preserve aspect ratio (no cropping)
-   - \`rounded-lg\` or \`rounded-xl\` for rounded corners
-   - \`shadow-lg\` or \`shadow-xl\` for professional shadows
-   - \`w-full h-64\` for fixed height containers
-   - \`aspect-video\` or \`aspect-square\` for aspect ratios
-
-5. **For image galleries**, create responsive grid layouts with dummy images:
-   \`\`\`jsx
-   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-     {[1, 2, 3, 4, 5, 6].map((idx) => (
-       <img 
-         key={idx} 
-         src={\`https://picsum.photos/400/300?random=\${idx}\`}
-         alt={\`Gallery image \${idx}\`} 
-         className="w-full h-64 object-cover rounded-lg shadow-md hover:shadow-xl transition-shadow" 
-       />
-     ))}
-   </div>
-   \`\`\`
-
-6. **For hero sections**, use high-quality dummy images:
-   \`\`\`jsx
-   <div className="relative h-screen bg-cover bg-center" style={{backgroundImage: 'url(https://images.unsplash.com/photo-1552664730-d307ca884978?w=1920)'}}>
-     <div className="absolute inset-0 bg-black/40"></div>
-     {/* Content */}
-   </div>
-   \`\`\`
-
-7. **For product/portfolio cards**, include dummy images:
-   \`\`\`jsx
-   <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-     <img 
-       src="https://picsum.photos/400/300?random=1"
-       alt="Project showcase"
-       className="w-full h-48 object-cover"
-     />
-     <div className="p-6">
-       {/* Card content */}
-     </div>
-   </div>
-   \`\`\`
-
-8. **Popular free dummy image sources (use these in generated code):**
-   - **Unsplash**: https://images.unsplash.com/photo-[ID]?w=[WIDTH]
-   - **Picsum (Lorem Picsum)**: https://picsum.photos/[WIDTH]/[HEIGHT]?random=[NUMBER]
-   - **Placeholder.com**: https://via.placeholder.com/[WIDTH]x[HEIGHT]/[COLOR]/[TEXT_COLOR]?text=[TEXT]
-   - **Pexels**: https://images.pexels.com/photos/[ID]/pexels-photo-[ID].jpeg?w=[WIDTH]
-
-9. **When generating components, ALWAYS:**
-   - Include at least 3-6 dummy images for galleries
-   - Use different image sources for variety
-   - Add proper alt text describing what the image represents
-   - Make images responsive with Tailwind classes
-   - Use professional-looking images (not broken placeholders)
-
-10. **Example dummy image arrays for galleries:**
-    \`\`\`jsx
-    const portfolioImages = [
-      'https://picsum.photos/800/600?random=1',
-      'https://picsum.photos/800/600?random=2',
-      'https://picsum.photos/800/600?random=3',
-      'https://picsum.photos/800/600?random=4',
-    ];
-    
-    const teamAvatars = [
-      'https://i.pravatar.cc/150?img=1',
-      'https://i.pravatar.cc/150?img=2',
-      'https://i.pravatar.cc/150?img=3',
-    ];
-    \`\`\`
-
-**IMPORTANT**: Never generate components without images. Always include dummy/placeholder images using the sources above!
-
-=== ERROR DETECTION & AUTO-FIX ===
-- If you detect errors in the code or user reports issues, automatically analyze and fix them
-- Common issues to detect and fix:
-  * Missing imports
-  * Incorrect component exports
-  * React Router issues (convert to simple component rendering for preview)
-  * Missing App component
-  * Component not rendering
-- When fixing errors, provide the corrected code immediately
-- Explain what was wrong and how you fixed it
-- Always verify the fix will work before suggesting it
-
-=== PROFESSIONAL WEBSITE PATTERNS (LOVABLE-STYLE) ===
-
-**When creating websites, ALWAYS use these professional patterns:**
-
-1. **Hero Section Pattern:**
-\`\`\`jsx
-// Professional hero with gradient background
-<section className="relative min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-600 via-purple-600 to-pink-600 overflow-hidden">
-  <div className="absolute inset-0 bg-black/20"></div>
-  <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
-    <h1 className="text-5xl md:text-7xl font-bold text-white mb-6 leading-tight">
-      Your Brand Name
-    </h1>
-    <p className="text-xl md:text-2xl text-white/90 mb-8 max-w-2xl">
-      Your compelling tagline that explains your value proposition
-    </p>
-    <button className="bg-white text-gray-900 px-8 py-4 rounded-full font-semibold text-lg hover:scale-105 transition-transform shadow-xl">
-      Get Started
-    </button>
-  </div>
-</section>
-\`\`\`
-
-2. **Feature Cards Pattern:**
-\`\`\`jsx
-// Professional feature cards with hover effects
-<div className="grid md:grid-cols-3 gap-8">
-  {features.map((feature, idx) => (
-    <div key={idx} className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-2xl transition-shadow border border-gray-100">
-      <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-lg mb-4"></div>
-      <h3 className="text-xl font-bold text-gray-900 mb-2">{feature.title}</h3>
-      <p className="text-gray-600">{feature.description}</p>
-    </div>
-  ))}
-</div>
-\`\`\`
-
-3. **Professional Button Styles:**
-\`\`\`jsx
-// Primary button
-<button className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-6 py-3 rounded-full font-semibold hover:scale-105 transition-transform shadow-lg">
-  Get Started
-</button>
-
-// Secondary button
-<button className="border-2 border-gray-300 text-gray-700 px-6 py-3 rounded-full font-semibold hover:bg-gray-50 transition-colors">
-  Learn More
-</button>
-\`\`\`
-
-4. **Professional Typography:**
-\`\`\`jsx
-// Headings
-<h1 className="text-5xl md:text-7xl font-bold text-gray-900 mb-4">Main Heading</h1>
-<h2 className="text-3xl md:text-5xl font-bold text-gray-900 mb-4">Section Heading</h2>
-<h3 className="text-2xl md:text-3xl font-semibold text-gray-800 mb-3">Subsection</h3>
-
-// Body text
-<p className="text-lg text-gray-600 leading-relaxed mb-4">Body text with proper line height</p>
-\`\`\`
-
-5. **Professional Section Spacing:**
-\`\`\`jsx
-// Use consistent section padding
-<section className="py-16 md:py-24 lg:py-32">
-  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    {/* Content */}
-  </div>
-</section>
-\`\`\`
-
-6. **Professional Color Usage:**
-- Use gradients: bg-gradient-to-r from-color1 to-color2
-- Use opacity: text-white/90, bg-black/10
-- Use proper contrast: text-gray-900 on white, text-white on dark
-- Use accent colors sparingly for CTAs and highlights
-
-7. **Professional Shadows & Effects:**
-- Cards: shadow-lg hover:shadow-2xl
-- Buttons: shadow-lg hover:shadow-xl
-- Text: Use text-shadow for headings on images if needed
-- Backdrop: backdrop-blur-sm bg-white/80 for glass effects
-
-8. **Professional Animations:**
-- Hover: hover:scale-105 transition-transform
-- Fade: opacity-0 animate-fade-in
-- Smooth: transition-all duration-300 ease-in-out
-
-**CRITICAL: Always create professional, polished designs - not basic templates!**
-
-=== EXAMPLE: PROFESSIONAL HERO SECTION ===
-\`\`\`jsx
-// Professional hero with gradient background and modern styling
-<section className="relative min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-600 via-purple-600 to-pink-600 overflow-hidden">
-  {/* Background overlay */}
-  <div className="absolute inset-0 bg-black/20"></div>
-  
-  {/* Animated background elements */}
-  <div className="absolute inset-0">
-    <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/30 rounded-full blur-3xl"></div>
-    <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/30 rounded-full blur-3xl"></div>
-  </div>
-  
-  {/* Content */}
-  <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 text-center">
-    <h1 className="text-5xl md:text-7xl font-bold text-white mb-6 leading-tight animate-fade-in">
-      Your Brand Name
-    </h1>
-    <p className="text-xl md:text-2xl text-white/90 mb-8 max-w-3xl mx-auto leading-relaxed">
-      Your compelling tagline that explains your value proposition clearly and professionally
-    </p>
-    <div className="flex flex-col sm:flex-row gap-4 justify-center">
-      <button className="bg-white text-gray-900 px-8 py-4 rounded-full font-semibold text-lg hover:scale-105 transition-transform shadow-xl hover:shadow-2xl">
-        Get Started
-      </button>
-      <button className="border-2 border-white text-white px-8 py-4 rounded-full font-semibold text-lg hover:bg-white/10 transition-colors">
-        Learn More
-      </button>
-    </div>
-  </div>
-</section>
-\`\`\`
-
-=== EXAMPLE: PROFESSIONAL FEATURE CARDS ===
-\`\`\`jsx
-// Professional feature section with cards
-<section className="py-24 bg-gray-50">
-  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div className="text-center mb-16">
-      <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
-        Why Choose Us
-      </h2>
-      <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-        Discover what makes us different
-      </p>
-    </div>
-    
-    <div className="grid md:grid-cols-3 gap-8">
-      {features.map((feature, idx) => (
-        <div 
-          key={idx} 
-          className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-2xl transition-all duration-300 border border-gray-100 hover:border-gray-200 group"
-        >
-          <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-purple-500 rounded-xl mb-6 flex items-center justify-center group-hover:scale-110 transition-transform">
-            {/* Icon SVG here */}
-          </div>
-          <h3 className="text-2xl font-bold text-gray-900 mb-3">{feature.title}</h3>
-          <p className="text-gray-600 leading-relaxed">{feature.description}</p>
-        </div>
-      ))}
-    </div>
-  </div>
-</section>
-\`\`\`
-
-=== EXAMPLE: PROFESSIONAL TESTIMONIALS ===
-\`\`\`jsx
-// Professional testimonial cards
-<section className="py-24 bg-white">
-  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <h2 className="text-4xl md:text-5xl font-bold text-gray-900 text-center mb-16">
-      What Our Customers Say
-    </h2>
-    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-      {testimonials.map((testimonial, idx) => (
-        <div 
-          key={idx}
-          className="bg-gradient-to-br from-gray-50 to-white rounded-2xl p-8 shadow-lg border border-gray-100"
-        >
-          <div className="flex items-center mb-4">
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full mr-4"></div>
-            <div>
-              <h4 className="font-semibold text-gray-900">{testimonial.name}</h4>
-              <p className="text-sm text-gray-600">{testimonial.role}</p>
-            </div>
-          </div>
-          <p className="text-gray-700 leading-relaxed">"{testimonial.text}"</p>
-        </div>
-      ))}
-    </div>
-  </div>
-</section>
-\`\`\`
-
-=== RESPONSE FORMAT ===
-When suggesting code changes, structure your response as:
-1. Explanation of what you're doing
-2. Code blocks with file paths using this EXACT format:
-   \`\`\`file:path/to/file.js
-   // Your code here
-   \`\`\`
-   
-   **CRITICAL: ALWAYS use \`\`\`file:path/to/file.js\` format (with "file:" prefix) so files are automatically created.**
-   
-   **DO NOT use formats like:**
-   - ❌ \`\`\`javascript (without file path)
-   - ❌ \`\`\`jsx (without file path)
-   - ❌ \`\`\`src/App.jsx (missing "file:" prefix)
-   
-   **ALWAYS use:**
-   - ✅ \`\`\`file:src/App.jsx
-   - ✅ \`\`\`file:src/index.js
-   - ✅ \`\`\`file:src/App.css
-   - ✅ \`\`\`file:src/components/Home.jsx
-   
-   **Examples of correct format:**
-   \`\`\`file:src/App.jsx
-   import React from 'react';
-   function App() {
-     return <div>Hello</div>;
-   }
-   export default App;
-   \`\`\`
-   
-   \`\`\`file:src/index.js
-   import React from 'react';
-   import ReactDOM from 'react-dom';
-   import App from './App';
-   ReactDOM.render(<App />, document.getElementById('root'));
-   \`\`\`
-   
-3. Any additional notes or considerations
-
-=== CRITICAL: App.js Structure ===
-- App.js MUST import and render ALL components in the project
-- If you see components like Home, Contact, Projects, Navigation - App.js should import and use ALL of them
-- Create a complete portfolio layout that shows all sections, not just one component
-- Example structure:
-  \`\`\`file:src/App.js
-  import React from 'react';
-  import Navigation from './Navigation';
-  import Home from './Home';
-  import Projects from './Projects';
-  import Contact from './Contact';
-  
-  function App() {
-    return (
-      <div>
-        <Navigation />
-        <Home />
-        <Projects />
-        <Contact />
-      </div>
-    );
-  }
-  
-  export default App;
-  \`\`\`
-
-Current file being edited: ${currentFile || 'none'}`;
 
     // Helper function to validate file integration by checking preview
     const validateFileIntegration = async (filePath: string): Promise<{ valid: boolean; error?: string; previewLength?: number }> => {
@@ -1962,7 +608,7 @@ Current file being edited: ${currentFile || 'none'}`;
           return { valid: false, error: `Unbalanced braces: ${openBraces} open, ${closeBraces} close` };
         }
 
-        // If it's a main file (App.jsx), ensure it has export
+        // If it's a main file (App file), ensure it has export
         if (filePath.includes('App') && !hasExport) {
           // This might be okay if it's being modified, but log it
           console.warn(`⚠️ App file ${filePath} doesn't have export statement`);
@@ -1976,114 +622,158 @@ Current file being edited: ${currentFile || 'none'}`;
       }
     };
 
-    // Helper function to parse and create files from response
+    // ============================================
+    // SANDBOXED FILE CREATION WITH VALIDATION
+    // ============================================
+    // Each file is created and validated individually
+    // If validation fails, we log the error but continue
+    
     const parseAndCreateFiles = async (responseText: string): Promise<Array<{ path: string; success: boolean; error?: string; validated?: boolean; validationError?: string }>> => {
-      // Get brand info from project for fallback files
       const brandName = project.brandName || project.title || 'My App';
       const tagline = project.tagline || 'Welcome to my application!';
       
       const createdFiles: Array<{ path: string; success: boolean; error?: string; validated?: boolean; validationError?: string }> = [];
 
-      console.log('📝 Parsing response for file creation...');
-      console.log('Response length:', responseText.length);
-      console.log('Response preview (first 2000 chars):', responseText.substring(0, 2000));
+      console.log('\n' + '='.repeat(60));
+      console.log('📁 SANDBOXED FILE CREATION - STARTING');
+      console.log('='.repeat(60));
+      console.log('📄 Response length:', responseText.length, 'characters');
+      console.log('📄 Response preview (first 500 chars):');
+      console.log('-'.repeat(40));
+      console.log(responseText.substring(0, 500));
+      console.log('-'.repeat(40));
 
-      // Count potential code blocks
-      const codeBlockCount = (responseText.match(/```/g) || []).length / 2;
-      console.log(`📊 Found ${codeBlockCount} potential code blocks`);
-
-      // Multiple regex patterns to catch different formats
-      // Pattern 1: ```file:path/to/file.js (most common - with file: prefix)
-      const filePattern1 = /```(?:file:)?\s*([^\n`]+?)(?:\n|$)([\s\S]*?)```/g;
-      // Pattern 2: ```javascript\n// path: src/App.js\ncode... (path in comment)
-      const filePattern2 = /```(\w+)?\s*(?:\/\/\s*path:\s*([^\n]+))?\n([\s\S]*?)```/g;
-      // Pattern 3: ```\nfile: path/to/file\ncode... (alternative format)
-      const filePattern3 = /```\s*(?:file:\s*)?([^\n`]+?)\s*\n([\s\S]*?)```/g;
-      // Pattern 4: ```jsx\nsrc/App.jsx\ncode... (path on separate line)
-      const filePattern4 = /```(\w+)?\s*\n\s*([^\n`]+?\.(js|jsx|ts|tsx|css|html|json))\s*\n([\s\S]*?)```/g;
-      
+      // SIMPLIFIED: Use the working pattern from OpenRouter implementation
+      // More flexible regex that handles various file: formats and spacing
+      const codeBlockRegex = /```(?:file:)?\s*([^\n`]+?)(?:\n|$)([\s\S]*?)```/g;
       const allMatches: Array<{ path: string; content: string }> = [];
       let match;
 
-      // Try pattern 1 (most common)
-      while ((match = filePattern1.exec(responseText)) !== null) {
-        const filePath = match[1].trim();
+      console.log('📝 Parsing response for file creation...');
+      console.log('Response length:', responseText.length);
+      console.log('Response preview (first 1000 chars):', responseText.substring(0, 1000));
+
+      while ((match = codeBlockRegex.exec(responseText)) !== null) {
+        let filePath = match[1].trim();
         const fileContent = match[2].trim();
-        
-        // Skip if it's just a language identifier without a path
-        if (filePath && filePath.length > 0 && fileContent.length > 10) {
-          allMatches.push({ path: filePath, content: fileContent });
-        }
-      }
-
-      // Try pattern 2 (path in comment)
-      filePattern2.lastIndex = 0;
-      while ((match = filePattern2.exec(responseText)) !== null) {
-        const language = match[1];
-        const filePath = match[2]?.trim();
-        const fileContent = match[3]?.trim();
-        
-        if (filePath && fileContent && fileContent.length > 10) {
-          allMatches.push({ path: filePath, content: fileContent });
-        }
-      }
-
-      // Try pattern 3 (alternative format)
-      filePattern3.lastIndex = 0;
-      while ((match = filePattern3.exec(responseText)) !== null) {
-        const filePath = match[1]?.trim();
-        const fileContent = match[2]?.trim();
-        
-        if (filePath && fileContent && fileContent.length > 10) {
-          // Check if we already have this file
-          if (!allMatches.some(m => m.path === filePath)) {
-            allMatches.push({ path: filePath, content: fileContent });
-          }
-        }
-      }
-
-      // Try pattern 4 (path on separate line)
-      filePattern4.lastIndex = 0;
-      while ((match = filePattern4.exec(responseText)) !== null) {
-        const language = match[1];
-        const filePath = match[2]?.trim();
-        const fileContent = match[3]?.trim();
-        
-        if (filePath && fileContent && fileContent.length > 10) {
-          // Check if we already have this file
-          if (!allMatches.some(m => m.path === filePath)) {
-            allMatches.push({ path: filePath, content: fileContent });
-          }
-        }
-      }
-
-      console.log(`📁 Found ${allMatches.length} potential files to create`);
-      if (allMatches.length > 0) {
-        console.log('📋 Files to create:', allMatches.map(m => m.path));
-      } else {
-        console.warn('⚠️ No files matched any pattern!');
-        // Log all code blocks found for debugging
-        const allCodeBlocks = responseText.match(/```[\s\S]*?```/g);
-        if (allCodeBlocks) {
-          console.log('📝 Found code blocks (but no file paths):', allCodeBlocks.length);
-          allCodeBlocks.slice(0, 3).forEach((block, idx) => {
-            console.log(`Code block ${idx + 1} (first 200 chars):`, block.substring(0, 200));
-          });
-        }
-      }
-
-      // Process each match
-      for (const fileMatch of allMatches) {
-        let filePath = fileMatch.path;
-        const fileContent = fileMatch.content;
         
         // Remove "file:" prefix if present
         if (filePath.startsWith('file:')) {
           filePath = filePath.substring(5).trim();
         }
         
+        // Skip if it's not a file path (e.g., just language identifier like "javascript")
+        // Check if it looks like a file path (has extension or contains path separators)
+        const hasExtension = filePath.includes('.');
+        const hasPathSeparator = filePath.includes('/') || filePath.includes('\\');
+        
+        // Log what we found
+        console.log('🔍 Found code block:', {
+          filePath,
+          hasExtension,
+          hasPathSeparator,
+          contentLength: fileContent.length
+        });
+        
+        if (!hasExtension && !hasPathSeparator) {
+          console.log('⏭️ Skipping - not a file path:', filePath);
+          continue;
+        }
+
+        // Normalize path: remove spaces, fix extensions, clean up
+        let normalizedPath = filePath
+          .replace(/\s+/g, '') // Remove ALL spaces (fixes "src/ App. jsx")
+          .replace(/\\/g, '/') // Normalize path separators
+          .replace(/\/+/g, '/') // Remove double slashes
+          .replace(/\.jxs$/i, '.jsx') // Fix .jxs → .jsx
+          .replace(/\.tsxs$/i, '.tsx') // Fix .tsxs → .tsx
+          .replace(/^\.\//, '') // Remove leading ./
+          .trim();
+
+        // Skip invalid paths (just a word without extension and no path)
+        const validExtensions = ['.js', '.jsx', '.ts', '.tsx', '.css', '.html', '.json', '.md'];
+        const hasValidExtension = validExtensions.some(ext => normalizedPath.toLowerCase().endsWith(ext));
+        if (!hasValidExtension && !normalizedPath.includes('/')) {
+          console.log(`⏭️ Skipping invalid path: ${filePath} → ${normalizedPath}`);
+          continue;
+        }
+
+        // Check for duplicates
+        if (!allMatches.some(m => m.path === normalizedPath)) {
+          allMatches.push({ path: normalizedPath, content: fileContent });
+          console.log(`✅ Added file: ${normalizedPath}`);
+        } else {
+          console.log(`⏭️ Skipping duplicate: ${normalizedPath}`);
+          // Keep the one with more content
+          const existingIndex = allMatches.findIndex(m => m.path === normalizedPath);
+          if (existingIndex >= 0 && fileContent.length > allMatches[existingIndex].content.length) {
+            allMatches[existingIndex] = { path: normalizedPath, content: fileContent };
+            console.log(`   ↳ Replaced with longer content`);
+          }
+        }
+      }
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:650',message:'File parsing results',data:{allMatchesCount:allMatches.length,filePaths:allMatches.map(m=>m.path)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+      
+      console.log('\n' + '='.repeat(60));
+      console.log(`📁 FILE PARSING RESULTS`);
+      console.log('='.repeat(60));
+      console.log(`Total files found: ${allMatches.length}`);
+      
+      if (allMatches.length > 0) {
+        console.log('\n📋 Files to create:');
+        allMatches.forEach((m, idx) => {
+          console.log(`  ${idx + 1}. ${m.path} (${m.content.length} chars)`);
+        });
+      } else {
+        console.warn('\n⚠️ NO FILES FOUND IN RESPONSE!');
+        const allCodeBlocks = responseText.match(/```[\s\S]*?```/g);
+        if (allCodeBlocks) {
+          console.log(`Found ${allCodeBlocks.length} code blocks but no file paths`);
+          allCodeBlocks.slice(0, 3).forEach((block, idx) => {
+            console.log(`\nCode block ${idx + 1} (first 200 chars):`);
+            console.log(block.substring(0, 200));
+          });
+        }
+      }
+      console.log('='.repeat(60));
+
+      // Process each match (simplified - direct creation like OpenRouter)
+      for (const fileMatch of allMatches) {
+        let filePath = fileMatch.path;
+        let fileContent = fileMatch.content; // Changed to 'let' to allow reassignment after auto-fix
+        
+        // Remove "file:" prefix if present
+        if (filePath.startsWith('file:')) {
+          filePath = filePath.substring(5).trim();
+        }
+        
+        // Remove language prefixes (jsx:, javascript:, typescript:, etc.)
+        // Pattern: language:path/to/file.ext
+        filePath = filePath.replace(/^(jsx|javascript|typescript|tsx|js|ts|css|html|json|markdown|python|java|cpp|c):\s*/i, '');
+        
+        // Remove leading "./" or "../" but keep the rest
+        filePath = filePath.replace(/^\.\//, '').replace(/^\.\.\//, '');
+        
         // Remove any leading/trailing quotes
         filePath = filePath.replace(/^["']|["']$/g, '').trim();
+        
+        // CRITICAL FIX: Remove ALL spaces from path (fixes "src/ App. jsx" → "src/App.jsx")
+        filePath = filePath.replace(/\s+/g, '');
+        
+        // CRITICAL FIX: Normalize file extensions (fixes .jxs, .jXs → .jsx)
+        filePath = filePath.replace(/\.jxs$/i, '.jsx');
+        filePath = filePath.replace(/\.jsx$/i, '.jsx'); // Ensure lowercase
+        filePath = filePath.replace(/\.tsxs$/i, '.tsx');
+        filePath = filePath.replace(/\.tsx$/i, '.tsx'); // Ensure lowercase
+        
+        // Ensure path uses forward slashes (normalize)
+        filePath = filePath.replace(/\\/g, '/');
+        
+        // CRITICAL FIX: Remove double slashes (fixes "src//Header.jsx" → "src/Header.jsx")
+        filePath = filePath.replace(/\/+/g, '/');
         
         // Skip if it's not a file path (e.g., just language identifier like "javascript")
         // Check if it looks like a file path (has extension or contains path separators)
@@ -2109,6 +799,175 @@ Current file being edited: ${currentFile || 'none'}`;
           }
         }
 
+        // Basic syntax validation before creating file
+        // Check for common syntax errors that would break preview
+        const syntaxErrors: string[] = [];
+        
+        // Check for orphaned export statements (e.g., "Default Header;" without definition)
+        const orphanedExportPattern = /^\s*(?:Default|export\s+default)\s+(\w+)\s*;?\s*$/gm;
+        const orphanedMatches = fileContent.match(orphanedExportPattern);
+        if (orphanedMatches) {
+          orphanedMatches.forEach((match) => {
+            const componentName = match.match(/(?:Default|export\s+default)\s+(\w+)/)?.[1];
+            if (componentName && !fileContent.match(new RegExp(`(?:function|const|class|var|let)\\s+${componentName}\\s*[=(]`))) {
+              syntaxErrors.push(`Orphaned export: "${match.trim()}" - component ${componentName} not defined`);
+            }
+          });
+        }
+        
+        // Check for unbalanced braces/parentheses
+        const openBraces = (fileContent.match(/{/g) || []).length;
+        const closeBraces = (fileContent.match(/}/g) || []).length;
+        const openParens = (fileContent.match(/\(/g) || []).length;
+        const closeParens = (fileContent.match(/\)/g) || []).length;
+        
+        if (Math.abs(openBraces - closeBraces) > 2) {
+          syntaxErrors.push(`Unbalanced braces: ${openBraces} open, ${closeBraces} close`);
+        }
+        if (Math.abs(openParens - closeParens) > 2) {
+          syntaxErrors.push(`Unbalanced parentheses: ${openParens} open, ${closeParens} close`);
+        }
+        
+        // AUTO-FIX: Fix common syntax errors automatically
+        let processedContent = fileContent; // Use a new variable to avoid const reassignment issues
+        const fixesApplied: string[] = [];
+        
+        // CRITICAL FIX: Fix malformed imports/exports with missing spaces
+        // Fix: import*asReactfrom'react' → import React from 'react'
+        const malformedImportPattern = /import\*as(\w+)from(['"])([^'"]+)\2/g;
+        if (malformedImportPattern.test(processedContent)) {
+          processedContent = processedContent.replace(malformedImportPattern, (match, p1, p2, p3) => {
+            fixesApplied.push(`Fixed malformed import: ${match}`);
+            return `import ${p1} from ${p2}${p3}${p2}`;
+          });
+        }
+        
+        // Fix: import*{(\w+)}from → import { $1 } from
+        const malformedNamedImportPattern = /import\*\{([^}]+)\}from(['"])([^'"]+)\2/g;
+        if (malformedNamedImportPattern.test(processedContent)) {
+          processedContent = processedContent.replace(malformedNamedImportPattern, (match, p1, p2, p3) => {
+            fixesApplied.push(`Fixed malformed named import: ${match}`);
+            return `import { ${p1.trim()} } from ${p2}${p3}${p2}`;
+          });
+        }
+        
+        // Fix: export*default → export default
+        if (processedContent.includes('export*default')) {
+          processedContent = processedContent.replace(/export\*default/g, 'export default');
+          fixesApplied.push('Fixed malformed export default');
+        }
+        
+        // Fix: return( → return (
+        if (processedContent.includes('return(') && !processedContent.includes('return (')) {
+          processedContent = processedContent.replace(/return\(/g, 'return (');
+          fixesApplied.push('Fixed return statement spacing');
+        }
+        
+        // Fix 1: Common typos
+        if (processedContent.includes('reutrn')) {
+          processedContent = processedContent.replace(/reutrn/g, 'return');
+          fixesApplied.push('Fixed typo: reutrn → return');
+        }
+        if (processedContent.includes('improt')) {
+          processedContent = processedContent.replace(/improt/g, 'import');
+          fixesApplied.push('Fixed typo: improt → import');
+        }
+        if (processedContent.includes('exprot')) {
+          processedContent = processedContent.replace(/exprot/g, 'export');
+          fixesApplied.push('Fixed typo: exprot → export');
+        }
+        
+        // Fix 2: Malformed JSX tags (spaces in closing tags)
+        processedContent = processedContent.replace(/<\s*\/\s*(\w+)\s*>/g, '</$1>');
+        processedContent = processedContent.replace(/<\s*(\w+)\s*\/\s*>/g, '<$1 />');
+        
+        // Fix 3: Fix malformed self-closing tags with spaces
+        processedContent = processedContent.replace(/<\s*(\w+)\s+([^>]*?)\s*\/\s*>/g, '<$1 $2 />');
+        
+        // Fix 4: Fix broken closing tags like </option> -> </option>
+        processedContent = processedContent.replace(/<\s*\/\s*(\w+)\s*>/g, '</$1>');
+        
+        // Fix 5: Fix malformed attributes (spaces around =)
+        processedContent = processedContent.replace(/\s*=\s*["']/g, '="');
+        processedContent = processedContent.replace(/["']\s*>/g, '">');
+        
+        // Fix 6: Remove extra spaces in JSX
+        processedContent = processedContent.replace(/\s+>/g, '>');
+        processedContent = processedContent.replace(/<\s+/g, '<');
+        
+        // Fix 7: Fix broken imports (spaces in import paths)
+        processedContent = processedContent.replace(/import\s+.*?from\s+["']\s*([^"']+?)\s*["']/g, (match, path) => {
+          return match.replace(path, path.trim());
+        });
+        
+        // Fix 8: Fix React import (lowercase 'react' should be 'React')
+        if (processedContent.includes("import react from") && !processedContent.includes("import React from")) {
+          processedContent = processedContent.replace(/import\s+react\s+from\s+["']react["']/gi, "import React from 'react'");
+          fixesApplied.push('Fixed: import react → import React');
+        }
+        
+        // Fix 9: Fix malformed component names in JSX (spaces)
+        processedContent = processedContent.replace(/<\s*(\w+)\s+([^>]*?)\s*>/g, '<$1 $2>');
+        
+        // Fix 10: Fix broken export statements
+        processedContent = processedContent.replace(/export\s+default\s+(\w+)\s*;/g, 'export default $1;');
+        
+        // Fix 11: Fix classname → className (common React error)
+        if (processedContent.includes('classname') && !processedContent.includes('className')) {
+          processedContent = processedContent.replace(/classname\s*=/gi, 'className=');
+          processedContent = processedContent.replace(/classname-/gi, 'className-');
+          processedContent = processedContent.replace(/classname\s*:/gi, 'className:');
+          fixesApplied.push('Fixed: classname → className');
+        }
+        
+        // Fix 12: Fix uppercase closing tags (</H1> → </h1>)
+        processedContent = processedContent.replace(/<\/([A-Z][a-zA-Z0-9]+)>/g, (match, tag) => {
+          const lowerTag = tag.toLowerCase();
+          if (lowerTag !== tag) {
+            fixesApplied.push(`Fixed: </${tag}> → </${lowerTag}>`);
+            return `</${lowerTag}>`;
+          }
+          return match;
+        });
+        
+        // Fix 13: Fix malformed attribute syntax (classname-"text-3xl → className="text-3xl")
+        processedContent = processedContent.replace(/(\w+)-("[\w\s-]+)/g, (match, attr, value) => {
+          if (attr === 'classname') {
+            fixesApplied.push(`Fixed malformed attribute: ${match}`);
+            return `className=${value}`;
+          }
+          return match;
+        });
+        
+        // Fix 14: Fix export name mismatches (export default Headername when component is Header)
+        const componentMatch = processedContent.match(/(?:const|function|var|let)\s+(\w+)\s*[=(]/);
+        const exportMatch = processedContent.match(/export\s+default\s+(\w+)\s*;/);
+        if (componentMatch && exportMatch) {
+          const componentName = componentMatch[1];
+          const exportName = exportMatch[1];
+          if (componentName !== exportName) {
+            processedContent = processedContent.replace(/export\s+default\s+\w+\s*;/g, `export default ${componentName};`);
+            fixesApplied.push(`Fixed export mismatch: ${exportName} → ${componentName}`);
+          }
+        }
+        
+        // Fix 15: Fix incomplete return statements (return( → return ())
+        processedContent = processedContent.replace(/return\(/g, 'return (');
+        
+        // Update fileContent with processed content if fixes were applied
+        if (fixesApplied.length > 0) {
+          console.log(`🔧 Auto-fixed ${fixesApplied.length} issues:`, fixesApplied);
+          fileContent = processedContent; // Now this works because fileContent is declared as 'let'
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:920',message:'Auto-fixes applied',data:{filePath,fixesAppliedCount:fixesApplied.length,fixesApplied},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+          // #endregion
+        }
+        
+        // Log syntax errors but don't block file creation (preview will show errors)
+        if (syntaxErrors.length > 0) {
+          console.warn(`⚠️ Syntax warnings for ${filePath}:`, syntaxErrors);
+        }
+        
         // Determine language from file extension
         const extension = filePath.split('.').pop()?.toLowerCase() || '';
         const languageMap: Record<string, string> = {
@@ -2131,9 +990,24 @@ Current file being edited: ${currentFile || 'none'}`;
         const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || filePath;
 
         try {
-          // Validate and normalize path
-          const normalizedPath = filePath.replace(/\.\./g, '').replace(/^\//, '');
+          // SIMPLIFIED: Direct file creation like OpenRouter version
+          const fileIndex = allMatches.indexOf(fileMatch) + 1;
+          const totalFiles = allMatches.length;
+          
+          console.log(`\n📄 Creating file ${fileIndex}/${totalFiles}: ${filePath}`);
+          
+          // Validate and normalize path (simplified)
+          const normalizedPath = filePath
+            .replace(/\.\./g, '') // Remove path traversal
+            .replace(/^\//, ''); // Remove leading slash
+          
           if (normalizedPath !== filePath) {
+            console.log(`  🔧 Normalized path: ${filePath} → ${normalizedPath}`);
+          }
+          
+          // Security: Prevent path traversal and validate structure
+          if (normalizedPath.includes('..') || normalizedPath.startsWith('/') || normalizedPath.includes('://')) {
+            console.log(`  ❌ INVALID PATH - skipping: ${normalizedPath}`);
             createdFiles.push({ 
               path: filePath, 
               success: false, 
@@ -2141,65 +1015,176 @@ Current file being edited: ${currentFile || 'none'}`;
             });
             continue;
           }
-
-          const isMain = filePath.includes('index') || filePath.includes('App') || filePath.includes('main');
-
-          // If setting as main, unset other main files
-          if (isMain) {
-            await prisma.appFile.updateMany({
-              where: { projectId: id, isMain: true },
-              data: { isMain: false },
+          
+          // Validate file name is correct
+          const fileName = normalizedPath.split('/').pop() || '';
+          if (!fileName || !fileName.includes('.')) {
+            console.log(`  ❌ INVALID FILENAME - skipping: ${fileName}`);
+            createdFiles.push({ 
+              path: filePath, 
+              success: false, 
+              error: 'Invalid filename' 
             });
+            continue;
+          }
+          
+          // CRITICAL: Prevent duplicate files (App.jsx vs App.tsx, index.js vs index.ts)
+          const fileBaseName = fileName.split('.')[0];
+          const fileExt = fileName.split('.').pop()?.toLowerCase();
+          
+          // Check for duplicate App files
+          if (fileBaseName.toLowerCase() === 'app') {
+            const conflictingExt = fileExt === 'jsx' ? 'tsx' : fileExt === 'tsx' ? 'jsx' : null;
+            if (conflictingExt) {
+              const conflictingPath = normalizedPath.replace(`.${fileExt}`, `.${conflictingExt}`);
+              const hasConflict = existingFiles.some(f => f.path === conflictingPath);
+              if (hasConflict) {
+                console.log(`  ⚠️ DUPLICATE DETECTED: ${conflictingPath} exists, skipping ${normalizedPath}`);
+                createdFiles.push({ 
+                  path: filePath, 
+                  success: false, 
+                  error: `Duplicate file: ${conflictingPath} already exists. Use consistent language.` 
+                });
+                continue;
+              }
+            }
+          }
+          
+          // Check for duplicate index files
+          if (fileBaseName.toLowerCase() === 'index') {
+            const conflictingExt = fileExt === 'js' ? 'ts' : fileExt === 'ts' ? 'js' : null;
+            if (conflictingExt) {
+              const conflictingPath = normalizedPath.replace(`.${fileExt}`, `.${conflictingExt}`);
+              const hasConflict = existingFiles.some(f => f.path === conflictingPath);
+              if (hasConflict) {
+                console.log(`  ⚠️ DUPLICATE DETECTED: ${conflictingPath} exists, skipping ${normalizedPath}`);
+                createdFiles.push({ 
+                  path: filePath, 
+                  success: false, 
+                  error: `Duplicate file: ${conflictingPath} already exists. Use consistent language.` 
+                });
+                continue;
+              }
+            }
+          }
+          
+          // Enforce language consistency based on project config
+          if (fileBaseName.toLowerCase() === 'app' && fileExt !== fileExtension) {
+            console.log(`  ⚠️ LANGUAGE MISMATCH: Project uses ${fileExtension}, but file is .${fileExt}. Skipping.`);
+            createdFiles.push({ 
+              path: filePath, 
+              success: false, 
+              error: `Language mismatch: Project uses ${useTypeScript ? 'TypeScript' : 'JavaScript'}, but file uses .${fileExt}` 
+            });
+            continue;
+          }
+          
+          if (fileBaseName.toLowerCase() === 'index' && fileExt !== indexExtension) {
+            console.log(`  ⚠️ LANGUAGE MISMATCH: Project uses ${indexExtension}, but file is .${fileExt}. Skipping.`);
+            createdFiles.push({ 
+              path: filePath, 
+              success: false, 
+              error: `Language mismatch: Project uses ${useTypeScript ? 'TypeScript' : 'JavaScript'}, but file uses .${fileExt}` 
+            });
+            continue;
           }
 
-          // Create or update file using Prisma
-          await prisma.appFile.upsert({
-            where: {
-              projectId_path: {
+          // Determine if this is a main file (App file or index file)
+          const isMain = normalizedPath.includes('index') || 
+                        normalizedPath.includes(`App.${fileExtension}`) || 
+                        normalizedPath.includes(`App.${indexExtension}`) ||
+                        normalizedPath.includes('App.jsx') || 
+                        normalizedPath.includes('App.tsx') ||
+                        normalizedPath.includes('App.js') ||
+                        normalizedPath.includes('App.ts') ||
+                        normalizedPath.includes('main');
+          console.log(`  📝 Is main file: ${isMain}`);
+
+          // CRITICAL: Create file IMMEDIATELY (incremental creation like Cursor/Lovable)
+          // This ensures files appear in UI as soon as they're parsed
+          try {
+            // Check if file already exists
+            const existingFile = await prisma.appFile.findUnique({
+              where: {
+                projectId_path: {
+                  projectId: id,
+                  path: normalizedPath,
+                },
+              },
+            });
+            
+            if (existingFile) {
+              console.log(`  📝 File exists - UPDATING with new content (Cursor-like editing)`);
+              console.log(`  📝 Existing content length: ${existingFile.content.length} chars`);
+              console.log(`  📝 New content length: ${fileContent.length} chars`);
+              console.log(`  📝 Content changed: ${existingFile.content !== fileContent}`);
+            } else {
+              console.log(`  📝 File is NEW - creating immediately`);
+            }
+
+            // If setting as main, unset other main files
+            if (isMain) {
+              await prisma.appFile.updateMany({
+                where: { projectId: id, isMain: true },
+                data: { isMain: false },
+              });
+            }
+
+            // Create or update file using Prisma - IMMEDIATE creation
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:1009',message:'BEFORE database upsert',data:{projectId:id,normalizedPath,fileName,contentLength:fileContent.length,contentPreview:fileContent.substring(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+            // #endregion
+            await prisma.appFile.upsert({
+              where: {
+                projectId_path: {
+                  projectId: id,
+                  path: normalizedPath,
+                },
+              },
+              update: {
+                content: fileContent,
+                language: language,
+                isMain: isMain,
+                name: fileName,
+              },
+              create: {
                 projectId: id,
                 path: normalizedPath,
+                name: fileName,
+                content: fileContent,
+                language: language,
+                isMain: isMain,
               },
-            },
-            update: {
-              content: fileContent,
-              language: language,
-              isMain: isMain,
-              name: fileName,
-            },
-            create: {
-              projectId: id,
-              path: normalizedPath,
-              name: fileName,
-              content: fileContent,
-              language: language,
-              isMain: isMain,
-            },
-          });
+            });
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:1032',message:'AFTER database upsert - file saved',data:{projectId:id,normalizedPath,success:true},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+            // #endregion
 
-          console.log(`✅ Created/updated file: ${filePath}`);
-          
-          // Incremental validation: Verify file integrates successfully
-          console.log(`🔍 Validating integration for: ${filePath}`);
-          const validation = await validateFileIntegration(normalizedPath);
-          
-          if (validation.valid) {
+            console.log(`  ✅ File saved to database IMMEDIATELY: ${normalizedPath}`);
+            
+            // Notify frontend immediately (would be better with streaming, but this works)
+            // The frontend will refresh when it receives the response
+          } catch (dbError: any) {
+            console.error(`  ❌ Database error creating file ${normalizedPath}:`, dbError);
             createdFiles.push({ 
-              path: filePath, 
-              success: true, 
-              validated: true 
+              path: normalizedPath, 
+              success: false, 
+              error: `Database error: ${dbError.message}` 
             });
-            console.log(`✅ File validated successfully: ${filePath} (preview length: ${validation.previewLength || 'N/A'})`);
-          } else {
-            // File created but validation failed - still mark as success but log warning
-            createdFiles.push({ 
-              path: filePath, 
-              success: true, 
-              validated: false,
-              validationError: validation.error 
-            });
-            console.warn(`⚠️ File created but validation failed: ${filePath} - ${validation.error}`);
-            console.warn(`   File will be kept but may cause preview issues`);
+            continue;
           }
+
+          // Mark file as successfully created (validation happens after all files)
+          createdFiles.push({ 
+            path: normalizedPath, // Use normalized path, not original
+            success: true, 
+            validated: true // Will be validated later
+          });
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:1047',message:'File added to createdFiles array',data:{normalizedPath,createdFilesLength:createdFiles.length,success:true},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+          // #endregion
+          
+          console.log(`  ✅ File creation complete: ${normalizedPath}`);
         } catch (fileError: any) {
           console.error(`❌ Error creating file ${filePath}:`, fileError);
           createdFiles.push({ 
@@ -2226,6 +1211,7 @@ Current file being edited: ${currentFile || 'none'}`;
       };
 
       console.log('📊 File creation summary:', summary);
+      console.log('✅ Returning createdFiles array with', createdFiles.length, 'files');
       
       if (summary.validationFailed > 0) {
         console.warn(`⚠️ ${summary.validationFailed} file(s) created but failed validation:`);
@@ -2234,6 +1220,32 @@ Current file being edited: ${currentFile || 'none'}`;
           .forEach(f => {
             console.warn(`   - ${f.path}: ${f.validationError || 'Unknown validation error'}`);
           });
+      }
+
+      // CRITICAL: Verify files were actually saved to database
+      if (createdFiles.length > 0) {
+        const successfulPaths = createdFiles.filter(f => f.success).map(f => f.path);
+        console.log('🔍 Verifying files in database:', successfulPaths);
+        
+        try {
+          const verifyFiles = await prisma.appFile.findMany({
+            where: {
+              projectId: id,
+              path: { in: successfulPaths }
+            },
+            select: { path: true, name: true }
+          });
+          
+          console.log('✅ Verified files in database:', verifyFiles.length, 'of', successfulPaths.length);
+          if (verifyFiles.length !== successfulPaths.length) {
+            console.warn('⚠️ Mismatch: Some files may not have been saved');
+            const savedPaths = verifyFiles.map(f => f.path);
+            const missingPaths = successfulPaths.filter(p => !savedPaths.includes(p));
+            console.warn('Missing files:', missingPaths);
+          }
+        } catch (verifyError) {
+          console.error('❌ Error verifying files:', verifyError);
+        }
       }
 
       // If no files were created, log warning with more details
@@ -2251,14 +1263,26 @@ Current file being edited: ${currentFile || 'none'}`;
         }
       }
 
-      // Fallback: If no files were created, create basic test files
-      if (createdFiles.length === 0) {
-        console.warn('⚠️ No files were parsed from AI response. Creating basic fallback files...');
+      // Fallback: ONLY create fallback files if:
+      // 1. No files were created (createdFiles.length === 0)
+      // 2. AND no code blocks exist in response (!hasCodeBlocks)
+      // 3. AND project has no existing files (to avoid overwriting user's work)
+      // CRITICAL: This prevents creating unnecessary files when user already has files
+      const codeBlocksMatch = responseText.match(/```[\s\S]*?```/g);
+      const hasCodeBlocks = (codeBlocksMatch?.length || 0) > 0;
+      const projectHasFiles = (project.files?.length || 0) > 0;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:1145',message:'Fallback file check',data:{createdFilesLength:createdFiles.length,hasCodeBlocks,projectHasFiles,willCreateFallback:createdFiles.length===0&&!hasCodeBlocks&&!projectHasFiles},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+      
+      // Only create fallback if truly no files exist and no code was generated
+      if (createdFiles.length === 0 && !hasCodeBlocks && !projectHasFiles) {
+        console.warn('⚠️ No files were parsed from AI response, no code blocks found, and project has no files. Creating basic fallback files...');
 
         const fallbackFiles = [
           {
-            path: 'src/App.jsx',
-            name: 'App.jsx',
+            path: `src/App.${fileExtension}`,
+            name: `App.${fileExtension}`,
             content: `import React from 'react';
 import './App.css';
 
@@ -2274,12 +1298,12 @@ function App() {
 }
 
 export default App;`,
-            language: 'javascript',
+            language: useTypeScript ? 'typescript' : 'javascript',
             isMain: true
           },
           {
-            path: 'src/index.js',
-            name: 'index.js',
+            path: `src/index.${indexExtension}`,
+            name: `index.${indexExtension}`,
             content: `import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
@@ -2291,7 +1315,7 @@ root.render(
     <App />
   </React.StrictMode>
 );`,
-            language: 'javascript',
+            language: useTypeScript ? 'typescript' : 'javascript',
             isMain: false
           },
           {
@@ -2359,46 +1383,69 @@ root.render(
         }
       }
 
+      // ============================================
+      // FILE CREATION SUMMARY
+      // ============================================
+      console.log('\n' + '='.repeat(60));
+      console.log('📊 FILE CREATION SUMMARY');
+      console.log('='.repeat(60));
+      console.log(`Total files attempted: ${createdFiles.length}`);
+      console.log(`Successful: ${createdFiles.filter(f => f.success).length}`);
+      console.log(`Failed: ${createdFiles.filter(f => !f.success).length}`);
+      console.log(`Validated: ${createdFiles.filter(f => f.validated === true).length}`);
+      console.log(`Validation warnings: ${createdFiles.filter(f => f.validated === false).length}`);
+      console.log('\nFiles created:');
+      createdFiles.forEach((f, i) => {
+        const status = f.success ? (f.validated ? '✅' : '⚠️') : '❌';
+        console.log(`  ${i + 1}. ${status} ${f.path}${f.error ? ` (${f.error})` : ''}${f.validationError ? ` (${f.validationError})` : ''}`);
+      });
+      console.log('='.repeat(60) + '\n');
+      
       return createdFiles;
     };
 
-    // Call AI API - OpenRouter + DeepSeek Coder
+    // Call Azure DeepSeek API
     let response: string = '';
     let requestSuccess = false;
     
-    // Log project files being sent to AI
-    const fileCount = project.files.length;
-    const scaffoldFileCount = project.files.filter(f => 
-      f.path.includes('App.jsx') || f.path.includes('App.js') || 
-      f.path.includes('index.js') || f.path.includes('App.css')
-    ).length;
+    // ============================================
+    // REQUEST LOGGING (Optimized - no file content included)
+    // ============================================
+    console.log('\n' + '='.repeat(80));
+    console.log('🚀 AZURE DEEPSEEK REQUEST');
+    console.log('='.repeat(80));
     
-    console.log('🚀 Making AI request:', {
-      provider: provider,
-      model: model,
-      normalizedModel: model, // Already normalized in createClient
-      baseURL: PROVIDER_CONFIGS[provider].baseURL,
-      hasApiKey: !!finalApiKey,
-      messageLength: message.length,
-      userProvider: userProvider || 'not provided',
-      userModel: userModel || 'not provided',
-      projectFilesCount: fileCount,
-      scaffoldFilesCount: scaffoldFileCount,
-      scaffoldFilesIncluded: scaffoldFileCount > 0,
-      systemPromptLength: systemPrompt.length,
-      projectContextLength: projectContext.length
-    });
+    // Calculate token usage (rough estimate: 1 token ≈ 4 characters)
+    const systemTokens = Math.ceil(systemPrompt.length / 4);
+    const userTokens = Math.ceil(message.length / 4);
+    const totalInputTokens = systemTokens + userTokens;
+    const maxOutputTokens = 4000;
     
-    if (scaffoldFileCount > 0) {
-      console.log('📦 Scaffold files included in system prompt:', 
-        project.files
-          .filter(f => f.path.includes('App.jsx') || f.path.includes('App.js') || 
-                      f.path.includes('index.js') || f.path.includes('App.css'))
-          .map(f => f.path)
-      );
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:1366',message:'BEFORE AI request - message content',data:{systemPromptLength:systemPrompt.length,userMessageLength:message.length,userMessagePreview:message.substring(0,500),userMessageFull:message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
+    
+    console.log('\n📊 REQUEST SUMMARY:');
+    console.log(`  - System Prompt: ${systemPrompt.length} chars (~${systemTokens} tokens)`);
+    console.log(`  - User Message: ${message.length} chars (~${userTokens} tokens)`);
+    console.log(`  - Total Input: ~${totalInputTokens} tokens (max 16K)`);
+    console.log(`  - Max Output: ${maxOutputTokens} tokens`);
+    console.log(`  - Available Context: ${16000 - totalInputTokens} tokens`);
+    
+    if (totalInputTokens > 12000) {
+      console.warn('⚠️ Warning: Input tokens exceed 12K - may be truncated by model');
     }
     
+    console.log('='.repeat(80) + '\n');
+    
+    let timeoutId: NodeJS.Timeout | null = null;
     try {
+      // Add timeout for Azure DeepSeek requests (2 minutes)
+      const controller = new AbortController();
+      timeoutId = setTimeout(() => {
+        controller.abort();
+      }, 120000);
+      
       const completion = await client.chat.completions.create({
         model: model,
         messages: [
@@ -2406,96 +1453,173 @@ root.render(
           { role: 'user', content: message },
         ],
         temperature: 0.7,
-        max_tokens: 12000, // Significantly increased to ensure ALL files are included in response
+        max_tokens: 4000, // Model caps at 4000 new tokens (matches deepseek_api_optimized.py)
+        stream: false, // Non-streaming for reliability
       });
       
-      console.log('✅ AI response received:', {
-        provider: provider,
-        model: model,
-        responseLength: completion.choices[0]?.message?.content?.length || 0
-      });
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      
+      console.log('\n' + '='.repeat(80));
+      console.log('✅ AZURE DEEPSEEK RESPONSE RECEIVED');
+      console.log('='.repeat(80));
+      console.log(`  - Provider: azure-deepseek`);
+      console.log(`  - Model: ${AZURE_DEEPSEEK_MODEL}`);
+      console.log(`  - Response Length: ${completion.choices[0]?.message?.content?.length || 0} characters`);
+      console.log('\n📄 RESPONSE PREVIEW (first 500 chars):');
+      console.log('-'.repeat(40));
+      console.log(completion.choices[0]?.message?.content?.substring(0, 500) || 'NO CONTENT');
+      console.log('-'.repeat(40));
+      console.log('='.repeat(80) + '\n');
 
-      response = completion.choices[0]?.message?.content || 'I apologize, but I could not generate a response. Please try again.';
+      response = completion.choices[0]?.message?.content || '';
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:1415',message:'AI response received',data:{responseLength:response.length,responsePreview:response.substring(0,500),hasCodeBlocks:/```/.test(response),codeBlockCount:(response.match(/```/g)||[]).length/2},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+      
+      // Validate response quality
+      if (!response || response.trim().length < 50) {
+        console.warn('⚠️ Response too short, might be incomplete');
+        throw new Error('Azure DeepSeek returned an empty or incomplete response');
+      }
+      
+      // Check if response contains code blocks
+      const hasCodeBlocks = /```/.test(response);
+      if (!hasCodeBlocks) {
+        console.warn('⚠️ Response does not contain code blocks');
+        console.warn('Response preview:', response.substring(0, 500));
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:1426',message:'No code blocks in response',data:{responseLength:response.length,fullResponse:response.substring(0,2000)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
+      }
+      
       requestSuccess = true;
-      
-      // Record successful request
-      loadBalancer.recordRequest(provider, true);
     } catch (error: any) {
-      // Record failed request
-      loadBalancer.recordRequest(provider, false);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
       
-      // Handle invalid model (400/404) - fallback to deepseek-chat
-      if (error?.status === 400 || error?.status === 404 || 
-          error?.message?.includes('Invalid model') || 
-          error?.message?.includes('model not found') ||
-          error?.code === 'model_not_found') {
-        console.warn(`⚠️ Invalid model "${model}" for OpenRouter, attempting fallback to deepseek-chat`);
-        
-        try {
-          const fallbackModel = 'deepseek/deepseek-chat';
-          console.log(`🔄 Retrying with fallback model: ${fallbackModel}`);
-          
-          const fallbackClient = new OpenAI({
-            apiKey: finalApiKey || process.env.OPENROUTER_API_KEY,
-            baseURL: 'https://openrouter.ai/api/v1',
-            defaultHeaders: {
-              'HTTP-Referer': process.env.NEXT_PUBLIC_SITE_URL || process.env.VERCEL_URL 
-                ? `https://${process.env.VERCEL_URL}` 
-                : 'http://localhost:3000',
-              'X-Title': 'Open Idea - AI App Builder',
-            },
-          });
-          
-          const fallbackCompletion = await fallbackClient.chat.completions.create({
-            model: fallbackModel,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: message },
-            ],
-            temperature: 0.7,
-            max_tokens: 12000,
-          });
-          
-          response = fallbackCompletion.choices[0]?.message?.content || 'I apologize, but I could not generate a response. Please try again.';
-          requestSuccess = true;
-          loadBalancer.recordRequest(provider, true);
-          
-          // Parse and create files from fallback response
-          const fallbackFiles = await parseAndCreateFiles(response);
-          
-          return NextResponse.json({
-            response,
-            suggestions: [],
-            filesCreated: fallbackFiles,
-            provider: provider,
-            model: fallbackModel,
-            usedFallback: true,
-            fallbackReason: `Invalid model "${model}" - using ${fallbackModel} instead`,
-          });
-        } catch (fallbackError: any) {
-          console.error('Fallback model also failed:', fallbackError);
-          // Continue to throw original error
-          throw error;
+      console.log('\n' + '='.repeat(80));
+      console.log('❌ AZURE DEEPSEEK REQUEST FAILED');
+      console.log('='.repeat(80));
+      
+      // Enhanced error logging
+      const errorDetails: any = {
+        message: error?.message || 'Unknown error',
+        name: error?.name,
+        code: error?.code,
+        status: error?.status,
+        type: error?.type,
+      };
+      
+      // Check for timeout
+      if (error?.name === 'AbortError' || error?.message?.includes('timeout')) {
+        errorDetails.errorType = 'TIMEOUT';
+        errorDetails.message = 'Request timed out after 2 minutes';
+      }
+      
+      // Check for network errors
+      if (error?.message?.includes('fetch') || error?.message?.includes('network') || error?.message?.includes('ECONNREFUSED')) {
+        errorDetails.errorType = 'NETWORK_ERROR';
+        errorDetails.message = `Cannot connect to Azure DeepSeek at ${AZURE_DEEPSEEK_URL}`;
+      }
+      
+      // Check for API errors
+      if (error?.status || error?.response) {
+        errorDetails.errorType = 'API_ERROR';
+        if (error?.response) {
+          try {
+            errorDetails.responseData = typeof error.response === 'string' 
+              ? error.response 
+              : JSON.stringify(error.response);
+          } catch {
+            errorDetails.responseData = 'Could not parse error response';
+          }
         }
       }
-      // Rate limit - just throw error (no fallback since we only use OpenRouter)
-      else if (error?.status === 429 || error?.message?.includes('rate limit')) {
-        throw error;
-      } else {
-        throw error;
+      
+      console.log('Error details:', JSON.stringify(errorDetails, null, 2));
+      console.log('='.repeat(80) + '\n');
+      
+      // Provide helpful error messages
+      let userFriendlyError = errorDetails.message || 'Azure DeepSeek request failed';
+      
+      if (errorDetails.errorType === 'TIMEOUT') {
+        userFriendlyError = 'Request timed out. The model might be processing a large request. Please try again with a simpler request.';
+      } else if (errorDetails.errorType === 'NETWORK_ERROR') {
+        userFriendlyError = `Cannot connect to Azure DeepSeek server at ${AZURE_DEEPSEEK_URL}. Please check if the server is running.`;
+      } else if (errorDetails.errorType === 'API_ERROR') {
+        userFriendlyError = `Azure DeepSeek API error: ${errorDetails.message}`;
       }
+      
+      throw new Error(userFriendlyError);
     }
 
     // Ensure response is not empty before parsing
     if (!response || response.trim().length === 0) {
-      console.warn('⚠️ Empty response from AI, creating fallback files');
-      response = 'I apologize, but I could not generate a response. Creating basic files...';
+      console.error('❌ Empty response from Azure DeepSeek');
+      throw new Error('Azure DeepSeek returned an empty response. Please try again.');
     }
     
-    // Parse code blocks and create/update files
+    // Validate response contains code blocks
+    const codeBlockCount = (response.match(/```/g) || []).length / 2;
+    if (codeBlockCount === 0) {
+      console.warn('⚠️ Response does not contain code blocks');
+      console.warn('Response preview:', response.substring(0, 500));
+      // Don't throw - let parsing handle it, but log warning
+    } else {
+      console.log(`✅ Response contains ${codeBlockCount} code blocks`);
+    }
+    
+    // Parse code blocks and create/update files INCREMENTALLY
+    // This matches Cursor/Lovable behavior - files created as they're parsed
+    // CRITICAL: Create files one by one and notify frontend immediately
     let createdFiles: Array<{ path: string; success: boolean; error?: string; validated?: boolean; validationError?: string }> = [];
+    
     try {
+      // Call parseAndCreateFiles directly - it already creates files incrementally
+      // and returns the createdFiles array
+      console.log('\n' + '='.repeat(80));
+      console.log('🚀 STARTING FILE PARSING AND CREATION');
+      console.log('='.repeat(80));
+      console.log('Response length:', response.length, 'characters');
+      console.log('Code blocks detected:', (response.match(/```/g) || []).length / 2);
+      
       createdFiles = await parseAndCreateFiles(response);
+      
+      console.log('\n' + '='.repeat(80));
+      console.log('✅ FILE PARSING COMPLETED');
+      console.log('='.repeat(80));
+      console.log('Total files processed:', createdFiles.length);
+      console.log('Successful:', createdFiles.filter(f => f.success).length);
+      console.log('Failed:', createdFiles.filter(f => !f.success).length);
+      
+      if (createdFiles.length > 0) {
+        console.log('\n📋 Files created:');
+        createdFiles.forEach((f, idx) => {
+          const status = f.success ? '✅' : '❌';
+          console.log(`  ${idx + 1}. ${status} ${f.path}${f.error ? ` (${f.error})` : ''}`);
+        });
+      } else {
+        console.warn('\n⚠️ NO FILES WERE CREATED!');
+        console.warn('This might mean:');
+        console.warn('  1. Response doesn\'t contain code blocks with file paths');
+        console.warn('  2. File paths are in incorrect format');
+        console.warn('  3. Parsing patterns didn\'t match');
+      }
+      console.log('='.repeat(80) + '\n');
+      
+      // AUTO-FIX: If files were created but have validation errors, attempt to fix them
+      const filesWithErrors = createdFiles.filter(f => f.success && f.validated === false);
+      if (filesWithErrors.length > 0) {
+        console.log(`🔧 Auto-fixing ${filesWithErrors.length} files with validation errors...`);
+        // Note: Auto-fix can be implemented here if needed
+        // For now, we log warnings and let the user know
+      }
       console.log('✅ File parsing completed:', {
         totalFiles: createdFiles.length,
         successful: createdFiles.filter(f => f.success).length,
@@ -2503,6 +1627,208 @@ root.render(
         validated: createdFiles.filter(f => f.validated === true).length,
         validationFailed: createdFiles.filter(f => f.validated === false).length
       });
+      
+      // ============================================
+      // INTELLIGENT COMPONENT INTEGRATION
+      // ============================================
+      // Automatically identify components and integrate into App.jsx
+      if (createdFiles.length > 0 && createdFiles.some(f => f.success)) {
+        const successfulFiles = createdFiles.filter(f => f.success);
+        const componentFiles = successfulFiles.filter(f => 
+          f.path.includes('components/') || 
+          f.path.match(/src\/[A-Z][a-zA-Z0-9]*\.(jsx|js)$/) ||
+          (f.path.includes('/') && f.path.split('/').pop()?.match(/^[A-Z]/))
+        );
+        
+        if (componentFiles.length > 0) {
+          console.log('\n' + '='.repeat(80));
+          console.log('🧠 INTELLIGENT COMPONENT INTEGRATION');
+          console.log('='.repeat(80));
+          console.log(`Found ${componentFiles.length} component file(s) to integrate:`);
+          componentFiles.forEach(f => console.log(`  - ${f.path}`));
+          
+          try {
+            // Get current App file (using correct extension based on project language)
+            const appFile = project.files?.find(f => 
+              f.path === `src/App.${fileExtension}` || f.path === `src/App.${indexExtension}` ||
+              f.path === 'src/App.jsx' || f.path === 'src/App.tsx' || f.path === 'src/App.js' || f.path === 'src/App.ts' ||
+              (f.isMain && (f.path.includes('App.jsx') || f.path.includes('App.tsx') || f.path.includes('App.js') || f.path.includes('App.ts')))
+            );
+            
+            if (appFile) {
+              console.log(`\n📝 Updating App.${fileExtension} to import and render new components...`);
+              
+              // Extract component names from file paths
+              const componentNames: string[] = [];
+              componentFiles.forEach(file => {
+                const fileName = file.path.split('/').pop() || file.path.split('\\').pop() || '';
+                // Handle Header.component.js → Header, Header.jsx → Header
+                let componentName = fileName.replace(/\.(component\.)?(jsx|js|tsx|ts)$/i, '');
+                // If still has dot (e.g., Header.component), take first part
+                if (componentName.includes('.')) {
+                  componentName = componentName.split('.')[0];
+                }
+                if (componentName && componentName.match(/^[A-Z]/)) {
+                  componentNames.push(componentName);
+                }
+              });
+              
+              console.log(`Identified components: ${componentNames.join(', ')}`);
+              
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:1684',message:'Starting component integration',data:{componentNames,appFilePath:appFile.path},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'})}).catch(()=>{});
+              // #endregion
+              
+              // Read component files to verify they export correctly
+              const componentFilesData = await prisma.appFile.findMany({
+                where: {
+                  projectId: id,
+                  path: { in: componentFiles.map(f => f.path) }
+                }
+              });
+              
+              // REVIEW: Validate component files
+              console.log(`\n🔍 REVIEWING COMPONENT FILES...`);
+              const componentReviews: Array<{path: string; valid: boolean; issues: string[]}> = [];
+              componentFilesData.forEach(file => {
+                const issues: string[] = [];
+                const hasExport = file.content.includes('export') || file.content.includes('module.exports');
+                const hasComponent = !!file.content.match(/(?:function|const|class|var|let)\s+[A-Z]/);
+                const hasReturn = file.content.includes('return');
+                const hasReactImport = file.content.includes('import') && (file.content.includes('react') || file.content.includes('React'));
+                
+                if (!hasExport) issues.push('missing export');
+                if (!hasComponent) issues.push('no component definition');
+                if (!hasReturn) issues.push('no return statement');
+                if (!hasReactImport) issues.push('missing React import');
+                
+                const isValid = hasExport && hasComponent && hasReturn;
+                componentReviews.push({ path: file.path, valid: isValid, issues });
+                console.log(`  ${isValid ? '✅' : '⚠️'} ${file.path}: ${isValid ? 'valid' : issues.join(', ')}`);
+              });
+              
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:1708',message:'Component files reviewed',data:{componentReviews},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'})}).catch(()=>{});
+              // #endregion
+              
+              // Update App.jsx with imports and component usage
+              let appContent = appFile.content;
+              let appUpdated = false;
+              
+              // Add imports for new components
+              componentNames.forEach(compName => {
+                const componentFile = componentFilesData.find(f => {
+                  const fileName = f.path.split('/').pop() || '';
+                  // Match both Header.jsx and Header.component.js → Header
+                  let nameWithoutExt = fileName.replace(/\.(component\.)?(jsx|js|tsx|ts)$/i, '');
+                  // Handle Header.component → Header
+                  if (nameWithoutExt.includes('.')) {
+                    nameWithoutExt = nameWithoutExt.split('.')[0];
+                  }
+                  return nameWithoutExt === compName;
+                });
+                
+                if (componentFile) {
+                  // Determine import path (handle Header.component.js → ./components/Header)
+                  let importPath = '';
+                  if (componentFile.path.includes('components/')) {
+                    // Extract directory path and component name
+                    const pathParts = componentFile.path.split('/');
+                    const componentsIndex = pathParts.indexOf('components');
+                    if (componentsIndex >= 0) {
+                      const afterComponents = pathParts.slice(componentsIndex + 1);
+                      const fileName = afterComponents[afterComponents.length - 1];
+                      const nameWithoutExt = fileName.replace(/\.(component\.)?(jsx|js|tsx|ts)$/i, '');
+                      const baseName = nameWithoutExt.includes('.') ? nameWithoutExt.split('.')[0] : nameWithoutExt;
+                      const subPath = afterComponents.slice(0, -1).join('/');
+                      importPath = subPath ? `./components/${subPath}/${baseName}` : `./components/${baseName}`;
+                    }
+                  } else if (componentFile.path.startsWith('src/')) {
+                    const relativePath = componentFile.path.replace('src/', './');
+                    importPath = relativePath.replace(/\.(component\.)?(jsx|js|tsx|ts)$/i, '');
+                    // Remove .component if present
+                    if (importPath.includes('.component')) {
+                      importPath = importPath.replace(/\.component$/, '');
+                    }
+                  }
+                  
+                  // Check if import already exists
+                  const importPattern = new RegExp(`import\\s+.*?\\s+from\\s+['"]${importPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]`, 'i');
+                  if (!importPattern.test(appContent) && importPath) {
+                    // Add import after React import or at top
+                    const reactImportMatch = appContent.match(/import\s+React[^;]*;/);
+                    if (reactImportMatch) {
+                      const insertPos = reactImportMatch.index! + reactImportMatch[0].length;
+                      appContent = appContent.slice(0, insertPos) + 
+                        `\nimport ${compName} from '${importPath}';` + 
+                        appContent.slice(insertPos);
+                      appUpdated = true;
+                      console.log(`  ✅ Added import: import ${compName} from '${importPath}'`);
+                    } else {
+                      // Add at top
+                      appContent = `import ${compName} from '${importPath}';\n${appContent}`;
+                      appUpdated = true;
+                      console.log(`  ✅ Added import at top: import ${compName} from '${importPath}'`);
+                    }
+                  }
+                  
+                  // Add component to JSX if not already present
+                  const componentUsagePattern = new RegExp(`<${compName}\\s*/?>`, 'i');
+                  if (!componentUsagePattern.test(appContent)) {
+                    // Find return statement and add component
+                    const returnMatch = appContent.match(/return\s*\([\s\S]*?\)/);
+                    if (returnMatch) {
+                      const returnContent = returnMatch[0];
+                      // Add component before closing div or at end
+                      if (returnContent.includes('</div>')) {
+                        appContent = appContent.replace(
+                          /(return\s*\([\s\S]*?)(<\/div>\s*\))/,
+                          `$1    <${compName} />\n$2`
+                        );
+                        appUpdated = true;
+                        console.log(`  ✅ Added <${compName} /> to JSX`);
+                      } else {
+                        // Add at end of return
+                        appContent = appContent.replace(
+                          /(return\s*\([\s\S]*?)(\))/,
+                          `$1    <${compName} />\n$2`
+                        );
+                        appUpdated = true;
+                        console.log(`  ✅ Added <${compName} /> to JSX (end)`);
+                      }
+                    }
+                  }
+                }
+              });
+              
+              // Save updated App.jsx
+              if (appUpdated) {
+                await prisma.appFile.update({
+                  where: { id: appFile.id },
+                  data: { content: appContent }
+                });
+                console.log(`\n✅ App.jsx updated successfully with ${componentNames.length} component(s)`);
+                console.log(`   Components integrated: ${componentNames.join(', ')}`);
+                console.log(`   Preview will automatically refresh to show new components`);
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:1782',message:'App.jsx auto-integrated with components',data:{componentsIntegrated:componentNames,appUpdated:true,appContentPreview:appContent.substring(0,500)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'})}).catch(()=>{});
+                // #endregion
+              } else {
+                console.log(`\nℹ️ App.jsx already contains all components or no updates needed`);
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:1787',message:'App.jsx already has components',data:{componentsIntegrated:componentNames,appUpdated:false},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'})}).catch(()=>{});
+                // #endregion
+              }
+            } else {
+              console.log(`\n⚠️ App.jsx not found - skipping auto-integration`);
+            }
+          } catch (integrationError: any) {
+            console.error('❌ Error during component integration:', integrationError);
+            // Don't fail the request - files were created successfully
+          }
+          console.log('='.repeat(80) + '\n');
+        }
+      }
 
       // Sandbox validation: After all files are created, validate preview can be generated
       if (createdFiles.length > 0 && createdFiles.some(f => f.success)) {
@@ -2553,14 +1879,24 @@ root.render(
         }
       }
     } catch (parseError: any) {
-      console.error('❌ Error parsing files from response:', parseError);
-      console.error('Error details:', {
-        message: parseError?.message,
-        stack: parseError?.stack,
-        responseLength: response?.length
-      });
-      // Continue with empty array - fallback files will be created if needed
+      console.error('\n' + '='.repeat(80));
+      console.error('❌ ERROR PARSING FILES FROM RESPONSE');
+      console.error('='.repeat(80));
+      console.error('Error:', parseError?.message);
+      console.error('Stack:', parseError?.stack?.substring(0, 500));
+      console.error('Response length:', response?.length);
+      console.error('='.repeat(80) + '\n');
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:1531',message:'Parse error occurred',data:{error:parseError?.message,responseLength:response?.length,responsePreview:response?.substring(0,1000)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+      
+      // CRITICAL: Even if parsing fails, ensure createdFiles is an empty array
+      // This prevents undefined errors in frontend
       createdFiles = [];
+      
+      // Log warning but don't fail the request - user can use "Extract Files" button
+      console.warn('⚠️ File parsing failed, but request will continue. User can manually extract files.');
     }
 
     // Save chat message to database
@@ -2600,143 +1936,171 @@ root.render(
       // Don't fail the request if chat saving fails
     }
 
-    // Get load balancer stats for this request
-    const stats = loadBalancer.getStats().get(provider);
-    const statsData = stats ? {
-      requestsHandled: stats.requestsHandled,
-      requestsFailed: stats.requestsFailed,
-      currentUsage: stats.currentUsage,
-      successRate: stats.requestsHandled > 0 
-        ? (stats.requestsHandled / (stats.requestsHandled + stats.requestsFailed)) * 100 
-        : 100,
-    } : null;
-
     // Ensure filesCreated is always an array
     const filesCreatedResult = Array.isArray(createdFiles) ? createdFiles : [];
     
-    console.log('📤 Sending response:', {
-      responseLength: response.length,
-      filesCreated: filesCreatedResult.length,
-      successfulFiles: filesCreatedResult.filter(f => f.success).length,
-      provider: provider,
-    });
+    // Build response with helpful information
+    const successfulFiles = filesCreatedResult.filter(f => f.success);
+    const failedFiles = filesCreatedResult.filter(f => !f.success);
+    const validatedFiles = filesCreatedResult.filter(f => f.validated === true);
+    const filesWithWarnings = filesCreatedResult.filter(f => f.success && f.validated === false);
     
-    return NextResponse.json({
+    // Generate suggestions based on results
+    const suggestions: string[] = [];
+    if (successfulFiles.length > 0) {
+      suggestions.push(`✅ Created ${successfulFiles.length} file(s): ${successfulFiles.map(f => f.path).join(', ')}`);
+    }
+    if (filesWithWarnings.length > 0) {
+      suggestions.push(`⚠️ ${filesWithWarnings.length} file(s) created but may have issues. Check preview for errors.`);
+    }
+    if (failedFiles.length > 0) {
+      suggestions.push(`❌ Failed to create ${failedFiles.length} file(s). Please try again or check the code format.`);
+    }
+    if (successfulFiles.length === 0 && response.length > 0) {
+      suggestions.push(`💡 No files were extracted from the response. Make sure code uses \`\`\`file:path/to/file.jsx format.`);
+    }
+    
+    // CRITICAL: Ensure filesCreated is always an array and properly formatted
+    const finalFilesCreated = Array.isArray(filesCreatedResult) ? filesCreatedResult : [];
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:1616',message:'BEFORE sending response to frontend',data:{finalFilesCreatedLength:finalFilesCreated.length,successfulFilesCount:successfulFiles.length,filePaths:successfulFiles.map(f=>f.path)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
+    
+    console.log('\n' + '='.repeat(80));
+    console.log('📤 SENDING RESPONSE TO FRONTEND');
+    console.log('='.repeat(80));
+    console.log('Response length:', response.length, 'characters');
+    console.log('Files created array:', finalFilesCreated.length, 'items');
+    console.log('Successful files:', successfulFiles.length);
+    console.log('File paths:', successfulFiles.map(f => f.path));
+    console.log('Response will include filesCreated:', finalFilesCreated.length > 0);
+    console.log('='.repeat(80) + '\n');
+    
+    // Build response with guaranteed filesCreated array
+    const responseData = {
       response,
-      suggestions: [],
-      filesCreated: filesCreatedResult,
-      provider: provider,
-      model: model,
-      loadBalancerStats: statsData,
-      usedFallback: false, // Always using OpenRouter + DeepSeek Coder
-    });
-  } catch (error: any) {
-    // Get the model that was attempted (might be undefined if error occurred before client creation)
-    // Use requestedModel (from userModel) if model is not in scope
-    // Note: 'model' variable is defined inside try block, so we use requestedModel here
-    const attemptedModel = requestedModel || PROVIDER_CONFIGS[provider]?.defaultModel || 'unknown';
+      suggestions,
+      filesCreated: finalFilesCreated, // Always an array
+      provider: 'azure-deepseek',
+      model: AZURE_DEEPSEEK_MODEL,
+      summary: {
+        totalFiles: finalFilesCreated.length,
+        successful: successfulFiles.length,
+        validated: validatedFiles.length,
+        warnings: filesWithWarnings.length,
+        failed: failedFiles.length
+      }
+    };
     
-    console.error('Code chat API error:', {
-      error,
+    // Log final response structure
+    console.log('📦 Final response structure:', {
+      hasResponse: !!responseData.response,
+      hasFilesCreated: Array.isArray(responseData.filesCreated),
+      filesCreatedLength: responseData.filesCreated.length,
+      hasSummary: !!responseData.summary
+    });
+    
+    return NextResponse.json(responseData);
+  } catch (error: any) {
+    // Enhanced error logging with stack trace
+    console.error('\n' + '='.repeat(80));
+    console.error('❌ AZURE DEEPSEEK CHAT API - UNHANDLED ERROR');
+    console.error('='.repeat(80));
+    console.error('Error object:', {
+      name: error?.name,
       message: error?.message,
+      stack: error?.stack,
       status: error?.status,
       code: error?.code,
-      provider,
-      model: attemptedModel,
-      apiKeyPresent: !!apiKey,
-      apiKeyLength: apiKey?.length || 0,
+      type: error?.type,
+      url: AZURE_DEEPSEEK_URL,
+      model: AZURE_DEEPSEEK_MODEL,
     });
+    console.error('='.repeat(80) + '\n');
     
     // Handle connection errors
     if (error?.code === 'ECONNREFUSED' || error?.code === 'ENOTFOUND' || error?.message?.includes('fetch failed') || error?.message?.includes('network') || error?.message?.includes('connection')) {
       return NextResponse.json(
         { 
           error: 'Connection error',
-          message: `Unable to connect to ${provider} API. Please check your internet connection and API key settings.`,
+          message: `Unable to connect to Azure DeepSeek at ${AZURE_DEEPSEEK_URL}. Please check if the server is running.`,
           details: process.env.NODE_ENV === 'development' ? error?.message : undefined,
-          suggestion: 'Check your OpenRouter API key settings in chat settings (⚙️ icon) or get a key at https://openrouter.ai/keys',
-          provider: provider,
-          model: attemptedModel,
-          filesCreated: [] // Always include filesCreated array
+          suggestion: 'Verify that your Azure DeepSeek API is running at ' + AZURE_DEEPSEEK_URL,
+          provider: 'azure-deepseek',
+          model: AZURE_DEEPSEEK_MODEL,
+          filesCreated: []
         },
         { status: 503 }
       );
     }
 
-    // Handle insufficient balance (402)
-    if (error?.status === 402 || error?.message?.includes('Insufficient Balance') || error?.message?.includes('insufficient balance')) {
+    // Handle timeout errors
+    if (error?.name === 'AbortError' || error?.message?.includes('timeout')) {
       return NextResponse.json(
         { 
-          error: 'Insufficient Balance',
-          message: `Your ${provider} account has insufficient balance. Please add credits to continue.`,
-          suggestion: 'Add credits to your OpenRouter account at https://openrouter.ai/account',
-          provider: provider,
-          model: attemptedModel,
+          error: 'Timeout',
+          message: 'Request timed out. The model might be processing a large request. Please try again with a simpler request.',
+          suggestion: 'Try breaking your request into smaller parts or wait a moment and retry.',
+          provider: 'azure-deepseek',
+          model: AZURE_DEEPSEEK_MODEL,
           canRetry: true,
-          filesCreated: [] // Always include filesCreated array
+          filesCreated: []
         },
-        { status: 402 }
+        { status: 504 }
       );
     }
 
-    // Handle invalid model (400/404) - return clean error, don't return 500
-    if (error?.status === 400 || error?.status === 404 || 
-        error?.message?.includes('Invalid model') || 
-        error?.message?.includes('model not found') ||
-        error?.code === 'model_not_found') {
-      // Extract model name from error message or use attempted model
-      const requestedModel = error?.message?.match(/model[:\s"']+([^\s"']+)/i)?.[1] || attemptedModel;
+    // Handle server errors (500/503)
+    if (error?.status === 500 || error?.status === 503) {
       return NextResponse.json(
         { 
-          error: 'Invalid model',
-          message: `The model "${requestedModel}" is not available for ${provider}. Please try a different model.`,
-          suggestion: 'The model is not available. Using DeepSeek Coder (deepseek/deepseek-coder) as default.',
-          provider: provider,
-          model: requestedModel,
+          error: 'Server Error',
+          message: `Azure DeepSeek server error. The model might be loading or overloaded.`,
+          suggestion: 'Wait a moment and try again, or check the Azure DeepSeek server logs.',
+          provider: 'azure-deepseek',
+          model: AZURE_DEEPSEEK_MODEL,
           canRetry: true,
-          filesCreated: [] // Always include filesCreated array
+          filesCreated: []
         },
-        { status: error?.status || 400 }
+        { status: 502 }
       );
     }
 
-    if (error?.status === 401 || error?.message?.includes('Invalid API key') || error?.message?.includes('authentication')) {
+    // Handle authentication errors
+    if (error?.status === 401 || error?.message?.includes('Not authenticated')) {
       return NextResponse.json(
         { 
-          error: 'Invalid API key',
-          message: `Invalid API key for ${provider}. Please check your API key in chat settings.`,
-          suggestion: 'Get your OpenRouter API key at https://openrouter.ai/keys and add it in chat settings (⚙️ icon)',
-          provider: provider,
-          model: attemptedModel,
-          filesCreated: [] // Always include filesCreated array
+          error: 'Authentication Error',
+          message: 'You are not authenticated. Please sign in and try again.',
+          suggestion: 'Refresh the page and ensure you are logged in.',
+          filesCreated: []
         },
         { status: 401 }
       );
     }
 
-    if (error?.status === 429) {
-      return NextResponse.json(
-        { 
-          error: 'Rate limit exceeded. Please try again later.',
-          details: `You've hit the rate limit for ${provider}. Try switching to Groq (free & fast) or wait a few minutes.`,
-          provider: provider,
-          model: attemptedModel,
-          filesCreated: [] // Always include filesCreated array
-        },
-        { status: 429 }
-      );
-    }
-
+    // Generic error handler - return proper error response
+    const errorMessage = error?.message || 'An unexpected error occurred';
+    const errorStatus = error?.status || 500;
+    
     return NextResponse.json(
       { 
-        error: error?.message || 'Failed to process chat message',
-        message: `An error occurred while processing your request. ${error?.message || 'Please try again.'}`,
-        provider: provider,
-        model: attemptedModel,
+        error: 'Request Failed',
+        message: errorMessage,
+        details: process.env.NODE_ENV === 'development' ? {
+          name: error?.name,
+          stack: error?.stack?.substring(0, 500), // Limit stack trace length
+          code: error?.code,
+          url: AZURE_DEEPSEEK_URL,
+        } : undefined,
+        suggestion: 'Please try again. If the problem persists, check server logs.',
+        provider: 'azure-deepseek',
+        model: AZURE_DEEPSEEK_MODEL,
         canRetry: true,
-        filesCreated: [] // Always include filesCreated array
+        filesCreated: []
       },
-      { status: 500 }
+      { status: errorStatus }
     );
   }
 }

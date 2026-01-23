@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -37,6 +37,63 @@ export default function AuthPage() {
   const [showSignUpPassword, setShowSignUpPassword] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Handle error parameters from URL (e.g., OAuth errors)
+  useEffect(() => {
+    const error = searchParams?.get('error');
+    const errorDescription = searchParams?.get('description') || searchParams?.get('message');
+    
+    if (error) {
+      let errorMessage = 'Authentication failed';
+      let description = 'Please try again.';
+      
+      // Map OAuth error codes to user-friendly messages
+      switch (error) {
+        case 'config_error':
+          errorMessage = 'Configuration Error';
+          description = 'Authentication service is not properly configured. Please contact support.';
+          break;
+        case 'code_exchange_failed':
+          errorMessage = 'OAuth Error';
+          description = errorDescription || 'Failed to complete authentication. Please try again.';
+          break;
+        case 'no_session':
+          errorMessage = 'Session Error';
+          description = 'Failed to create session. Please try signing in again.';
+          break;
+        case 'no_code_found':
+          errorMessage = 'OAuth Callback Error';
+          description = 'Invalid OAuth callback. Please try signing in again.';
+          break;
+        case 'callback_error':
+          errorMessage = 'Authentication Error';
+          description = errorDescription || 'An error occurred during authentication. Please try again.';
+          break;
+        case 'access_denied':
+          errorMessage = 'Access Denied';
+          description = 'You cancelled the authentication process. Please try again if you want to sign in.';
+          break;
+        default:
+          errorMessage = errorDescription || errorMessage;
+          description = 'Please try again or use email/password sign in.';
+      }
+      
+      toast.error(errorMessage, {
+        description,
+        duration: 6000,
+        style: {
+          background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+          color: 'white',
+          border: 'none',
+          fontWeight: '600',
+        },
+      });
+      
+      // Clean up URL parameters
+      router.replace('/auth');
+    }
+  }, [searchParams, router]);
 
   const signInForm = useForm<SignInForm>({
     resolver: zodResolver(signInSchema),
@@ -139,19 +196,26 @@ export default function AuthPage() {
       });
       router.push('/app-builder');
     } catch (error) {
-      console.error('Sign in error:', error);
+      // Extract error message without logging full stack trace
       const errorMessage = error instanceof Error ? error.message : 'Sign in failed';
+      
+      // Only log to console in development or for unexpected errors
+      if (process.env.NODE_ENV === 'development' || !errorMessage.includes('Invalid') && !errorMessage.includes('credentials')) {
+        console.error('Sign in error:', errorMessage);
+      }
       
       // Provide helpful suggestions based on error message
       let description = 'Please check your credentials and try again.';
       if (errorMessage.includes('connect') || errorMessage.includes('network') || errorMessage.includes('server')) {
         description = 'Unable to reach the server. Please check your internet connection and ensure the server is running.';
-      } else if (errorMessage.includes('email')) {
+      } else if (errorMessage.includes('email') && errorMessage.includes('not found')) {
         description = 'Make sure you\'re using the correct email address. If you don\'t have an account, please sign up first.';
-      } else if (errorMessage.includes('password')) {
-        description = 'Make sure you\'re using the correct password. You can reset it using "Forgot password" below.';
+      } else if (errorMessage.includes('Invalid') || errorMessage.includes('credentials') || errorMessage.includes('password')) {
+        description = 'The email or password you entered is incorrect. Please check and try again.';
       } else if (errorMessage.includes('verify') || errorMessage.includes('confirmation')) {
         description = 'Please check your email inbox and click the confirmation link before signing in.';
+      } else if (errorMessage.includes('Too many requests')) {
+        description = 'Too many login attempts. Please wait a few minutes before trying again.';
       }
       
       toast.error(errorMessage, {
@@ -220,17 +284,24 @@ export default function AuthPage() {
         router.push('/app-builder');
       }, 1000);
     } catch (error) {
-      console.error('Sign up error:', error);
+      // Extract error message without logging full stack trace
       const errorMessage = error instanceof Error ? error.message : 'Sign up failed';
+      
+      // Only log to console in development or for unexpected errors
+      if (process.env.NODE_ENV === 'development' || !errorMessage.includes('already exists') && !errorMessage.includes('already registered')) {
+        console.error('Sign up error:', errorMessage);
+      }
       
       // Provide helpful suggestions based on error message
       let description = 'Please try again or contact support if the problem persists.';
       if (errorMessage.includes('connect') || errorMessage.includes('network') || errorMessage.includes('server')) {
         description = 'Unable to reach the server. Please check your internet connection and ensure the server is running.';
-      } else if (errorMessage.includes('email') && errorMessage.includes('already')) {
+      } else if (errorMessage.includes('email') && (errorMessage.includes('already') || errorMessage.includes('already registered'))) {
         description = 'An account with this email already exists. Please sign in instead.';
       } else if (errorMessage.includes('password')) {
         description = 'Password must be at least 6 characters long.';
+      } else if (errorMessage.includes('Invalid input')) {
+        description = 'Please check all fields and try again.';
       }
       
       toast.error(errorMessage, {

@@ -120,24 +120,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Set session cookies
+    // Set session cookies using new token utilities
     try {
-      const cookieStore = await cookies();
-      cookieStore.set('sb-access-token', data.session.access_token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: data.session.expires_in,
-        path: '/',
-      });
-
-      cookieStore.set('sb-refresh-token', data.session.refresh_token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 60 * 60 * 24 * 30, // 30 days
-        path: '/',
-      });
+      const { setSessionTokens } = await import('@/lib/auth/core/tokens');
+      await setSessionTokens(
+        data.session.access_token,
+        data.session.refresh_token,
+        data.session.expires_in
+      );
     } catch (cookieError) {
       console.error('Failed to set cookies:', cookieError);
       // Don't fail the request if cookies fail, but log it

@@ -28,6 +28,7 @@ export default function PreviewPanel({ projectId, projectType, onRefresh }: Prev
       console.log('📡 PreviewPanel: Calling preview API...');
       const res = await fetch(`/api/app-projects/${projectId}/preview`, {
         method: 'POST',
+        credentials: 'include', // CRITICAL: Include cookies for authentication
       });
       
       console.log('📡 PreviewPanel: API response status:', res.status, res.statusText);
@@ -155,16 +156,28 @@ export default function PreviewPanel({ projectId, projectType, onRefresh }: Prev
       if (projectId) {
         // Wait a bit for files to be saved, then generate preview
         setTimeout(() => {
+          console.log('🔄 PreviewPanel: Auto-refreshing preview after files updated');
           generatePreview();
         }, 1000);
       }
     };
 
+    const handleAutoRefresh = (event: CustomEvent) => {
+      if (projectId && event.detail?.projectId === projectId) {
+        console.log('🔄 PreviewPanel: Auto-refresh triggered', event.detail);
+        setTimeout(() => {
+          generatePreview();
+        }, 500);
+      }
+    };
+
     window.addEventListener('files-updated', handleFilesUpdated);
     window.addEventListener('preview-updated', handleFilesUpdated);
+    window.addEventListener('auto-refresh-preview', handleAutoRefresh as EventListener);
     return () => {
       window.removeEventListener('files-updated', handleFilesUpdated);
       window.removeEventListener('preview-updated', handleFilesUpdated);
+      window.removeEventListener('auto-refresh-preview', handleAutoRefresh as EventListener);
     };
   }, [projectId]);
 

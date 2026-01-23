@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 
 // Provider configuration
-type Provider = 'openai' | 'groq' | 'together' | 'huggingface' | 'openrouter';
+type Provider = 'openai' | 'groq' | 'together' | 'huggingface' | 'azure-deepseek' | 'openrouter';
 
 interface ProviderConfig {
   baseURL: string;
@@ -39,6 +39,11 @@ const PROVIDER_CONFIGS: Record<Provider, ProviderConfig> = {
     baseURL: 'https://api-inference.huggingface.co/v1',
     defaultModel: 'meta-llama/Llama-3-8b-chat-hf',
     models: ['meta-llama/Llama-3-8b-chat-hf'],
+  },
+  'azure-deepseek': {
+    baseURL: process.env.AZURE_DEEPSEEK_URL || 'http://74.225.138.116:8000',
+    defaultModel: process.env.AZURE_DEEPSEEK_MODEL || 'deepseek-coder',
+    models: ['deepseek-coder', 'deepseek-chat'],
   },
   openrouter: {
     baseURL: 'https://openrouter.ai/api/v1',
@@ -93,13 +98,32 @@ function normalizeModelName(modelName: string | undefined, provider: Provider): 
     return PROVIDER_CONFIGS[provider].defaultModel;
   }
   
+  // For Azure DeepSeek, use "deepseek-coder" (Python API expects this, not the full HuggingFace ID)
+  if (provider === 'azure-deepseek') {
+    // Python API accepts "deepseek-coder" as model name parameter
+    // The actual model loaded is "deepseek-ai/deepseek-coder-6.7b-instruct" but API expects "deepseek-coder"
+    if (modelName === 'deepseek-ai/deepseek-coder-6.7b-instruct' || 
+        modelName === 'deepseek/deepseek-coder' || 
+        modelName === 'deepseek-coder' || 
+        !modelName) {
+      console.log(`🔄 Using Azure DeepSeek model name: "deepseek-coder"`);
+      return 'deepseek-coder';
+    }
+    return modelName || PROVIDER_CONFIGS[provider].defaultModel;
+  }
+  
   // For other providers, return as-is or use default
   return modelName || PROVIDER_CONFIGS[provider].defaultModel;
 }
 
 // Detect provider from API key format or explicit provider
 function detectProvider(apiKey: string, explicitProvider?: string): Provider {
-  if (explicitProvider && ['openai', 'groq', 'together', 'huggingface', 'openrouter'].includes(explicitProvider)) {
+  // Priority 1: Check if Azure DeepSeek is configured (highest priority)
+  if (process.env.AZURE_DEEPSEEK_URL) {
+    return 'azure-deepseek';
+  }
+  
+  if (explicitProvider && ['openai', 'groq', 'together', 'huggingface', 'azure-deepseek', 'openrouter'].includes(explicitProvider)) {
     return explicitProvider as Provider;
   }
   
@@ -120,9 +144,21 @@ function createClient(apiKey: string, provider: Provider, model?: string) {
   const selectedModel = normalizeModelName(model, provider);
   
   const clientConfig: any = {
-    apiKey: apiKey || (provider === 'openrouter' ? process.env.OPENROUTER_API_KEY : undefined),
     baseURL: config.baseURL,
   };
+  
+  // Azure DeepSeek doesn't need API key (optional if auth is added later)
+  if (provider === 'azure-deepseek') {
+    // Optional: Add API key if configured for authentication
+    if (process.env.AZURE_DEEPSEEK_API_KEY) {
+      clientConfig.apiKey = process.env.AZURE_DEEPSEEK_API_KEY;
+      clientConfig.defaultHeaders = {
+        'Authorization': `Bearer ${process.env.AZURE_DEEPSEEK_API_KEY}`,
+      };
+    }
+  } else {
+    clientConfig.apiKey = apiKey || (provider === 'openrouter' ? process.env.OPENROUTER_API_KEY : undefined);
+  }
   
   // OpenRouter requires special headers
   if (provider === 'openrouter') {
@@ -163,36 +199,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Use user-provided API key or fall back to environment variable
-    // Priority: user-provided key > provider-specific env var > .env.local GROQ_API_KEY > .env GROQ_API_KEY > .env.local OPENAI_API_KEY > .env OPENAI_API_KEY
-    const apiKey = userApiKey || 
-      (userProvider === 'openrouter' ? process.env.OPENROUTER_API_KEY : undefined) ||
-      process.env.GROQ_API_KEY || 
-      process.env.OPENAI_API_KEY;
+    // Azure DeepSeek ONLY - no API key needed
+    const apiKey = process.env.AZURE_DEEPSEEK_API_KEY || 'not-required';
     
-    // Detect provider: explicit > from API key format > default to openrouter if OPENROUTER_API_KEY exists, else groq, else openai
-    let detectedProvider: Provider;
-    if (userProvider) {
-      detectedProvider = detectProvider('', userProvider);
-    } else if (userApiKey) {
-      detectedProvider = detectProvider(userApiKey);
-    } else if (process.env.OPENROUTER_API_KEY) {
-      detectedProvider = 'openrouter'; // Default to OpenRouter + DeepSeek Coder
-    } else if (process.env.GROQ_API_KEY) {
-      detectedProvider = 'groq';
-    } else {
-      detectedProvider = 'openai';
-    }
-    
-    provider = detectedProvider;
-
-    // Check if any API key is configured
-    if (!apiKey) {
-      console.warn('No API key found (neither user-provided nor environment variable)');
+    // ONLY use Azure DeepSeek - no fallbacks
+    if (!process.env.AZURE__URL) {
+      console.error('Azure DeepSeek URL not configured');
       return NextResponse.json({
-        response: `I'm your Open Resources Assistant! To enable AI-powered responses, please configure your API key in the chat settings (click the settings icon in the chat header). This is an open-source project, so you'll need to provide your own API key.\n\n**FREE OPTIONS:**\n\n1. **OpenRouter (Recommended - FREE & Best Analysis Quality)**\n   - Get API key: https://openrouter.ai/keys\n   - Free tier available\n   - Uses DeepSeek Chat for comprehensive resource analysis\n   - Add OPENROUTER_API_KEY to your .env file\n\n2. **Groq (FREE & Fast)**\n   - Get API key: https://console.groq.com/keys\n   - Free tier with high limits\n   - Very fast responses\n\n3. **Together AI (FREE)**\n   - Get API key: https://api.together.xyz/\n   - Free tier available\n\n4. **Hugging Face (FREE)**\n   - Get API key: https://huggingface.co/settings/tokens\n   - Free tier available\n\n5. **OpenAI (Paid)**\n   - Get API key: https://platform.openai.com/api-keys\n\n**Setup:**\n- Add API key in chat settings (⚙️ icon)\n- Or add OPENROUTER_API_KEY or GROQ_API_KEY to your .env file\n\n**Recommended:** Start with OpenRouter + DeepSeek Chat for best analysis quality!`
-      });
+        error: 'Azure DeepSeek is not configured. Please set AZURE_DEEPSEEK_URL environment variable.',
+        response: 'Azure DeepSeek URL is required. Please configure AZURE_DEEPSEEK_URL in your environment variables.'
+      }, { status: 500 });
     }
+    
+    provider = 'azure-deepseek';
 
     let client, model;
     try {
@@ -234,7 +253,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Build system prompt with context
-    let systemPrompt = `You are an expert AI assistant powered by DeepSeek Chat, specializing in analyzing and understanding open resources (research papers, datasets, code repositories, AI models, hardware designs, etc.).
+    let systemPrompt = `You are DeepSeek Coder, an expert AI assistant powered by DeepSeek's deployed model, specializing in analyzing and understanding open resources (research papers, datasets, code repositories, AI models, hardware designs, etc.).
 
 Your primary role is to deeply analyze ALL provided resources and answer questions with specific, detailed references to them.
 
