@@ -31,7 +31,7 @@ export default function Footer() {
           </p>
 
           {/* 📱 Social Icons + 📧 Mail */}
-          <div className="flex flex-col md:flex-row items-center md:space-x-6 gap-4 text-lg">
+          <div className="flex flex-col items-center gap-4 text-lg">
             <div className="flex space-x-5">
               <Link
                 href="https://discord.gg/4weahHXQYY"
@@ -70,6 +70,14 @@ export default function Footer() {
                 <i className="fas fa-envelope" />
               </Link>
             </div>
+            <Link
+              href="tel:+917838832332"
+              className="flex items-center text-sm text-gray-400 hover:text-emerald-400 transition-colors duration-300"
+              aria-label="Phone"
+            >
+              <i className="fas fa-phone mr-2" />
+              <span>7838832332</span>
+            </Link>
           </div>
         </div>
 
