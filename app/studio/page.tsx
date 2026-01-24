@@ -742,6 +742,19 @@ Generate all files needed for a fully functional application.`;
                 </div>
               </div>
             )}
+            
+            {/* Resize Handle */}
+            {leftSidebarOpen && (
+              <div
+                className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-400/50 transition-colors group"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setIsResizing(true);
+                }}
+              >
+                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-12 bg-emerald-400/30 group-hover:bg-emerald-400 transition-all rounded-full" />
+              </div>
+            )}
           </div>
 
           {/* Main Content Area - Full Width Preview */}
