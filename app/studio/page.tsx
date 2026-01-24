@@ -33,6 +33,8 @@ function AppBuilderPageContent() {
   const [creatingSample, setCreatingSample] = useState(false);
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
   const [leftSidebarTab, setLeftSidebarTab] = useState<'projects' | 'files' | 'code' | 'chat' | 'deploy'>('projects');
+  const [sidebarWidth, setSidebarWidth] = useState(320);
+  const [isResizing, setIsResizing] = useState(false);
 
   // Auto-create project when description is provided (from home page)
   useEffect(() => {
@@ -67,6 +69,37 @@ function AppBuilderPageContent() {
       fetchFiles();
     }
   }, [isAuthenticated, selectedProjectId]);
+
+  // Handle sidebar resize
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      
+      const newWidth = e.clientX;
+      // Constrain width between 200px and 800px
+      if (newWidth >= 200 && newWidth <= 800) {
+        setSidebarWidth(newWidth);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizing]);
 
   // Listen for generation events
   useEffect(() => {
@@ -606,10 +639,12 @@ Generate all files needed for a fully functional application.`;
         <div style={{ display: 'flex', height: '100%', overflow: 'hidden', position: 'relative' }}>
           {/* Left Sidebar - Collapsible */}
           <div 
-            className={`transition-all duration-300 ease-in-out ${
-              leftSidebarOpen ? 'w-80' : 'w-0'
-            } border-r border-white/10 bg-[#0a0a0a] overflow-hidden`}
-            style={{ flexShrink: 0 }}
+            className="border-r border-white/10 bg-[#0a0a0a] overflow-hidden relative"
+            style={{ 
+              width: leftSidebarOpen ? `${sidebarWidth}px` : '0px',
+              flexShrink: 0,
+              transition: leftSidebarOpen ? 'none' : 'width 300ms ease-in-out'
+            }}
           >
             {leftSidebarOpen && (
               <div className="h-full flex flex-col">
