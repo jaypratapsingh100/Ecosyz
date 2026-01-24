@@ -257,16 +257,21 @@ export default function Header() {
                 )}
               </div>
             ) : (
-              <Link
-                href="/auth"
-                className="focus:outline-none focus:ring-2 focus:ring-emerald-400/60 px-4 py-2 bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 font-semibold rounded-lg hover:shadow-lg transition-all"
-              >
-                Sign In
-              </Link>
+              !(pathname === '/auth' || (pathname === '/studio' && !isAuthenticated)) && (
+                <Link
+                  href="/auth"
+                  className="focus:outline-none focus:ring-2 focus:ring-emerald-400/60 px-4 py-2 bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 font-semibold rounded-lg hover:shadow-lg transition-all"
+                >
+                  Sign In
+                </Link>
+              )
             )}
             <Link href="/feedback" className="focus:outline-none focus:ring-2 focus:ring-emerald-400/60 px-2 py-1 rounded transition hover:text-emerald-400 font-medium text-white">
               Feedback
             </Link>
+            <span className="px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs font-semibold rounded border border-yellow-500/30">
+              BETA
+            </span>
           </div>
           {/* Hamburger for mobile */}
           <button
@@ -330,14 +335,19 @@ export default function Header() {
               </Link>
             );
           })}
-          <Link
-            href="/feedback"
-            className="w-full flex items-center justify-center gap-2 p-3 rounded focus:outline-none focus:ring-2 focus:ring-emerald-400/60 hover:bg-white/10 text-white font-medium"
-            onClick={() => setMobileOpen(false)}
-            tabIndex={mobileOpen ? 0 : -1}
-          >
-            Feedback
-          </Link>
+          <div className="w-full flex items-center justify-center gap-2 p-3">
+            <Link
+              href="/feedback"
+              className="focus:outline-none focus:ring-2 focus:ring-emerald-400/60 rounded hover:text-emerald-400 text-white font-medium"
+              onClick={() => setMobileOpen(false)}
+              tabIndex={mobileOpen ? 0 : -1}
+            >
+              Feedback
+            </Link>
+            <span className="px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs font-semibold rounded border border-yellow-500/30">
+              BETA
+            </span>
+          </div>
           {isAuthenticated ? (
             <>
               <Link
@@ -360,14 +370,16 @@ export default function Header() {
               </button>
             </>
           ) : (
-            <Link
-              href="/auth"
-              className="w-full flex items-center justify-center gap-2 p-3 rounded focus:outline-none focus:ring-2 focus:ring-emerald-400/60 bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 font-semibold"
-              onClick={() => setMobileOpen(false)}
-              tabIndex={mobileOpen ? 0 : -1}
-            >
-              Sign In
-            </Link>
+            !(pathname === '/auth' || (pathname === '/studio' && !isAuthenticated)) && (
+              <Link
+                href="/auth"
+                className="w-full flex items-center justify-center gap-2 p-3 rounded focus:outline-none focus:ring-2 focus:ring-emerald-400/60 bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 font-semibold"
+                onClick={() => setMobileOpen(false)}
+                tabIndex={mobileOpen ? 0 : -1}
+              >
+                Sign In
+              </Link>
+            )
           )}
         </div>
       </Container>

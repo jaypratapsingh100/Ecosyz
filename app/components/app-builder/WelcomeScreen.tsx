@@ -46,25 +46,10 @@ export default function WelcomeScreen({
             />
           </svg>
         </div>
-        <div className="flex items-center justify-center gap-3 mb-3">
-          <h2 className="text-3xl font-bold text-white">Welcome to Studio</h2>
-          <span className="px-3 py-1 bg-yellow-500/20 text-yellow-400 text-xs font-semibold rounded-md border border-yellow-500/30 animate-pulse">
-            BETA
-          </span>
-        </div>
+        <h2 className="text-3xl font-bold text-white mb-3">Welcome to Studio</h2>
         <p className="text-teal-100/90 mb-4 text-lg">
           Build applications with AI-powered code generation
         </p>
-        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 mb-4">
-          <p className="text-sm text-yellow-200 flex items-start gap-2">
-            <svg className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-            <span>
-              <span className="font-semibold">Beta Notice:</span> Studio is currently in beta. Some features may be unstable or break unexpectedly. Please report any issues you encounter.
-            </span>
-          </p>
-        </div>
         <p className="text-gray-400 text-sm mb-6">
           Get started by creating your first project. Our intelligent wizard will guide you through the process.
         </p>

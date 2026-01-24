@@ -185,31 +185,13 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
     }
   };
 
-
-  const handleQuestionnaireComplete = async (questionnaireData: any) => {
-    setQuestionnaireData(questionnaireData);
-    setShowQuestionnaire(false);
-    
-    // Determine framework from questionnaire
-    const framework = questionnaireData.frameworkPreference === 'auto' 
-      ? undefined 
-      : questionnaireData.frameworkPreference === 'nextjs' 
-        ? 'nextjs' 
-        : questionnaireData.frameworkPreference || 'react';
-    
-    // Project type must be "web", "fullstack", or "other" (not the questionnaire appType)
-    // Questionnaire appType (portfolio, business, etc.) is stored separately as metadata
-    const projectType = 'web'; // Always "web" for web apps, questionnaire appType is separate
-    
-    // Create project with questionnaire data
-    await createProjectWithQuestionnaire(questionnaireData, framework, projectType);
-  };
-
-  const createProjectWithQuestionnaire = async (
-    questionnaireData: any,
-    framework: string | undefined,
-    projectType: string
-  ) => {
+  /*
+   * Legacy questionnaire-based creation flow.
+   *
+   * This flow has been superseded by the Questionnaire step inside `WizardFlow`.
+   * We keep this block commented out temporarily to avoid accidental usage while
+   * cleaning up the codebase. It can be safely deleted once confirmed unused.
+   *
     if (!newProjectTitle.trim()) {
       setNewProjectTitle(questionnaireData.brandName || 'My App');
     }
@@ -702,9 +684,11 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
     }
   };
 
-  const handleCreateProject = () => {
-    // Show questionnaire first (title can be set in questionnaire)
-    setShowQuestionnaire(true);
+  */
+
+  const handleCreateProject = async () => {
+    // ProjectManager creates template projects only; the wizard lives outside.
+    await handleCreateProjectWithoutQuestionnaire();
   };
 
   const handleDeleteProject = async (projectId: string) => {
@@ -737,14 +721,9 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
       <div className="p-5 border-b border-white/5 flex-shrink-0 bg-gradient-to-r from-[#0a0a0a]/50 to-[#0d0d0d]/50 backdrop-blur-sm">
         <div className="flex items-center justify-between mb-5">
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <h2 className="text-white font-bold text-xl bg-gradient-to-r from-white via-emerald-100 to-cyan-100 bg-clip-text text-transparent">
-                Projects
-              </h2>
-              <span className="px-2 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs font-semibold rounded-md border border-yellow-500/30">
-                BETA
-              </span>
-            </div>
+            <h2 className="text-white font-bold text-xl mb-1 bg-gradient-to-r from-white via-emerald-100 to-cyan-100 bg-clip-text text-transparent">
+              Projects
+            </h2>
             <p className="text-gray-400 text-xs font-medium">
               {projects.length} {projects.length === 1 ? 'project' : 'projects'}
             </p>
@@ -924,18 +903,6 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
         </div>
       )}
 
-      {/* Questionnaire Wizard */}
-      {showQuestionnaire && (
-        <QuestionnaireWizard
-          onComplete={handleQuestionnaireComplete}
-          onSkip={() => {
-            setShowQuestionnaire(false);
-            // Create project without questionnaire
-            handleCreateProjectWithoutQuestionnaire();
-          }}
-          initialData={questionnaireData}
-        />
-      )}
     </div>
   );
 
