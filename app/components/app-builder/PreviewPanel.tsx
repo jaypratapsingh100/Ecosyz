@@ -12,7 +12,6 @@ export default function PreviewPanel({ projectId, projectType, onRefresh }: Prev
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const generatePreview = useCallback(async () => {
     if (!projectId) {
@@ -182,87 +181,11 @@ export default function PreviewPanel({ projectId, projectType, onRefresh }: Prev
   }, [projectId, generatePreview]);
 
   // Show preview for all project types, but warn if not web/fullstack
-  const showWarning = projectType !== 'web' && projectType !== 'fullstack';
-
-  if (isFullscreen) {
-    return (
-      <div className="fixed inset-0 z-50 bg-[#0a0a0a] flex flex-col">
-        <div className="px-4 py-3 border-b border-white/10 flex-shrink-0 flex items-center justify-between">
-          <h3 className="text-white font-semibold text-sm">Preview - Fullscreen</h3>
-          <div className="flex gap-2">
-            <button
-              onClick={generatePreview}
-              disabled={loading}
-              className="px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/50 text-emerald-400 text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
-            >
-              {loading ? 'Generating...' : 'Refresh'}
-            </button>
-            <button
-              onClick={() => setIsFullscreen(false)}
-              className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium rounded-lg transition-colors"
-            >
-              Exit Fullscreen
-            </button>
-          </div>
-        </div>
-        <div className="flex-1 min-h-0 relative">
-          {previewHtml ? (
-            <iframe
-              srcDoc={previewHtml}
-              className="w-full h-full border-0"
-              title="Preview"
-              sandbox="allow-scripts allow-same-origin"
-              style={{ display: 'block' }}
-              scrolling="yes"
-            />
-          ) : (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="text-center">
-                <p className="text-gray-400 text-sm">Click Refresh to generate preview</p>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="h-full flex flex-col bg-[#0a0a0a] border-l border-white/10">
-      {/* Header */}
-      <div className="px-4 py-3 border-b border-white/10 flex-shrink-0">
-        <div className="flex items-center justify-between">
-          <h3 className="text-white font-semibold text-sm">Preview</h3>
-          <div className="flex gap-2">
-            <button
-              onClick={generatePreview}
-              disabled={loading}
-              className="px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/50 text-emerald-400 text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
-            >
-              {loading ? 'Generating...' : 'Refresh'}
-            </button>
-            <button
-              onClick={() => setIsFullscreen(true)}
-              className="px-2 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium rounded-lg transition-colors"
-              title="Fullscreen"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      </div>
+    <div className="h-full flex flex-col bg-[#0a0a0a]">
 
-      {/* Warning for non-web projects */}
-      {showWarning && (
-        <div className="px-4 py-2 bg-yellow-500/10 border-b border-yellow-500/20 text-yellow-400 text-xs">
-          ⚠️ Preview may not work perfectly for {projectType} projects. Best results with web/fullstack projects.
-        </div>
-      )}
-
-      {/* Preview Content */}
-      <div className="flex-1 min-h-0 relative">
+      {/* Preview Content - Full Height */}
+      <div className="w-full h-full relative">
         {loading && !previewHtml ? (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center">
@@ -281,30 +204,23 @@ export default function PreviewPanel({ projectId, projectType, onRefresh }: Prev
             </div>
           </div>
         ) : previewHtml ? (
-          <div className="w-full h-full relative">
-            <iframe
-              key={previewHtml.substring(0, 100)} // Force re-render on content change
-              srcDoc={previewHtml}
-              className="w-full h-full border-0"
-              title="Preview"
-              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
-              style={{ backgroundColor: '#fff', display: 'block' }}
-              scrolling="yes"
-              onLoad={() => {
-                console.log('✅ PreviewPanel: Preview iframe loaded successfully');
-                console.log('📊 PreviewPanel: Preview HTML length:', previewHtml.length);
-              }}
-              onError={(e) => {
-                console.error('❌ PreviewPanel: Preview iframe error:', e);
-                setError('Failed to load preview content. Check browser console for details.');
-              }}
-            />
-            {!loading && (
-              <div className="absolute top-2 right-2 text-xs text-gray-500 bg-black/50 px-2 py-1 rounded">
-                Preview loaded
-              </div>
-            )}
-          </div>
+          <iframe
+            key={previewHtml.substring(0, 100)} // Force re-render on content change
+            srcDoc={previewHtml}
+            className="w-full h-full border-0"
+            title="Preview"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+            style={{ backgroundColor: '#fff', display: 'block' }}
+            scrolling="yes"
+            onLoad={() => {
+              console.log('✅ PreviewPanel: Preview iframe loaded successfully');
+              console.log('📊 PreviewPanel: Preview HTML length:', previewHtml.length);
+            }}
+            onError={(e) => {
+              console.error('❌ PreviewPanel: Preview iframe error:', e);
+              setError('Failed to load preview content. Check browser console for details.');
+            }}
+          />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center">
@@ -312,7 +228,7 @@ export default function PreviewPanel({ projectId, projectType, onRefresh }: Prev
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
               </svg>
-              <p className="text-gray-400 text-sm">Click Refresh to generate preview</p>
+              <p className="text-gray-400 text-sm">Preview will generate automatically</p>
             </div>
           </div>
         )}

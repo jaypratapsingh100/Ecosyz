@@ -7,8 +7,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { Container } from "./ui/Container";
 import { toast } from "sonner";
 
-// Central nav definition - base links (always visible)
-const BASE_NAV_LINKS = [
+// Central nav definition - base links (visible on all pages except /studio)
+const ALL_NAV_LINKS = [
   { href: "/about", label: "About" },
   { href: "/features", label: "Features" },
   { href: "/pricing", label: "Pricing" },
@@ -24,6 +24,9 @@ export default function Header() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
   const router = useRouter();
+
+  // Determine which nav links to show based on current page
+  const BASE_NAV_LINKS = pathname === '/studio' ? [] : ALL_NAV_LINKS;
 
   // Close mobile nav on route change
   useEffect(() => { setMobileOpen(false); }, [pathname]);

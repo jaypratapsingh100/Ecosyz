@@ -24,6 +24,7 @@ interface Workspace {
 interface ProjectManagerProps {
   onSelectProject: (projectId: string) => void;
   selectedProjectId?: string;
+  onOpenWizard?: () => void;
 }
 
 const PROJECT_TEMPLATES = [
@@ -144,7 +145,7 @@ if __name__ == "__main__":
   },
 ];
 
-export default function ProjectManager({ onSelectProject, selectedProjectId }: ProjectManagerProps) {
+export default function ProjectManager({ onSelectProject, selectedProjectId, onOpenWizard }: ProjectManagerProps) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [loading, setLoading] = useState(true);
@@ -154,6 +155,7 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>('');
   const [creating, setCreating] = useState(false);
   const [creatingSample, setCreatingSample] = useState(false);
+  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchProjects();
@@ -280,7 +282,7 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
         {/* Quick Actions */}
         <div className="flex gap-2">
           <button
-            onClick={() => setShowCreateModal(true)}
+            onClick={onOpenWizard}
             className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-emerald-500/10 to-cyan-500/10 hover:from-emerald-500/20 hover:to-cyan-500/20 border border-emerald-500/30 rounded-lg text-emerald-400 text-xs font-medium transition-all"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -330,20 +332,24 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
           </div>
         ) : (
           <div className="space-y-3">
-            {projects.map((project) => (
-              <div
-                key={project.id}
-                className={`group relative p-4 rounded-xl cursor-pointer transition-all duration-300 ${
-                  selectedProjectId === project.id
-                    ? 'bg-gradient-to-br from-emerald-500/20 via-emerald-500/10 to-cyan-500/10 border-2 border-emerald-500/50 shadow-lg shadow-emerald-500/10'
-                    : 'bg-gradient-to-br from-[#1a1a1a]/80 to-[#0d0d0d]/80 border border-white/5 hover:border-emerald-500/30 hover:shadow-lg hover:shadow-emerald-500/5'
-                }`}
-                onClick={() => onSelectProject(project.id)}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <div className={`w-2 h-2 rounded-full ${
+            {projects.map((project) => {
+              const isExpanded = expandedProjectId === project.id;
+              return (
+                <div
+                  key={project.id}
+                  className={`group relative rounded-xl cursor-pointer transition-all duration-300 ${
+                    selectedProjectId === project.id
+                      ? 'bg-gradient-to-br from-emerald-500/20 via-emerald-500/10 to-cyan-500/10 border-2 border-emerald-500/50 shadow-lg shadow-emerald-500/10'
+                      : 'bg-gradient-to-br from-[#1a1a1a]/80 to-[#0d0d0d]/80 border border-white/5 hover:border-emerald-500/30 hover:shadow-lg hover:shadow-emerald-500/5'
+                  }`}
+                >
+                  {/* Project Header - Always Visible */}
+                  <div 
+                    className="flex items-center justify-between gap-2 p-3"
+                    onClick={() => onSelectProject(project.id)}
+                  >
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
                         selectedProjectId === project.id 
                           ? 'bg-emerald-400' 
                           : 'bg-gray-500 group-hover:bg-emerald-400'
@@ -356,42 +362,74 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
                         {project.title}
                       </h3>
                     </div>
-                    {project.description && (
-                      <p className="text-gray-400 text-xs mt-1.5 mb-2 line-clamp-2">
-                        {project.description}
-                      </p>
-                    )}
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="px-2 py-0.5 bg-white/5 text-gray-400 text-xs rounded-md border border-white/5">
-                        {project.type}
-                      </span>
-                      {project.framework && (
-                        <span className="px-2 py-0.5 bg-white/5 text-gray-400 text-xs rounded-md border border-white/5">
-                          {project.framework}
-                        </span>
-                      )}
-                      {project._count && (
-                        <span className="px-2 py-0.5 bg-white/5 text-gray-400 text-xs rounded-md border border-white/5">
-                          {project._count.files} {project._count.files === 1 ? 'file' : 'files'}
-                        </span>
-                      )}
+                    
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {/* Expand/Collapse Button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExpandedProjectId(isExpanded ? null : project.id);
+                        }}
+                        className="p-1 text-gray-400 hover:text-emerald-400 rounded transition-colors"
+                        title={isExpanded ? 'Collapse' : 'Expand'}
+                      >
+                        <svg 
+                          className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} 
+                          fill="none" 
+                          stroke="currentColor" 
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                      
+                      {/* Delete Button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteProject(project.id);
+                        }}
+                        className="p-1 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded transition-all duration-200 opacity-0 group-hover:opacity-100"
+                        title="Delete project"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
                     </div>
                   </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteProject(project.id);
-                    }}
-                    className="ml-2 p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all duration-200 opacity-0 group-hover:opacity-100"
-                    title="Delete project"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
+
+                  {/* Expanded Details */}
+                  {isExpanded && (
+                    <div className="px-3 pb-3 pt-0 border-t border-white/5 animate-in fade-in slide-in-from-top-2 duration-200">
+                      {project.description && (
+                        <p className="text-gray-400 text-xs mt-2 mb-3">
+                          {project.description}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="px-2 py-0.5 bg-white/5 text-gray-400 text-xs rounded-md border border-white/5">
+                          {project.type}
+                        </span>
+                        {project.framework && (
+                          <span className="px-2 py-0.5 bg-white/5 text-gray-400 text-xs rounded-md border border-white/5">
+                            {project.framework}
+                          </span>
+                        )}
+                        {project._count && (
+                          <span className="px-2 py-0.5 bg-white/5 text-gray-400 text-xs rounded-md border border-white/5">
+                            {project._count.files} {project._count.files === 1 ? 'file' : 'files'}
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-2 text-xs text-gray-500">
+                        Created: {new Date(project.createdAt).toLocaleDateString()}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

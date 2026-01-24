@@ -6,7 +6,6 @@ import Image from 'next/image';
 import Link from 'next/link';
 import Header from '../components/Header';
 import ProjectManager from '../components/app-builder/ProjectManager';
-import FileExplorer from '../components/app-builder/FileExplorer';
 import CodeEditor from '../components/app-builder/CodeEditor';
 import AppChat from '../components/app-builder/AppChat';
 import PreviewPanel from '../components/app-builder/PreviewPanel';
@@ -32,9 +31,10 @@ function AppBuilderPageContent() {
   const [showWizard, setShowWizard] = useState(false);
   const [creatingSample, setCreatingSample] = useState(false);
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
-  const [leftSidebarTab, setLeftSidebarTab] = useState<'projects' | 'files' | 'code' | 'chat' | 'deploy'>('projects');
+  const [leftSidebarTab, setLeftSidebarTab] = useState<'projects' | 'code' | 'chat' | 'deploy'>('projects');
   const [sidebarWidth, setSidebarWidth] = useState(320);
   const [isResizing, setIsResizing] = useState(false);
+  const [showTabMenu, setShowTabMenu] = useState(false);
 
   // Auto-create project when description is provided (from home page)
   useEffect(() => {
@@ -661,16 +661,6 @@ Generate all files needed for a fully functional application.`;
                     Projects
                   </button>
                   <button
-                    onClick={() => setLeftSidebarTab('files')}
-                    className={`px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap ${
-                      leftSidebarTab === 'files'
-                        ? 'text-emerald-400 border-b-2 border-emerald-400 bg-[#0a0a0a]'
-                        : 'text-gray-400 hover:text-gray-300'
-                    }`}
-                  >
-                    Files
-                  </button>
-                  <button
                     onClick={() => setLeftSidebarTab('code')}
                     className={`px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap ${
                       leftSidebarTab === 'code'
@@ -708,14 +698,7 @@ Generate all files needed for a fully functional application.`;
                     <ProjectManager
                       onSelectProject={setSelectedProjectId}
                       selectedProjectId={selectedProjectId}
-                    />
-                  )}
-                  {leftSidebarTab === 'files' && (
-                    <FileExplorer
-                      projectId={selectedProjectId}
-                      onSelectFile={handleFileSelect}
-                      selectedFileId={selectedFile?.id}
-                      onFileChange={handleFileChange}
+                      onOpenWizard={() => setShowWizard(true)}
                     />
                   )}
                   {leftSidebarTab === 'code' && (
@@ -723,6 +706,8 @@ Generate all files needed for a fully functional application.`;
                       file={selectedFile}
                       projectId={selectedProjectId}
                       onChange={handleEditorChange}
+                      files={files}
+                      onFileSelect={handleFileSelect}
                     />
                   )}
                   {leftSidebarTab === 'chat' && (
@@ -759,22 +744,107 @@ Generate all files needed for a fully functional application.`;
 
           {/* Main Content Area - Full Width Preview */}
           <div className="flex-1 overflow-hidden relative">
-            {/* Animated Toggle Icon - Positioned before Preview */}
-            <button
-              onClick={() => setLeftSidebarOpen(!leftSidebarOpen)}
-              className="absolute left-0 top-1/2 -translate-y-1/2 z-20 bg-[#0d0d0d] border border-white/10 rounded-r-lg p-2 hover:bg-[#1a1a1a] transition-all shadow-lg group"
-              title={leftSidebarOpen ? 'Close sidebar' : 'Open sidebar'}
-              style={{ 
-                transform: 'translateY(-50%)',
-                animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
-              }}
+            {/* Sidebar Toggle with Icon Menu */}
+            <div 
+              className="absolute left-0 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2 group/menu"
+              onMouseEnter={() => setShowTabMenu(true)}
+              onMouseLeave={() => setShowTabMenu(false)}
             >
-              <img 
-                src="/icon.svg" 
-                alt="OpenIdea" 
-                className={`w-6 h-6 transition-transform duration-300 ${leftSidebarOpen ? 'rotate-90' : ''} group-hover:scale-110`}
-              />
-            </button>
+              {/* Show tab icons only when sidebar is closed AND hovering */}
+              {!leftSidebarOpen && showTabMenu && (
+                <>
+                  {/* Top Icons - 2 above */}
+                  <div className="flex flex-col gap-1 animate-in fade-in slide-in-from-left-2 duration-200">
+                    {[
+                      { id: 'projects', label: 'Projects', icon: '📁' },
+                      { id: 'code', label: 'Code', icon: '💻' }
+                    ].map((tab) => (
+                      <div key={tab.id} className="relative group/tooltip">
+                        <button
+                          onClick={() => {
+                            setLeftSidebarTab(tab.id as any);
+                            setLeftSidebarOpen(true);
+                            setShowTabMenu(false);
+                          }}
+                          className="bg-[#0d0d0d] border border-white/10 rounded-r-lg p-2.5 text-xl transition-all hover:bg-emerald-500/20 hover:scale-110 shadow-lg"
+                          style={{
+                            animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+                          }}
+                        >
+                          {tab.icon}
+                        </button>
+                        {/* Tooltip */}
+                        <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none">
+                          <div className="bg-[#0d0d0d] border border-white/10 rounded-lg px-3 py-1.5 shadow-xl whitespace-nowrap">
+                            <span className="text-sm font-medium text-gray-200">{tab.label}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {/* Main Toggle Button - Always visible */}
+              <div className="relative group/tooltip">
+                <button
+                  onClick={() => setLeftSidebarOpen(!leftSidebarOpen)}
+                  className="bg-[#0d0d0d] border border-white/10 rounded-r-lg p-2.5 hover:bg-[#1a1a1a] transition-all shadow-lg"
+                  style={{ 
+                    animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+                  }}
+                >
+                  <img 
+                    src="/icon.svg" 
+                    alt="OpenIdea" 
+                    className={`w-6 h-6 transition-transform duration-300 ${leftSidebarOpen ? 'rotate-90' : ''} group-hover/tooltip:scale-110`}
+                  />
+                </button>
+                {/* Tooltip */}
+                <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none">
+                  <div className="bg-[#0d0d0d] border border-white/10 rounded-lg px-3 py-1.5 shadow-xl whitespace-nowrap">
+                    <span className="text-sm font-medium text-gray-200">
+                      {leftSidebarOpen ? 'Close Sidebar' : 'Open Sidebar'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Show tab icons only when sidebar is closed AND hovering */}
+              {!leftSidebarOpen && showTabMenu && (
+                <>
+                  {/* Bottom Icons - 2 below */}
+                  <div className="flex flex-col gap-1 animate-in fade-in slide-in-from-left-2 duration-200">
+                    {[
+                      { id: 'chat', label: 'Chat', icon: '💬' },
+                      { id: 'deploy', label: 'Deploy', icon: '🚀' }
+                    ].map((tab) => (
+                      <div key={tab.id} className="relative group/tooltip">
+                        <button
+                          onClick={() => {
+                            setLeftSidebarTab(tab.id as any);
+                            setLeftSidebarOpen(true);
+                            setShowTabMenu(false);
+                          }}
+                          className="bg-[#0d0d0d] border border-white/10 rounded-r-lg p-2.5 text-xl transition-all hover:bg-emerald-500/20 hover:scale-110 shadow-lg"
+                          style={{
+                            animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+                          }}
+                        >
+                          {tab.icon}
+                        </button>
+                        {/* Tooltip */}
+                        <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none">
+                          <div className="bg-[#0d0d0d] border border-white/10 rounded-lg px-3 py-1.5 shadow-xl whitespace-nowrap">
+                            <span className="text-sm font-medium text-gray-200">{tab.label}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
 
             {/* Preview - Full Width */}
             <div className="h-full overflow-hidden">
@@ -801,6 +871,7 @@ Generate all files needed for a fully functional application.`;
             <ProjectManager
               onSelectProject={setSelectedProjectId}
               selectedProjectId={selectedProjectId}
+              onOpenWizard={() => setShowWizard(true)}
             />
           </div>
 
