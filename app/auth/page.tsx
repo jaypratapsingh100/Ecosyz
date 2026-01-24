@@ -186,7 +186,7 @@ function AuthPageContent() {
       // Small delay to ensure cookies are set before redirect
       // Use window.location for full page reload to ensure cookies are picked up
       setTimeout(() => {
-        window.location.href = '/app-builder';
+        window.location.href = '/studio';
       }, 300);
     } catch (error) {
       // Extract error message without logging full stack trace
@@ -269,7 +269,7 @@ function AuthPageContent() {
       // Redirect to app builder after successful sign up
       // Use window.location for full page reload to ensure cookies are picked up
       setTimeout(() => {
-        window.location.href = '/app-builder';
+        window.location.href = '/studio';
       }, 1000);
     } catch (error) {
       // Extract error message without logging full stack trace

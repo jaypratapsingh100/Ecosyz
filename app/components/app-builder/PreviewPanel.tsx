@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 interface PreviewPanelProps {
   projectId: string;
@@ -14,7 +14,7 @@ export default function PreviewPanel({ projectId, projectType, onRefresh }: Prev
   const [error, setError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  const generatePreview = async () => {
+  const generatePreview = useCallback(async () => {
     if (!projectId) {
       console.warn('⚠️ PreviewPanel: No projectId provided');
       return;
@@ -134,21 +134,21 @@ export default function PreviewPanel({ projectId, projectType, onRefresh }: Prev
     } finally {
       setLoading(false);
     }
-  };
+  }, [projectId]);
 
   useEffect(() => {
     // Auto-generate preview when project changes
     if (projectId) {
       console.log('🔄 PreviewPanel: Project ID changed, generating preview:', projectId);
-      // Small delay to ensure component is mounted
+      // Small delay to ensure component is mounted and files are loaded
       const timer = setTimeout(() => {
         generatePreview();
-      }, 100);
+      }, 500);
       return () => clearTimeout(timer);
     } else {
       console.warn('⚠️ PreviewPanel: No projectId in useEffect');
     }
-  }, [projectId]);
+  }, [projectId, generatePreview]);
 
   // Listen for files-updated event to auto-refresh preview
   useEffect(() => {
@@ -179,7 +179,7 @@ export default function PreviewPanel({ projectId, projectType, onRefresh }: Prev
       window.removeEventListener('preview-updated', handleFilesUpdated);
       window.removeEventListener('auto-refresh-preview', handleAutoRefresh as EventListener);
     };
-  }, [projectId]);
+  }, [projectId, generatePreview]);
 
   // Show preview for all project types, but warn if not web/fullstack
   const showWarning = projectType !== 'web' && projectType !== 'fullstack';

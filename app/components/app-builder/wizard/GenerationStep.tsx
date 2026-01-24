@@ -20,20 +20,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-
-interface AppIdea {
-  description: string;
-  features: string[];
-  targetAudience: string;
-  designStyle?: string;
-}
-
-interface ProjectConfig {
-  framework: 'react' | 'nextjs' | 'vue' | 'vanilla';
-  language: 'javascript' | 'typescript';
-  styling: 'tailwind' | 'css' | 'styled-components';
-  additionalPackages: string[];
-}
+import type { AppIdea, ProjectConfig } from '../../../types/app-builder';
 
 interface GenerationStepProps {
   idea: AppIdea;

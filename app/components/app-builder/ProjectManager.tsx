@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import QuestionnaireWizard from './QuestionnaireWizard';
 
 interface Project {
   id: string;
@@ -145,109 +144,19 @@ if __name__ == "__main__":
   },
 ];
 
-// Generate comprehensive build prompt from questionnaire data
-function generateBuildPrompt(questionnaireData: any, projectTitle: string): string {
-  const sections = questionnaireData.requiredSections || [];
-  const features = questionnaireData.specialFeatures || [];
-  const designStyle = questionnaireData.designStyle || 'modern-minimal';
-  const colorScheme = questionnaireData.colorScheme || 'auto';
-  const layoutStyle = questionnaireData.layoutStyle || 'single-page';
-  const brandName = questionnaireData.brandName || projectTitle;
-  const tagline = questionnaireData.tagline || '';
-  const keyPoints = questionnaireData.keyPoints || '';
-  const appType = questionnaireData.appType || 'web app';
-  const targetAudience = questionnaireData.targetAudience || 'general';
-  
-  let prompt = `Create a complete, production-ready ${appType} application with the following specifications:\n\n`;
-  
-  // Branding
-  prompt += `**Brand & Content:**\n`;
-  prompt += `- Brand Name: ${brandName}\n`;
-  if (tagline) prompt += `- Tagline: ${tagline}\n`;
-  if (keyPoints) prompt += `- Key Points to Highlight: ${keyPoints}\n`;
-  prompt += `- Target Audience: ${targetAudience}\n\n`;
-  
-  // Design Requirements
-  prompt += `**Design Requirements:**\n`;
-  prompt += `- Design Style: ${designStyle}\n`;
-  prompt += `- Color Scheme: ${colorScheme}\n`;
-  prompt += `- Layout Style: ${layoutStyle}\n\n`;
-  
-  // Required Sections
-  if (sections.length > 0) {
-    prompt += `**Required Sections (create components for ALL of these):**\n`;
-    sections.forEach((section: string) => {
-      prompt += `- ${section}\n`;
-    });
-    prompt += `\n`;
-  }
-  
-  // Special Features
-  if (features.length > 0) {
-    prompt += `**Special Features (implement ALL of these):**\n`;
-    features.forEach((feature: string) => {
-      prompt += `- ${feature}\n`;
-    });
-    prompt += `\n`;
-  }
-  
-  // Instructions
-  prompt += `**CRITICAL INSTRUCTIONS - FOLLOW EXACTLY:**\n`;
-  prompt += `1. Create ALL required sections as separate React component files\n`;
-  prompt += `2. Use the EXACT design style "${designStyle}" throughout\n`;
-  prompt += `3. Use the EXACT color scheme "${colorScheme}" - apply these colors in CSS\n`;
-  prompt += `4. Implement the "${layoutStyle}" layout style\n`;
-  prompt += `5. Implement ALL special features listed above\n`;
-  prompt += `6. Make it fully responsive and mobile-friendly\n`;
-  prompt += `7. Use modern, professional code with proper structure\n`;
-  prompt += `8. Include proper styling (create CSS files or use inline styles)\n`;
-  prompt += `9. Create a complete App.jsx that imports and renders ALL components\n`;
-  prompt += `10. Create index.js that renders the App component\n`;
-  prompt += `11. Make it production-ready and polished\n\n`;
-  
-  prompt += `**FILE GENERATION REQUIREMENTS - CRITICAL:**\n`;
-  prompt += `- Generate ALL files in ONE response - do not split across multiple messages\n`;
-  prompt += `- Use the \`\`\`file:path/to/file.jsx\` format for EACH file\n`;
-  prompt += `- Create separate component files for: ${sections.length > 0 ? sections.map((s: string) => s.charAt(0).toUpperCase() + s.slice(1)).join('.jsx, ') + '.jsx' : 'Hero, About, Services, Contact, etc.'}\n`;
-  prompt += `- MUST include: App.jsx (imports ALL components), index.js (renders App), App.css (or component CSS files)\n`;
-  prompt += `- Each component should be a complete, functional React component\n`;
-  prompt += `- DO NOT ask questions - generate ALL files immediately in this response\n`;
-  prompt += `- Use the exact file format: \`\`\`file:src/ComponentName.jsx\`\n\n`;
-  
-  prompt += `🚨 START GENERATING NOW - Create the complete application with ALL files in ONE response! 🚨\n`;
-  prompt += `Remember: Generate ALL components, App.jsx, index.js, and CSS files NOW.`;
-  
-  return prompt;
-}
-
 export default function ProjectManager({ onSelectProject, selectedProjectId }: ProjectManagerProps) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showQuestionnaire, setShowQuestionnaire] = useState(false);
   const [newProjectTitle, setNewProjectTitle] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState<string>('react');
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>('');
   const [creating, setCreating] = useState(false);
-  const [creatingSample, setCreatingSample] = useState(false);
-  const [questionnaireData, setQuestionnaireData] = useState<any>(null);
 
   useEffect(() => {
     fetchProjects();
     fetchWorkspaces();
-  }, []);
-
-  // Listen for trigger-new-project event from welcome screen
-  useEffect(() => {
-    const handleTriggerNewProject = () => {
-      setShowQuestionnaire(true); // Show questionnaire directly
-    };
-    
-    window.addEventListener('trigger-new-project', handleTriggerNewProject);
-    return () => {
-      window.removeEventListener('trigger-new-project', handleTriggerNewProject);
-    };
   }, []);
 
   const fetchWorkspaces = async () => {
@@ -276,34 +185,6 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
     }
   };
 
-  const handleCreateSampleProject = async () => {
-    setCreatingSample(true);
-    try {
-      const response = await fetch('/api/app-projects/create-sample', {
-        method: 'POST',
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(errorData.error || `Failed to create sample project (${response.status})`);
-      }
-
-      const data = await response.json();
-      await fetchProjects();
-      
-      // Auto-select the created project
-      if (data.project?.id) {
-        onSelectProject(data.project.id);
-      }
-      
-      alert(`✅ Sample project created successfully!\n\nCreated ${data.filesCreated} files.\n\nThis is a beautiful, modern portfolio website with:\n- Smooth animations\n- Professional design\n- Responsive layout\n- Modern UI/UX`);
-    } catch (error: any) {
-      console.error('Failed to create sample project:', error);
-      alert(`Failed to create sample project: ${error.message}`);
-    } finally {
-      setCreatingSample(false);
-    }
-  };
 
   const handleQuestionnaireComplete = async (questionnaireData: any) => {
     setQuestionnaireData(questionnaireData);
@@ -852,76 +733,89 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
   }
 
   return (
-    <div className="h-full flex flex-col bg-[#0a0a0a] border-r border-white/10 overflow-hidden">
-      <div className="p-4 border-b border-white/10 flex-shrink-0">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-white font-semibold text-lg">Projects</h2>
-          <div className="flex gap-2">
-            <button
-              onClick={handleCreateSampleProject}
-              disabled={creatingSample}
-              className="px-3 py-1.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-sm font-medium rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Create a beautiful sample portfolio website"
-            >
-              {creatingSample ? 'Creating...' : '✨ Sample'}
-            </button>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-cyan-500 text-white text-sm font-medium rounded-lg hover:shadow-lg transition-all"
-            >
-              + New
-            </button>
+    <div className="h-full flex flex-col bg-gradient-to-b from-[#0a0a0a] via-[#0d0d0d] to-[#0a0a0a] border-r border-white/5 overflow-hidden">
+      <div className="p-5 border-b border-white/5 flex-shrink-0 bg-gradient-to-r from-[#0a0a0a]/50 to-[#0d0d0d]/50 backdrop-blur-sm">
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <h2 className="text-white font-bold text-xl bg-gradient-to-r from-white via-emerald-100 to-cyan-100 bg-clip-text text-transparent">
+                Projects
+              </h2>
+              <span className="px-2 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs font-semibold rounded-md border border-yellow-500/30">
+                BETA
+              </span>
+            </div>
+            <p className="text-gray-400 text-xs font-medium">
+              {projects.length} {projects.length === 1 ? 'project' : 'projects'}
+            </p>
           </div>
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto p-2">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4">
         {projects.length === 0 ? (
-          <div className="text-center text-gray-400 text-sm mt-8">
-            <p>No projects yet</p>
-            <p className="mt-2">Create your first project to get started</p>
+          <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-center px-4">
+            <div className="relative mb-6">
+              <div className="absolute inset-0 bg-gradient-to-r from-emerald-400/20 to-cyan-400/20 rounded-full blur-2xl"></div>
+              <div className="relative bg-gradient-to-br from-[#1a1a1a] to-[#0d0d0d] p-8 rounded-2xl border border-white/10 shadow-2xl">
+                <svg className="w-16 h-16 mx-auto text-emerald-400/60 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+              </div>
+            </div>
+            <h3 className="text-white font-semibold text-lg mb-2">
+              No projects yet
+            </h3>
+            <p className="text-gray-400 text-sm mb-6 max-w-sm">
+              Get started by creating your first project using the Create Project button in the center
+            </p>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {projects.map((project) => (
               <div
                 key={project.id}
-                className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                className={`group relative p-4 rounded-xl cursor-pointer transition-all duration-300 ${
                   selectedProjectId === project.id
-                    ? 'bg-emerald-500/20 border border-emerald-500/50'
-                    : 'bg-[#1a1a1a] border border-white/5 hover:border-white/10'
+                    ? 'bg-gradient-to-br from-emerald-500/20 via-emerald-500/10 to-cyan-500/10 border-2 border-emerald-500/50 shadow-lg shadow-emerald-500/10'
+                    : 'bg-gradient-to-br from-[#1a1a1a]/80 to-[#0d0d0d]/80 border border-white/5 hover:border-emerald-500/30 hover:shadow-lg hover:shadow-emerald-500/5'
                 }`}
                 onClick={() => onSelectProject(project.id)}
               >
-                <div className="flex items-start justify-between">
+                <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-white font-medium text-sm truncate">
-                      {project.title}
-                    </h3>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <div className={`w-2 h-2 rounded-full ${
+                        selectedProjectId === project.id 
+                          ? 'bg-emerald-400' 
+                          : 'bg-gray-500 group-hover:bg-emerald-400'
+                      } transition-colors`}></div>
+                      <h3 className={`font-semibold text-sm truncate ${
+                        selectedProjectId === project.id 
+                          ? 'text-white' 
+                          : 'text-gray-200 group-hover:text-white'
+                      } transition-colors`}>
+                        {project.title}
+                      </h3>
+                    </div>
                     {project.description && (
-                      <p className="text-gray-400 text-xs mt-1 truncate">
+                      <p className="text-gray-400 text-xs mt-1.5 mb-2 line-clamp-2">
                         {project.description}
                       </p>
                     )}
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className="text-xs text-gray-500">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="px-2 py-0.5 bg-white/5 text-gray-400 text-xs rounded-md border border-white/5">
                         {project.type}
                       </span>
                       {project.framework && (
-                        <>
-                          <span className="text-gray-600">•</span>
-                          <span className="text-xs text-gray-500">
-                            {project.framework}
-                          </span>
-                        </>
+                        <span className="px-2 py-0.5 bg-white/5 text-gray-400 text-xs rounded-md border border-white/5">
+                          {project.framework}
+                        </span>
                       )}
                       {project._count && (
-                        <>
-                          <span className="text-gray-600">•</span>
-                          <span className="text-xs text-gray-500">
-                            {project._count.files} files
-                          </span>
-                        </>
+                        <span className="px-2 py-0.5 bg-white/5 text-gray-400 text-xs rounded-md border border-white/5">
+                          {project._count.files} {project._count.files === 1 ? 'file' : 'files'}
+                        </span>
                       )}
                     </div>
                   </div>
@@ -930,7 +824,7 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
                       e.stopPropagation();
                       handleDeleteProject(project.id);
                     }}
-                    className="ml-2 p-1 text-gray-400 hover:text-red-400 transition-colors"
+                    className="ml-2 p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all duration-200 opacity-0 group-hover:opacity-100"
                     title="Delete project"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

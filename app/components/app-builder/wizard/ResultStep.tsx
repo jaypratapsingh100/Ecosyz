@@ -18,18 +18,7 @@
 'use client';
 
 import { useState } from 'react';
-
-interface GeneratedProject {
-  id: string;
-  title: string;
-  files: Array<{
-    id: string;
-    path: string;
-    name: string;
-    content: string;
-    language?: string;
-  }>;
-}
+import type { GeneratedProject } from '../../../types/app-builder';
 
 interface ResultStepProps {
   project: GeneratedProject;

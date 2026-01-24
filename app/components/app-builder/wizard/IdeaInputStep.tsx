@@ -15,7 +15,7 @@
  * 
  * Integration:
  * - Called from home page when user selects "Build App" and types description
- * - Description passed via URL: /appbuilder?description=...
+ * - Description passed via URL: /studio?description=...
  * - Stores description in localStorage for cross-page navigation
  */
 
@@ -23,13 +23,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-
-interface AppIdea {
-  description: string;
-  features: string[];
-  targetAudience: string;
-  designStyle?: string;
-}
+import type { AppIdea } from '../../../types/app-builder';
 
 interface IdeaInputStepProps {
   onSubmit: (idea: AppIdea) => void;
@@ -533,9 +527,9 @@ export default function IdeaInputStep({ onSubmit }: IdeaInputStepProps) {
                   // Description will be available in app-builder welcome screen
                   if (description.trim()) {
                     localStorage.setItem('gobuild-description', description.trim());
-                    router.push(`/app-builder?description=${encodeURIComponent(description.trim())}`);
+                    router.push(`/studio?description=${encodeURIComponent(description.trim())}`);
                   } else {
-                    router.push('/app-builder');
+                    router.push('/studio');
                   }
                 }}
                 className="w-full px-8 py-3 bg-gradient-to-r from-purple-500/80 to-pink-500/80 hover:from-purple-500 hover:to-pink-500 text-white font-semibold rounded-lg transition-all shadow-lg shadow-purple-500/20 hover:shadow-xl hover:scale-[1.02] border border-purple-400/30"

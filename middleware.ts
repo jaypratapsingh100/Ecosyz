@@ -45,6 +45,14 @@ function isValidSessionId(id: string) {
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
+  // Redirect old /appbuilder route to /studio (IDE interface)
+  if (pathname === '/appbuilder' || pathname.startsWith('/appbuilder/')) {
+    const url = req.nextUrl.clone();
+    url.pathname = pathname.replace('/appbuilder', '/studio');
+    return NextResponse.redirect(url, 301); // Permanent redirect
+  }
+  // Note: /app-builder is now a valid route for the wizard flow
+
   if (isAsset(pathname)) {
     return NextResponse.next();
   }

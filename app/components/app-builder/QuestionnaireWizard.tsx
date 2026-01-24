@@ -1,36 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-
-interface QuestionnaireData {
-  // Step 1: App Type & Purpose
-  appType: string;
-  mainPurpose: string;
-  
-  // Step 2: Target Audience
-  targetAudience: string;
-  technicalLevel: string;
-  
-  // Step 3: Design Preferences
-  designStyle: string;
-  colorScheme: string;
-  layoutStyle: string;
-  
-  // Step 4: Features & Sections
-  requiredSections: string[];
-  specialFeatures: string[];
-  
-  // Step 5: Content & Branding
-  contentReady: string;
-  brandName: string;
-  tagline: string;
-  keyPoints: string;
-  
-  // Step 6: Technical Preferences
-  frameworkPreference: string;
-  mobileResponsiveness: string;
-  performancePriority: string;
-}
+import type { QuestionnaireData } from '../../types/app-builder';
 
 interface QuestionnaireWizardProps {
   onComplete: (data: QuestionnaireData) => void;

@@ -12,7 +12,7 @@ const BASE_NAV_LINKS = [
   { href: "/about", label: "About" },
   { href: "/features", label: "Features" },
   { href: "/pricing", label: "Pricing" },
-  { href: "/app-builder", label: "App Builder" },
+  { href: "/studio", label: "App Builder Studio" },
 ];
 
 export default function Header() {
@@ -156,6 +156,24 @@ export default function Header() {
           <nav className="hidden md:flex items-center gap-6 absolute left-1/2 -translate-x-1/2" aria-label="Main">
             {BASE_NAV_LINKS.map(link => {
               const isActive = activeRoot === link.href;
+              const isAppBuilder = link.href === '/studio';
+              
+              // App Builder Studio gets special styling as the default/primary action
+              if (isAppBuilder) {
+                return (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    aria-current={isActive ? 'page' : undefined}
+                    className={`focus:outline-none focus:ring-2 focus:ring-emerald-400/60 px-4 py-2 rounded-lg transition bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 font-bold hover:from-emerald-500 hover:to-cyan-500 shadow-lg shadow-emerald-500/30 ${
+                      isActive ? 'ring-2 ring-emerald-400' : ''
+                    }`}
+                  >
+                    {link.label}
+                  </Link>
+                );
+              }
+              
               return (
                 <Link
                   key={link.href}
@@ -171,18 +189,6 @@ export default function Header() {
                 </Link>
               );
             })}
-            {/* GOBuild link - only visible when authenticated */}
-            {isAuthenticated && (
-              <Link
-                href="/appbuilder"
-                aria-current={activeRoot === '/appbuilder' || activeRoot === '/app-builder' ? 'page' : undefined}
-                className={`focus:outline-none focus:ring-2 focus:ring-emerald-400/60 px-3 py-1.5 rounded transition bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 font-bold hover:from-emerald-500 hover:to-cyan-500 shadow-lg shadow-emerald-500/30 ${
-                  activeRoot === '/appbuilder' || activeRoot === '/app-builder' ? 'ring-2 ring-emerald-400' : ''
-                }`}
-              >
-                GOBuild
-              </Link>
-            )}
           </nav>
           {/* Utilities right */}
           <div className="hidden md:flex items-center gap-3">
@@ -287,6 +293,26 @@ export default function Header() {
         >
           {BASE_NAV_LINKS.map(link => {
             const isActive = activeRoot === link.href;
+            const isAppBuilder = link.href === '/studio';
+            
+            // App Builder Studio gets special styling as the default/primary action
+            if (isAppBuilder) {
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  aria-current={isActive ? 'page' : undefined}
+                  className={`block w-full text-lg px-3 py-3 rounded focus:outline-none focus:ring-2 focus:ring-emerald-400/60 bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 font-bold shadow-lg shadow-emerald-500/30 ${
+                    isActive ? 'ring-2 ring-emerald-400' : ''
+                  }`}
+                  onClick={() => setMobileOpen(false)}
+                  tabIndex={mobileOpen ? 0 : -1}
+                >
+                  {link.label}
+                </Link>
+              );
+            }
+            
             return (
               <Link
                 key={link.href}
@@ -304,20 +330,6 @@ export default function Header() {
               </Link>
             );
           })}
-          {/* GOBuild link - only visible when authenticated */}
-          {isAuthenticated && (
-            <Link
-              href="/appbuilder"
-              aria-current={activeRoot === '/appbuilder' || activeRoot === '/app-builder' ? 'page' : undefined}
-              className={`block w-full text-lg px-3 py-3 rounded focus:outline-none focus:ring-2 focus:ring-emerald-400/60 bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 font-bold shadow-lg shadow-emerald-500/30 ${
-                activeRoot === '/appbuilder' || activeRoot === '/app-builder' ? 'ring-2 ring-emerald-400' : ''
-              }`}
-              onClick={() => setMobileOpen(false)}
-              tabIndex={mobileOpen ? 0 : -1}
-            >
-              GOBuild
-            </Link>
-          )}
           <Link
             href="/feedback"
             className="w-full flex items-center justify-center gap-2 p-3 rounded focus:outline-none focus:ring-2 focus:ring-emerald-400/60 hover:bg-white/10 text-white font-medium"

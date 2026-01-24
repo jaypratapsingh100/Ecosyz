@@ -16,7 +16,7 @@ import { toast } from 'sonner';
  * 2. Supabase SDK detects tokens in hash automatically
  * 3. SDK automatically persists session (localStorage)
  * 4. We verify session exists and sync to server cookies
- * 5. Redirect to /app-builder
+ * 5. Redirect to /studio
  */
 function OAuthCallbackContent() {
   const router = useRouter();
@@ -117,7 +117,7 @@ function OAuthCallbackContent() {
         await new Promise(resolve => setTimeout(resolve, 300));
         
         // Use window.location for full page reload to ensure cookies are picked up
-        window.location.href = '/app-builder';
+        window.location.href = '/studio';
       } catch (error: any) {
         console.error('❌ OAuth callback error:', error);
         toast.error('Authentication error', {
@@ -142,7 +142,7 @@ function OAuthCallbackContent() {
       
       if (event === 'SIGNED_IN' && session) {
         console.log('✅ User signed in via auth state change');
-        router.replace('/app-builder');
+        router.replace('/studio');
       } else if (event === 'SIGNED_OUT') {
         console.log('👋 User signed out');
         router.replace('/auth');

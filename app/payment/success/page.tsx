@@ -136,7 +136,7 @@ function PaymentSuccessContent() {
           </p>
           <div className="flex gap-4 justify-center flex-wrap">
             <Link
-              href="/app-builder"
+              href="/studio"
               className="px-6 py-3 bg-emerald-500 text-white rounded-lg font-semibold hover:bg-emerald-600 transition-colors"
             >
               Start Building
