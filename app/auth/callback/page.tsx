@@ -81,34 +81,15 @@ function OAuthCallbackContent() {
           email: session.user.email,
         });
 
-        // Sync session to server cookies (for server-side API compatibility)
+        // Sync session to server cookies and database (combined endpoint)
         try {
-          const syncResponse = await fetch('/api/auth/sync-session', {
+          const syncResponse = await fetch('/api/auth/sync', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               accessToken: session.access_token,
               refreshToken: session.refresh_token,
               expiresIn: session.expires_in,
-            }),
-          });
-
-          if (!syncResponse.ok) {
-            console.warn('⚠️ Failed to sync session to cookies, but Supabase session exists');
-          } else {
-            console.log('✅ Session synced to server cookies');
-          }
-        } catch (syncError) {
-          console.warn('⚠️ Error syncing session to cookies:', syncError);
-          // Don't fail - Supabase session exists in localStorage
-        }
-
-        // Ensure user is in database
-        try {
-          const dbResponse = await fetch('/api/auth/sync-user', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
               userId: session.user.id,
               email: session.user.email,
               name: session.user.user_metadata?.name,
@@ -116,12 +97,14 @@ function OAuthCallbackContent() {
             }),
           });
 
-          if (dbResponse.ok) {
-            console.log('✅ User synced to database');
+          if (!syncResponse.ok) {
+            console.warn('⚠️ Failed to sync session, but Supabase session exists');
+          } else {
+            console.log('✅ Session and user synced successfully');
           }
-        } catch (dbError) {
-          console.warn('⚠️ Error syncing user to database:', dbError);
-          // Don't fail the flow
+        } catch (syncError) {
+          console.warn('⚠️ Error syncing session:', syncError);
+          // Don't fail - Supabase session exists in localStorage
         }
 
         toast.success('Signed in successfully!', {

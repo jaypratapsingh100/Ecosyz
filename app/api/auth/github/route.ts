@@ -1,42 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/src/lib/supabase';
+import { NextRequest } from 'next/server';
+import { initiateOAuth } from '@/lib/auth/utils';
 
+/**
+ * GitHub OAuth Initiation Route
+ * 
+ * Uses Supabase's standard client-side OAuth flow
+ */
 export async function GET(req: NextRequest) {
-  if (!supabase) {
-    return NextResponse.json(
-      { error: 'Authentication service unavailable' },
-      { status: 503 }
-    );
-  }
-
-  try {
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'github',
-      options: {
-        redirectTo: `${req.nextUrl.origin}/auth/callback`,
-      },
-    });
-
-    if (error) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 400 }
-      );
-    }
-
-    if (data.url) {
-      return NextResponse.redirect(data.url);
-    }
-
-    return NextResponse.json(
-      { error: 'Failed to initiate GitHub login' },
-      { status: 500 }
-    );
-  } catch (error) {
-    console.error('GitHub login error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
+  return initiateOAuth(req, 'github');
 }
