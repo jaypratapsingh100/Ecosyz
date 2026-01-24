@@ -25,6 +25,7 @@ interface ProjectManagerProps {
   onSelectProject: (projectId: string) => void;
   selectedProjectId?: string;
   onOpenWizard?: () => void;
+  showActionButtons?: boolean;
 }
 
 const PROJECT_TEMPLATES = [
@@ -145,7 +146,7 @@ if __name__ == "__main__":
   },
 ];
 
-export default function ProjectManager({ onSelectProject, selectedProjectId, onOpenWizard }: ProjectManagerProps) {
+export default function ProjectManager({ onSelectProject, selectedProjectId, onOpenWizard, showActionButtons = true }: ProjectManagerProps) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [loading, setLoading] = useState(true);
@@ -279,37 +280,39 @@ export default function ProjectManager({ onSelectProject, selectedProjectId, onO
           </div>
         </div>
         
-        {/* Quick Actions */}
-        <div className="flex gap-2">
-          <button
-            onClick={onOpenWizard}
-            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-emerald-500/10 to-cyan-500/10 hover:from-emerald-500/20 hover:to-cyan-500/20 border border-emerald-500/30 rounded-lg text-emerald-400 text-xs font-medium transition-all"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            New
-          </button>
-          <button
-            onClick={handleCreateSampleProject}
-            disabled={creatingSample}
-            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-purple-500/10 to-pink-500/10 hover:from-purple-500/20 hover:to-pink-500/20 border border-purple-500/30 rounded-lg text-purple-400 text-xs font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {creatingSample ? (
-              <>
-                <div className="w-3 h-3 border-2 border-purple-400 border-t-transparent rounded-full animate-spin"></div>
-                Creating...
-              </>
-            ) : (
-              <>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-                Sample
-              </>
-            )}
-          </button>
-        </div>
+        {/* Quick Actions - Only show when showActionButtons is true */}
+        {showActionButtons && (
+          <div className="flex gap-2">
+            <button
+              onClick={onOpenWizard}
+              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-emerald-500/10 to-cyan-500/10 hover:from-emerald-500/20 hover:to-cyan-500/20 border border-emerald-500/30 rounded-lg text-emerald-400 text-xs font-medium transition-all"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              New
+            </button>
+            <button
+              onClick={handleCreateSampleProject}
+              disabled={creatingSample}
+              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-purple-500/10 to-pink-500/10 hover:from-purple-500/20 hover:to-pink-500/20 border border-purple-500/30 rounded-lg text-purple-400 text-xs font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {creatingSample ? (
+                <>
+                  <div className="w-3 h-3 border-2 border-purple-400 border-t-transparent rounded-full animate-spin"></div>
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  Sample
+                </>
+              )}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto p-4">

@@ -35,6 +35,7 @@ function AppBuilderPageContent() {
   const [sidebarWidth, setSidebarWidth] = useState(320);
   const [isResizing, setIsResizing] = useState(false);
   const [showTabMenu, setShowTabMenu] = useState(false);
+  const [chatWizardMode, setChatWizardMode] = useState(false);
 
   // Auto-create project when description is provided (from home page)
   useEffect(() => {
@@ -69,6 +70,13 @@ function AppBuilderPageContent() {
       fetchFiles();
     }
   }, [isAuthenticated, selectedProjectId]);
+
+  // Reset wizard mode when switching away from chat tab
+  useEffect(() => {
+    if (leftSidebarTab !== 'chat') {
+      setChatWizardMode(false);
+    }
+  }, [leftSidebarTab]);
 
   // Handle sidebar resize
   useEffect(() => {
@@ -308,6 +316,54 @@ function AppBuilderPageContent() {
     setSelectedProjectId(projectId);
     setShowWizard(false);
     router.replace('/studio', { scroll: false });
+  };
+
+  // Create new project and start wizard mode in chat
+  const handleCreateProjectWithWizard = async () => {
+    if (isAuthenticated !== true) {
+      alert('Please sign in to create a project');
+      return;
+    }
+
+    try {
+      // Create a new project
+      const projectResponse = await fetch('/api/app-projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          title: 'New Project',
+          description: '',
+          type: 'web',
+          framework: 'react',
+        }),
+      });
+
+      if (!projectResponse.ok) {
+        const errorData = await projectResponse.json().catch(() => ({ error: 'Failed to create project' }));
+        throw new Error(errorData.error || 'Failed to create project');
+      }
+
+      const newProject = await projectResponse.json();
+      const projectId = newProject.id;
+
+      // Select the project
+      setSelectedProjectId(projectId);
+      setProject(newProject);
+      
+      // Open sidebar and switch to chat tab
+      setLeftSidebarOpen(true);
+      setLeftSidebarTab('chat');
+      
+      // Start wizard mode
+      setChatWizardMode(true);
+      
+      // Fetch files
+      await fetchFiles();
+    } catch (error: any) {
+      console.error('Failed to create project:', error);
+      alert(`Failed to create project: ${error.message}`);
+    }
   };
 
   // Auto-create project from description (from home page)
@@ -698,7 +754,7 @@ Generate all files needed for a fully functional application.`;
                     <ProjectManager
                       onSelectProject={setSelectedProjectId}
                       selectedProjectId={selectedProjectId}
-                      onOpenWizard={() => setShowWizard(true)}
+                      onOpenWizard={handleCreateProjectWithWizard}
                     />
                   )}
                   {leftSidebarTab === 'code' && (
@@ -716,6 +772,8 @@ Generate all files needed for a fully functional application.`;
                       currentFile={selectedFile ? { id: selectedFile.id, path: selectedFile.path, name: selectedFile.name } : undefined}
                       projectFiles={files.map(f => ({ path: f.path, name: f.name }))}
                       onFilesCreated={fetchFiles}
+                      startWizardMode={chatWizardMode && selectedProjectId !== ''}
+                      projectTitle={project?.title || 'New Project'}
                     />
                   )}
                   {leftSidebarTab === 'deploy' && (
@@ -871,7 +929,8 @@ Generate all files needed for a fully functional application.`;
             <ProjectManager
               onSelectProject={setSelectedProjectId}
               selectedProjectId={selectedProjectId}
-              onOpenWizard={() => setShowWizard(true)}
+              onOpenWizard={handleCreateProjectWithWizard}
+              showActionButtons={false}
             />
           </div>
 

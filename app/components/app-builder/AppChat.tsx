@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { generateBuildPromptFromQuestionnaire } from '@/app/lib/utils/buildPrompt';
+import type { QuestionnaireData } from '@/app/types/app-builder';
 
 interface Message {
   id: string;
@@ -15,26 +17,73 @@ interface AppChatProps {
   currentFile?: { id: string; path: string; name: string };
   projectFiles?: Array<{ path: string; name: string }>;
   onFilesCreated?: () => void;
+  startWizardMode?: boolean;
+  projectTitle?: string;
 }
 
-export default function AppChat({ projectId, currentFile, projectFiles = [], onFilesCreated }: AppChatProps) {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      role: 'assistant',
-      content: "Hello! I'm your AI Code Assistant powered by **Azure DeepSeek**. I can help you generate, modify, and explain professional, production-ready code.\n\nWhat would you like to build?",
-      timestamp: new Date(),
-    },
-  ]);
+interface WizardQuestion {
+  key: keyof QuestionnaireData | 'appDescription';
+  question: string;
+  placeholder?: string;
+  type: 'text' | 'select' | 'multi-select';
+  options?: string[];
+  required: boolean;
+}
+
+const WIZARD_QUESTIONS: WizardQuestion[] = [
+  { key: 'appDescription', question: "Let's start! What kind of app or website do you want to build? Describe your idea in a few sentences.", type: 'text', required: true },
+  { key: 'appType', question: "What type of app is this? (e.g., Portfolio, Business Website, E-commerce, SaaS, Blog, Landing Page, or Other)", type: 'text', required: true },
+  { key: 'targetAudience', question: "Who is your target audience? (e.g., General Public, Businesses, Consumers, Developers, Students)", type: 'text', required: true },
+  { key: 'brandName', question: "What's your brand or project name?", type: 'text', required: false },
+  { key: 'tagline', question: "Do you have a tagline or short description?", type: 'text', required: false },
+  { key: 'designStyle', question: "What design style do you prefer? (Modern & Minimal, Bold & Colorful, Professional & Corporate, Creative & Artistic, or Clean & Simple)", type: 'text', required: true },
+  { key: 'colorScheme', question: "What color scheme do you want? (Professional Blue, Energetic Orange/Red, Calm Green/Teal, Elegant Purple, Neutral Gray/Black, or let AI choose)", type: 'text', required: false },
+  { key: 'layoutStyle', question: "What layout style? (Single Page Scroll, Multi-page Navigation, Dashboard/App Layout, Blog Layout, or Landing Page)", type: 'text', required: true },
+  { key: 'requiredSections', question: "What sections do you need? (e.g., Hero, About, Portfolio, Services, Contact, Blog, Testimonials, Pricing, FAQ, Team - separate with commas)", type: 'text', required: true },
+  { key: 'specialFeatures', question: "Any special features? (e.g., Contact Form, Newsletter, Social Links, Gallery, Video, Maps, Chat Widget - separate with commas)", type: 'text', required: false },
+];
+
+export default function AppChat({ projectId, currentFile, projectFiles = [], onFilesCreated, startWizardMode = false, projectTitle = 'My App' }: AppChatProps) {
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+  const [wizardMode, setWizardMode] = useState(startWizardMode);
+  const [wizardStep, setWizardStep] = useState(0);
+  const [wizardAnswers, setWizardAnswers] = useState<Partial<QuestionnaireData & { appDescription: string }>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Load chat history from database on mount
+  // Sync wizard mode with prop
   useEffect(() => {
+    if (startWizardMode && !wizardMode) {
+      setWizardMode(true);
+      setWizardStep(0);
+      setWizardAnswers({});
+    } else if (!startWizardMode && wizardMode) {
+      setWizardMode(false);
+    }
+  }, [startWizardMode, wizardMode]);
+
+  // Initialize wizard mode
+  useEffect(() => {
+    if (wizardMode && wizardStep === 0 && messages.length === 0) {
+      const welcomeMessage: Message = {
+        id: 'wizard-welcome',
+        role: 'assistant',
+        content: `🎨 **Welcome to the Project Wizard!**\n\nI'll ask you a few questions to understand what you want to build. Let's get started!\n\n**Question 1 of ${WIZARD_QUESTIONS.length}:**\n\n${WIZARD_QUESTIONS[0].question}`,
+        timestamp: new Date(),
+      };
+      setMessages([welcomeMessage]);
+      setIsLoadingHistory(false);
+    }
+  }, [wizardMode, wizardStep, messages.length]);
+
+  // Load chat history from database on mount (skip if wizard mode)
+  useEffect(() => {
+    if (wizardMode && wizardStep === 0 && messages.length > 0) return; // Don't load history in wizard mode
+    
     const loadChatHistory = async () => {
       if (!projectId) return;
       
@@ -59,7 +108,14 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
             setMessages(loadedMessages);
             console.log('✅ Loaded chat history:', loadedMessages.length, 'messages');
           } else {
-            console.log('📝 No chat history found, using default message');
+            // Default message if no history
+            const defaultMessage: Message = {
+              id: '1',
+              role: 'assistant',
+              content: "Hello! I'm your AI Code Assistant powered by **Azure DeepSeek**. I can help you generate, modify, and explain professional, production-ready code.\n\nWhat would you like to build?",
+              timestamp: new Date(),
+            };
+            setMessages([defaultMessage]);
           }
         } else {
           console.warn('⚠️ Failed to load chat history:', response.status);
@@ -72,7 +128,7 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
     };
 
     loadChatHistory();
-  }, [projectId]);
+  }, [projectId, wizardMode, wizardStep, messages.length]);
 
   useEffect(() => {
     // Auto-scroll to bottom when new messages arrive
@@ -297,6 +353,164 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
     }
   };
 
+  // Process wizard answer and move to next question
+  const processWizardAnswer = (answer: string) => {
+    const currentQuestion = WIZARD_QUESTIONS[wizardStep];
+    if (!currentQuestion) return;
+
+    // Save answer
+    const newAnswers = { ...wizardAnswers };
+    
+    // Handle special cases
+    if (currentQuestion.key === 'requiredSections' || currentQuestion.key === 'specialFeatures') {
+      // Split comma-separated values
+      newAnswers[currentQuestion.key] = answer.split(',').map(s => s.trim()).filter(s => s.length > 0) as any;
+    } else {
+      (newAnswers as any)[currentQuestion.key] = answer;
+    }
+    
+    setWizardAnswers(newAnswers);
+
+    // Check if this is the last question
+    if (wizardStep < WIZARD_QUESTIONS.length - 1) {
+      // Move to next question
+      const nextStep = wizardStep + 1;
+      setWizardStep(nextStep);
+      
+      const nextQuestion = WIZARD_QUESTIONS[nextStep];
+      const nextMessage: Message = {
+        id: `wizard-q-${nextStep}`,
+        role: 'assistant',
+        content: `✅ Got it!\n\n**Question ${nextStep + 1} of ${WIZARD_QUESTIONS.length}:**\n\n${nextQuestion.question}`,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, nextMessage]);
+      setIsLoading(false);
+    } else {
+      // All questions answered - build prompt and send
+      buildAndSendWizardPrompt(newAnswers);
+    }
+  };
+
+  // Build prompt from wizard answers and send it
+  const buildAndSendWizardPrompt = async (answers: Partial<QuestionnaireData & { appDescription: string }>) => {
+    setIsLoading(true);
+    
+    // Convert answers to QuestionnaireData format
+    const questionnaireData: QuestionnaireData = {
+      appType: answers.appType || 'web app',
+      mainPurpose: answers.appDescription || '',
+      targetAudience: answers.targetAudience || 'general',
+      technicalLevel: 'intermediate',
+      designStyle: answers.designStyle || 'modern-minimal',
+      colorScheme: answers.colorScheme || 'auto',
+      layoutStyle: answers.layoutStyle || 'single-page',
+      requiredSections: Array.isArray(answers.requiredSections) ? answers.requiredSections : [],
+      specialFeatures: Array.isArray(answers.specialFeatures) ? answers.specialFeatures : [],
+      contentReady: 'yes',
+      brandName: answers.brandName || projectTitle,
+      tagline: answers.tagline || '',
+      keyPoints: answers.appDescription || '',
+      frameworkPreference: 'react',
+      mobileResponsiveness: 'essential',
+      performancePriority: 'balanced',
+    };
+
+    // Generate prompt
+    const prompt = generateBuildPromptFromQuestionnaire(questionnaireData, answers.brandName || projectTitle);
+    
+    // Show completion message
+    const completionMessage: Message = {
+      id: 'wizard-complete',
+      role: 'assistant',
+      content: `🎉 **Perfect! I have all the information I need.**\n\nBuilding your project now...`,
+      timestamp: new Date(),
+    };
+    setMessages((prev) => [...prev, completionMessage]);
+    
+    // Exit wizard mode
+    setWizardMode(false);
+    setWizardStep(0);
+    setWizardAnswers({});
+    
+    // Send the prompt as a user message
+    const promptMessage: Message = {
+      id: `wizard-prompt-${Date.now()}`,
+      role: 'user',
+      content: prompt,
+      timestamp: new Date(),
+    };
+    
+    // Update messages and get the latest for conversation history
+    let updatedMessages: Message[] = [];
+    setMessages((prev) => {
+      updatedMessages = [...prev, promptMessage];
+      return updatedMessages;
+    });
+    
+    // Now send to chat API
+    try {
+      const requestBody: any = {
+        message: prompt,
+        currentFile: currentFile?.path,
+        conversationHistory: updatedMessages.map(msg => ({
+          role: msg.role,
+          content: msg.content,
+        })),
+      };
+
+      const response = await fetch(`/api/app-projects/${projectId}/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(requestBody),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        let responseContent = data.response || 'Files are being generated...';
+        
+        if (data.filesCreated && data.filesCreated.length > 0) {
+          const successfulFiles = data.filesCreated.filter((f: any) => f.success);
+          if (successfulFiles.length > 0) {
+            responseContent += `\n\n✅ **Files Created:**\n`;
+            successfulFiles.forEach((file: any) => {
+              responseContent += `- \`${file.path}\` ✓\n`;
+            });
+          }
+          
+          if (onFilesCreated) {
+            setTimeout(() => {
+              onFilesCreated();
+            }, 1000);
+          }
+        }
+        
+        const assistantMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: responseContent,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, assistantMessage]);
+      } else {
+        throw new Error('Failed to generate project');
+      }
+    } catch (error: any) {
+      const errorMessage: Message = {
+        id: `wizard-error-${Date.now()}`,
+        role: 'assistant',
+        content: `❌ **Error generating project**\n\n${error.message}\n\nPlease try again or ask me manually.`,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputValue.trim() || isLoading || !projectId) return;
@@ -311,6 +525,16 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
     setMessages((prev) => [...prev, userMessage]);
     const currentInput = inputValue.trim();
     setInputValue('');
+
+    // Handle wizard mode
+    if (wizardMode) {
+      setIsLoading(true);
+      setTimeout(() => {
+        processWizardAnswer(currentInput);
+      }, 300); // Small delay for UX
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -847,7 +1071,7 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                placeholder="Ask me to generate code..."
+                placeholder={wizardMode ? (WIZARD_QUESTIONS[wizardStep]?.question || "Answer the question...") : "Ask me to generate code..."}
                 className="flex-1 bg-transparent text-white placeholder-gray-400 focus:outline-none text-sm"
               />
             </div>
