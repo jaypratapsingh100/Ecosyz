@@ -13,6 +13,8 @@ import DeploymentPanel from '../components/app-builder/DeploymentPanel';
 import GenerationLoader from '../components/app-builder/GenerationLoader';
 import WelcomeScreen from '../components/app-builder/WelcomeScreen';
 import WizardFlow from '../components/app-builder/WizardFlow';
+import FrameworkSelector from '../components/app-builder/FrameworkSelector';
+import AdvertisementPlaceholder from '../components/app-builder/AdvertisementPlaceholder';
 import { useAuthCheck } from '../hooks/useAuthCheck';
 import type { Project, ProjectFile } from '../types/app-builder';
 
@@ -36,6 +38,9 @@ function AppBuilderPageContent() {
   const [isResizing, setIsResizing] = useState(false);
   const [showTabMenu, setShowTabMenu] = useState(false);
   const [chatWizardMode, setChatWizardMode] = useState(false);
+  const [showFrameworkSelector, setShowFrameworkSelector] = useState(false);
+  const [selectedFramework, setSelectedFramework] = useState<string | null>(null);
+  const [pendingProjectCreation, setPendingProjectCreation] = useState<{ framework: string } | null>(null);
 
   // Auto-create project when description is provided (from home page)
   useEffect(() => {
@@ -77,6 +82,33 @@ function AppBuilderPageContent() {
       setChatWizardMode(false);
     }
   }, [leftSidebarTab]);
+
+  // Listen for wizard completion to create scaffold files
+  useEffect(() => {
+    const handleWizardComplete = async (event: Event) => {
+      if (!(event instanceof CustomEvent)) {
+        return;
+      }
+      const { projectId, framework } = event.detail || {};
+      if (projectId && framework && selectedProjectId === projectId) {
+        console.log('🎯 Wizard complete - creating scaffold for framework:', framework);
+        // Create scaffold files for the selected framework
+        await createScaffoldFiles(projectId, framework);
+        // Refresh files and preview
+        await fetchFiles();
+        // Switch to preview mode (remove ads) after a short delay
+        setTimeout(() => {
+          setChatWizardMode(false);
+          setRightPanelMode('preview');
+        }, 500);
+      }
+    };
+
+    window.addEventListener('wizard-complete', handleWizardComplete);
+    return () => {
+      window.removeEventListener('wizard-complete', handleWizardComplete);
+    };
+  }, [selectedProjectId]);
 
   // Handle sidebar resize
   useEffect(() => {
@@ -285,7 +317,7 @@ function AppBuilderPageContent() {
     }
   };
 
-  const handleFileSelect = (file: { id: string; path: string; name: string; language?: string; isMain: boolean }) => {
+  const handleFileSelect = (file: { id: string; path: string; name: string; language?: string; content?: string; isMain?: boolean }) => {
     // Fetch full file content asynchronously
     fetch(`/api/app-projects/${selectedProjectId}/files/${file.id}`)
       .then((res) => {
@@ -306,6 +338,282 @@ function AppBuilderPageContent() {
     fetchFiles();
   };
 
+  // Create scaffold files for a project based on framework
+  const createScaffoldFiles = async (projectId: string, framework: string) => {
+    const templates: Record<string, any[]> = {
+      react: [
+        {
+          path: 'src/App.jsx',
+          name: 'App.jsx',
+          content: `import React from 'react';
+
+function App() {
+  return (
+    <div className="App">
+      <h1>Welcome to Your React App</h1>
+      <p>Start building your application here.</p>
+    </div>
+  );
+}
+
+export default App;`,
+          language: 'jsx',
+          isMain: true,
+        },
+        {
+          path: 'src/index.js',
+          name: 'index.js',
+          content: `import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import './index.css';
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);`,
+          language: 'javascript',
+          isMain: false,
+        },
+        {
+          path: 'src/index.css',
+          name: 'index.css',
+          content: `* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.App {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2rem;
+}`,
+          language: 'css',
+          isMain: false,
+        },
+        {
+          path: 'index.html',
+          name: 'index.html',
+          content: `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>React App</title>
+</head>
+<body>
+  <div id="root"></div>
+</body>
+</html>`,
+          language: 'html',
+          isMain: false,
+        },
+      ],
+      nextjs: [
+        {
+          path: 'app/page.jsx',
+          name: 'page.jsx',
+          content: `export default function Home() {
+  return (
+    <main className="min-h-screen flex items-center justify-center">
+      <div className="text-center">
+        <h1 className="text-4xl font-bold mb-4">Welcome to Next.js</h1>
+        <p className="text-gray-600">Get started by editing this page.</p>
+      </div>
+    </main>
+  );
+}`,
+          language: 'jsx',
+          isMain: true,
+        },
+        {
+          path: 'app/layout.jsx',
+          name: 'layout.jsx',
+          content: `export const metadata = {
+  title: 'Next.js App',
+  description: 'Generated by OpenIdea',
+};
+
+export default function RootLayout({ children }) {
+  return (
+    <html lang="en">
+      <body>{children}</body>
+    </html>
+  );
+}`,
+          language: 'jsx',
+          isMain: false,
+        },
+      ],
+      vue: [
+        {
+          path: 'src/App.vue',
+          name: 'App.vue',
+          content: `<template>
+  <div id="app">
+    <h1>Welcome to Your Vue App</h1>
+    <p>Start building your application here.</p>
+  </div>
+</template>
+
+<script>
+export default {
+  name: 'App'
+}
+</script>
+
+<style>
+#app {
+  font-family: Avenir, Helvetica, Arial, sans-serif;
+  text-align: center;
+  color: #2c3e50;
+  margin-top: 60px;
+}
+</style>`,
+          language: 'vue',
+          isMain: true,
+        },
+        {
+          path: 'src/main.js',
+          name: 'main.js',
+          content: `import { createApp } from 'vue';
+import App from './App.vue';
+
+createApp(App).mount('#app');`,
+          language: 'javascript',
+          isMain: false,
+        },
+        {
+          path: 'index.html',
+          name: 'index.html',
+          content: `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vue App</title>
+</head>
+<body>
+  <div id="app"></div>
+</body>
+</html>`,
+          language: 'html',
+          isMain: false,
+        },
+      ],
+      html: [
+        {
+          path: 'index.html',
+          name: 'index.html',
+          content: `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Website</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>Welcome to My Website</h1>
+  </header>
+  <main>
+    <section>
+      <h2>About</h2>
+      <p>This is a simple HTML website.</p>
+    </section>
+  </main>
+  <footer>
+    <p>&copy; 2024 My Website</p>
+  </footer>
+  <script src="script.js"></script>
+</body>
+</html>`,
+          language: 'html',
+          isMain: true,
+        },
+        {
+          path: 'styles.css',
+          name: 'styles.css',
+          content: `* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Arial, sans-serif;
+  line-height: 1.6;
+  color: #333;
+}
+
+header {
+  background: #333;
+  color: #fff;
+  padding: 1rem;
+  text-align: center;
+}
+
+main {
+  padding: 2rem;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+footer {
+  background: #333;
+  color: #fff;
+  text-align: center;
+  padding: 1rem;
+  margin-top: 2rem;
+}`,
+          language: 'css',
+          isMain: false,
+        },
+        {
+          path: 'script.js',
+          name: 'script.js',
+          content: `// Your JavaScript code here
+console.log('Welcome to your website!');`,
+          language: 'javascript',
+          isMain: false,
+        },
+      ],
+    };
+
+    const files = templates[framework] || templates.react;
+
+    try {
+      for (const file of files) {
+        await fetch(`/api/app-projects/${projectId}/files`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(file),
+        });
+      }
+      // Refresh files list
+      await fetchFiles();
+    } catch (error) {
+      console.error('Failed to create scaffold files:', error);
+    }
+  };
+
   const handleEditorChange = (content: string) => {
     if (selectedFile) {
       setSelectedFile({ ...selectedFile, content });
@@ -318,15 +626,22 @@ function AppBuilderPageContent() {
     router.replace('/studio', { scroll: false });
   };
 
-  // Create new project and start wizard mode in chat
-  const handleCreateProjectWithWizard = async () => {
+  // Show framework selector when creating new project
+  const handleCreateProjectWithWizard = () => {
     if (isAuthenticated !== true) {
       alert('Please sign in to create a project');
       return;
     }
+    setShowFrameworkSelector(true);
+  };
+
+  // Handle framework selection - create project and start questionnaire
+  const handleFrameworkSelected = async (frameworkId: string) => {
+    setSelectedFramework(frameworkId);
+    setShowFrameworkSelector(false);
 
     try {
-      // Create a new project
+      // Create a new project with selected framework
       const projectResponse = await fetch('/api/app-projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -335,7 +650,7 @@ function AppBuilderPageContent() {
           title: 'New Project',
           description: '',
           type: 'web',
-          framework: 'react',
+          framework: frameworkId,
         }),
       });
 
@@ -355,14 +670,15 @@ function AppBuilderPageContent() {
       setLeftSidebarOpen(true);
       setLeftSidebarTab('chat');
       
-      // Start wizard mode
+      // Start wizard mode (questionnaire)
       setChatWizardMode(true);
       
-      // Fetch files
+      // Fetch files (will be empty initially)
       await fetchFiles();
     } catch (error: any) {
       console.error('Failed to create project:', error);
       alert(`Failed to create project: ${error.message}`);
+      setShowFrameworkSelector(true); // Show selector again on error
     }
   };
 
@@ -774,6 +1090,7 @@ Generate all files needed for a fully functional application.`;
                       onFilesCreated={fetchFiles}
                       startWizardMode={chatWizardMode && selectedProjectId !== ''}
                       projectTitle={project?.title || 'New Project'}
+                      projectFramework={selectedFramework || project?.framework || 'react'}
                     />
                   )}
                   {leftSidebarTab === 'deploy' && (
@@ -907,11 +1224,16 @@ Generate all files needed for a fully functional application.`;
             {/* Preview - Full Width */}
             <div className="h-full overflow-hidden">
               {selectedProjectId ? (
-                <PreviewPanel
-                  projectId={selectedProjectId}
-                  projectType={project?.type || 'web'}
-                  onRefresh={fetchFiles}
-                />
+                // Show advertisement placeholder during questionnaire, otherwise show preview
+                chatWizardMode ? (
+                  <AdvertisementPlaceholder />
+                ) : (
+                  <PreviewPanel
+                    projectId={selectedProjectId}
+                    projectType={project?.type || 'web'}
+                    onRefresh={fetchFiles}
+                  />
+                )
               ) : (
                 <div className="h-full flex items-center justify-center bg-[#0a0a0a] text-gray-400">
                   <div className="text-center">
@@ -965,6 +1287,16 @@ Generate all files needed for a fully functional application.`;
           console.log('Generation complete!');
         }}
       />
+
+      {/* Framework Selector Overlay */}
+      {showFrameworkSelector && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm">
+          <FrameworkSelector
+            onSelect={handleFrameworkSelected}
+            onCancel={() => setShowFrameworkSelector(false)}
+          />
+        </div>
+      )}
     </div>
   );
 }

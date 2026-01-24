@@ -330,36 +330,124 @@ function AuthPageContent() {
         body: JSON.stringify(data),
       });
 
-      const result = await response.json();
+      // Log response details for debugging
+      const contentType = response.headers.get('content-type');
+      const responseStatus = response.status;
+      const responseStatusText = response.statusText;
+      
+      console.log('[ForgotPassword] Response received:', {
+        status: responseStatus,
+        statusText: responseStatusText,
+        contentType,
+        ok: response.ok,
+        headers: Object.fromEntries(response.headers.entries()),
+      });
+
+      // Read response as text first (can only read once)
+      const responseText = await response.text();
+      console.log('[ForgotPassword] Raw response text:', {
+        length: responseText.length,
+        isEmpty: responseText.length === 0,
+        preview: responseText.substring(0, 500),
+        fullText: responseText.length < 1000 ? responseText : responseText.substring(0, 1000) + '...',
+      });
+
+      // Parse JSON if content type indicates JSON or if response is not empty
+      let result: any = {};
+      
+      if (responseText.length === 0) {
+        console.warn('[ForgotPassword] Empty response body');
+        if (!response.ok) {
+          throw new Error(`Server returned empty response (${responseStatus} ${responseStatusText})`);
+        }
+        // Empty success response is OK
+        result = {};
+      } else if (contentType && contentType.includes('application/json')) {
+        try {
+          result = JSON.parse(responseText);
+          console.log('[ForgotPassword] Parsed JSON result:', {
+            keys: Object.keys(result),
+            hasError: 'error' in result,
+            hasMessage: 'message' in result,
+            result,
+          });
+        } catch (jsonError) {
+          console.error('[ForgotPassword] Failed to parse JSON:', jsonError);
+          console.error('[ForgotPassword] Response text that failed to parse:', responseText);
+          throw new Error(`Invalid JSON response: ${jsonError instanceof Error ? jsonError.message : 'Unknown error'}`);
+        }
+      } else {
+        // Non-JSON response
+        console.error('[ForgotPassword] Non-JSON response:', {
+          status: responseStatus,
+          contentType,
+          text: responseText.substring(0, 500),
+        });
+        if (!response.ok) {
+          throw new Error(`Server error: ${responseStatus} ${responseStatusText}. Response: ${responseText.substring(0, 200)}`);
+        }
+      }
 
       if (!response.ok) {
-        throw new Error(result.error || 'Failed to send reset email');
+        // Show detailed error message
+        const errorMessage = result?.error || 
+                            result?.message || 
+                            result?.details ||
+                            `Failed to send reset email (${responseStatus} ${responseStatusText})`;
+        
+        console.error('[ForgotPassword] API error (response not OK):', {
+          status: responseStatus,
+          statusText: responseStatusText,
+          contentType,
+          responseTextLength: responseText.length,
+          resultType: typeof result,
+          resultKeys: result ? Object.keys(result) : [],
+          resultError: result?.error,
+          resultDetails: result?.details,
+          resultMessage: result?.message,
+          resultStatus: result?.status,
+          fullResult: result,
+        });
+        
+        throw new Error(errorMessage);
       }
 
-      // Check if we're in development mode and got a direct reset URL
-      if (result.resetUrl) {
-        toast.success('Password reset link generated!', {
-          description: 'Since you\'re in development mode, you can click the button below to reset your password.',
-          duration: 8000,
-          action: {
-            label: 'Reset Password',
-            onClick: () => window.open(result.resetUrl, '_blank'),
-          },
-        });
-      } else {
-        toast.success('Password reset email sent!', {
-          description: 'Please check your email for instructions to reset your password.',
-          duration: 5000,
-        });
-      }
+      // Success case - log for debugging
+      console.log('[ForgotPassword] Success response:', result);
+
+      toast.success('Password reset email sent!', {
+        description: 'Please check your email for instructions to reset your password.',
+        duration: 5000,
+      });
 
       setShowForgotPassword(false);
       forgotPasswordForm.reset();
     } catch (error) {
-      console.error('Forgot password error:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to send reset email', {
-        description: 'Please try again or contact support.',
-        duration: 5000,
+      console.error('[ForgotPassword] Error:', error);
+      
+      // Show more helpful error messages
+      let errorMessage = 'Failed to send reset email';
+      let errorDescription = 'Please try again or contact support.';
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        
+        // Provide specific guidance based on error
+        if (error.message.includes('rate limit') || error.message.includes('429')) {
+          errorDescription = 'Too many requests. Please wait a few minutes before trying again.';
+        } else if (error.message.includes('redirect') || error.message.includes('URL')) {
+          errorDescription = 'Redirect URL configuration issue. Please contact support.';
+        } else if (error.message.includes('email')) {
+          errorDescription = 'If an account exists with this email, a password reset link will be sent.';
+        } else if (process.env.NODE_ENV === 'development') {
+          // In development, show more technical details
+          errorDescription = `Error: ${error.message}. Check console for details.`;
+        }
+      }
+      
+      toast.error(errorMessage, {
+        description: errorDescription,
+        duration: 7000,
         style: {
           background: 'linear-gradient(135deg, #ef4444, #dc2626)',
           color: 'white',

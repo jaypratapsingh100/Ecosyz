@@ -20,6 +20,7 @@ interface AppChatProps {
   onFilesCreated?: () => void;
   startWizardMode?: boolean;
   projectTitle?: string;
+  projectFramework?: string;
 }
 
 interface WizardQuestion {
@@ -219,7 +220,7 @@ const WIZARD_QUESTIONS: WizardQuestion[] = [
   },
 ];
 
-export default function AppChat({ projectId, currentFile, projectFiles = [], onFilesCreated, startWizardMode = false, projectTitle = 'My App' }: AppChatProps) {
+export default function AppChat({ projectId, currentFile, projectFiles = [], onFilesCreated, startWizardMode = false, projectTitle = 'My App', projectFramework = 'react' }: AppChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -677,6 +678,20 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
       answers: questionnaireData,
     });
 
+    // Get framework from questionnaire or use project framework
+    const framework = questionnaireData.frameworkPreference || projectFramework || 'react';
+    
+    // Dispatch wizard-complete event to create scaffold files
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('wizard-complete', {
+        detail: {
+          projectId,
+          framework,
+          questionnaireData
+        }
+      }));
+    }
+    
     // Generate prompt
     const prompt = generateBuildPromptFromQuestionnaire(questionnaireData, answers.brandName || projectTitle);
     
@@ -684,7 +699,7 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
     const completionMessage: Message = {
       id: 'wizard-complete',
       role: 'assistant',
-      content: `🎉 **Perfect! I have all the information I need.**\n\nBuilding your project now...`,
+      content: `🎉 **Perfect! I have all the information I need.**\n\nCreating scaffold and building your project now...`,
       timestamp: new Date(),
     };
     setMessages((prev) => [...prev, completionMessage]);
@@ -694,6 +709,9 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
     setWizardStep(0);
     setWizardAnswers({});
     setMultiSelectSelections([]);
+    
+    // Wait a bit for scaffold files to be created before sending prompt
+    await new Promise(resolve => setTimeout(resolve, 2000));
     
     // Send the prompt as a user message
     const promptMessage: Message = {

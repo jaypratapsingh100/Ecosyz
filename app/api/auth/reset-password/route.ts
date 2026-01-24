@@ -1,15 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/src/lib/supabase';
+import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
-import { randomBytes } from 'crypto';
-import { resetTokens, TOKEN_EXPIRY, validateResetToken } from './utils';
 
 const ResetPasswordSchema = z.object({
   email: z.string().email(),
 });
 
+/**
+ * Request password reset
+ * Uses Supabase's built-in resetPasswordForEmail which sends emails via Resend SMTP
+ */
 export async function POST(req: NextRequest) {
-  if (!supabase) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.error('[ResetPassword] Missing Supabase configuration');
     return NextResponse.json(
       { error: 'Authentication service unavailable' },
       { status: 503 }
@@ -29,161 +35,143 @@ export async function POST(req: NextRequest) {
 
     const { email } = parse.data;
 
-    // Generate a secure random token
-    const token = randomBytes(32).toString('hex');
-    const expires = new Date(Date.now() + TOKEN_EXPIRY);
-    
-    // Store the token
-    resetTokens.set(email, { token, expires });
-    
-    // Generate reset URL
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-    const resetUrl = `${baseUrl}/auth/reset-password?email=${encodeURIComponent(email)}&token=${token}`;
-    
-    // Prepare email HTML and text content
-    const emailHtml = `
-      <h2>Password Reset Request</h2>
-      <p>We received a request to reset your password for the Open Idea platform.</p>
-      <p>Click the link below to reset your password:</p>
-      <p><a href="${resetUrl}" style="padding: 12px 24px; background-color: #10b981; color: white; text-decoration: none; border-radius: 4px; display: inline-block;">Reset Password</a></p>
-      <p>Or copy and paste this URL into your browser:</p>
-      <p>${resetUrl}</p>
-      <p>This link will expire in 1 hour.</p>
-      <p>If you didn't request this password reset, please ignore this email or contact support if you have concerns.</p>
-      <p>Thank you,<br>The Open Idea Team</p>
-    `;
+    // Get the base URL for redirect
+    // Use the request origin if NEXT_PUBLIC_BASE_URL is not set
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 
+                    req.headers.get('origin') || 
+                    'http://localhost:3000';
+    const redirectTo = `${baseUrl}/auth/reset-password`;
 
-    const emailText = `
-      Password Reset Request
-      
-      We received a request to reset your password for the Open Idea platform.
-      
-      Click the link below to reset your password:
-      ${resetUrl}
-      
-      This link will expire in 1 hour.
-      
-      If you didn't request this password reset, please ignore this email or contact support if you have concerns.
-      
-      Thank you,
-      The Open Idea Team
-    `;
-
-    // Log detailed info about the email sending attempt
-    console.log('[ResetPassword] Preparing to send email:', { 
-      to: email,
-      usingSupabase: !!supabase,
-      hasFunctionsAPI: !!(supabase && supabase.functions),
-      isDev: process.env.NODE_ENV !== 'production'
+    console.log('[ResetPassword] Requesting password reset:', { 
+      email,
+      redirectTo,
+      baseUrl: process.env.NEXT_PUBLIC_BASE_URL,
+      requestOrigin: req.headers.get('origin'),
+      isDev: process.env.NODE_ENV !== 'production' 
     });
 
-    try {
-      // Comment this section to test actual email sending
-      // To enable actual email sending in development mode, just uncomment the block below
-      /*
-      if (process.env.NODE_ENV !== 'production') {
-        console.log('[ResetPassword] Development mode - skipping actual email sending');
-        // Simulate success
-        const emailData = { success: true, id: 'dev-mode-no-email-sent' };
-        const emailError = null;
-        
-        console.log('[ResetPassword] Email sending skipped in development. Using direct URL instead.');
-        return NextResponse.json({
-          message: 'Password reset link generated. Using direct URL for development.',
-          resetUrl: resetUrl
+    // Create a fresh Supabase client for this request
+    // This ensures proper server-side configuration
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        flowType: 'pkce',
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    });
+
+    // Use Supabase's built-in password reset
+    // This will send an email via Resend SMTP (configured in Supabase)
+    console.log('[ResetPassword] Calling Supabase resetPasswordForEmail...');
+    const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo,
+    });
+
+    console.log('[ResetPassword] Supabase response:', {
+      hasData: !!data,
+      hasError: !!error,
+      errorType: error?.constructor?.name,
+      errorKeys: error ? Object.keys(error) : [],
+    });
+
+    if (error) {
+      // Log the error in multiple formats to catch all possible structures
+      console.error('[ResetPassword] Supabase error (stringified):', JSON.stringify(error, null, 2));
+      console.error('[ResetPassword] Supabase error (object):', {
+        message: error.message,
+        status: error.status,
+        name: error.name,
+        email,
+        redirectTo,
+        errorObject: error,
+        errorString: String(error),
+      });
+      
+      // Provide helpful error messages
+      let errorMessage = 'Failed to send password reset email';
+      let statusCode = 400;
+      
+      // Check for specific error types
+      if (error.status === 429 || error.message?.toLowerCase().includes('rate limit')) {
+        errorMessage = 'Too many requests. Please wait a few minutes before trying again.';
+        statusCode = 429;
+      } else if (error.message?.toLowerCase().includes('redirect') || 
+                 error.message?.toLowerCase().includes('url') ||
+                 error.message?.toLowerCase().includes('whitelist')) {
+        errorMessage = 'Invalid redirect URL configuration. Please ensure the redirect URL is whitelisted in Supabase dashboard.';
+        statusCode = 400;
+        console.error('[ResetPassword] Redirect URL issue:', {
+          redirectTo,
+          message: 'Ensure this URL is added to Supabase Dashboard → Authentication → URL Configuration → Redirect URLs',
         });
-      }
-      */
-
-      // Production mode - actually send the email
-      if (!supabase) {
-        throw new Error('Supabase client is not available');
-      }
-
-      // Send email via Supabase Edge Function
-      const { data: emailData, error: emailError } = await supabase.functions.invoke('send-email', {
-        body: {
-          to: email,
-          subject: 'Reset Your Password - Open Idea Platform',
-          html: emailHtml,
-          text: emailText,
-          // Add from field explicitly like ChatBot does
-          from: 'noreply@openidea.world'
-        },
-      });
-
-      console.log('[ResetPassword] Email function response:', { 
-        success: !emailError, 
-        data: emailData,
-        errorMessage: emailError?.message
-      });
-
-      if (emailError) {          
-        // For development, we'll return the URL directly if email sending fails
-        if (process.env.NODE_ENV !== 'production') {
-          console.warn('[ResetPassword] Email failed but returning reset URL for development');
-          return NextResponse.json({
-            message: 'Password reset link generated, but email sending failed. Using direct URL for development.',
-            resetUrl: resetUrl,
-            emailError: emailError.message,
-          });
+      } else if (error.message?.toLowerCase().includes('email') || 
+                 error.message?.toLowerCase().includes('not found') ||
+                 error.message?.toLowerCase().includes('user')) {
+        // Don't reveal if email exists (security best practice)
+        // But in development, show the actual error
+        if (process.env.NODE_ENV === 'development') {
+          errorMessage = `Failed to send password reset email: ${error.message}`;
+        } else {
+          errorMessage = 'If an account exists with this email, a password reset link will be sent.';
         }
-        
-        throw new Error('Failed to send password reset email');
-      }
-
-      console.log('[ResetPassword] Email sent successfully:', emailData);
-
-      // Success response
-      return NextResponse.json({
-        message: 'Password reset email sent successfully. Please check your inbox.',
-        // In development, also return the URL for easy testing
-        resetUrl: process.env.NODE_ENV !== 'production' ? resetUrl : undefined,
-      });
-    } catch (emailSendError) {
-      console.error('Exception during email sending:', emailSendError);
-      
-      // For development, return the direct URL
-      if (process.env.NODE_ENV !== 'production') {
-        return NextResponse.json({
-          message: 'Password reset link generated, but email sending failed. Using direct URL for development.',
-          resetUrl: resetUrl,
-          emailError: emailSendError instanceof Error ? emailSendError.message : 'Unknown error',
-        });
+      } else {
+        // Generic error - show details in development
+        if (process.env.NODE_ENV === 'development') {
+          errorMessage = `Failed to send password reset email: ${error.message || 'Unknown error'}`;
+        }
+        console.error('[ResetPassword] Full error details:', error);
       }
       
-      throw emailSendError;
-    }
-  } catch (error) {
-    console.error('Password reset error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
-}
-
-// Endpoint to verify a reset token
-export async function GET(req: NextRequest) {
-  try {
-    const url = new URL(req.url);
-    const email = url.searchParams.get('email');
-    const token = url.searchParams.get('token');
-    
-    if (!email || !token) {
+      const errorResponse = {
+        error: errorMessage,
+        ...(process.env.NODE_ENV === 'development' && { 
+          details: error.message,
+          status: error.status,
+          name: error.name,
+          redirectTo,
+        })
+      };
+      
+      console.log('[ResetPassword] Returning error response:', errorResponse);
+      
       return NextResponse.json(
-        { valid: false },
-        { status: 400 }
+        errorResponse,
+        { 
+          status: statusCode,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
       );
     }
+
+    console.log('[ResetPassword] Password reset email sent successfully');
+
+    // Success - Supabase will send the email via Resend SMTP
+    const successResponse = {
+      message: 'Password reset email sent successfully. Please check your inbox.',
+      success: true,
+    };
     
-    const valid = validateResetToken(email, token);
+    console.log('[ResetPassword] Returning success response:', successResponse);
     
-    return NextResponse.json({ valid });
-  } catch (error) {
-    console.error('Password reset token validation error:', error);
+    return NextResponse.json(successResponse, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+  } catch (error: any) {
+    console.error('[ResetPassword] Unexpected error:', {
+      message: error?.message,
+      stack: error?.stack,
+    });
+    
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { 
+        error: 'Internal server error',
+        ...(process.env.NODE_ENV === 'development' && { details: error?.message })
+      },
       { status: 500 }
     );
   }

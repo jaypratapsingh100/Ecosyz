@@ -1,20 +1,18 @@
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import Link from 'next/link';
 import Image from 'next/image';
+import { supabase } from '@/src/lib/supabase';
 
-// Enhanced schema with email for direct reset
 const resetPasswordSchema = z.object({
-  email: z.string().email('Valid email is required'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   confirmPassword: z.string(),
-  token: z.string().optional(),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords don't match",
   path: ["confirmPassword"],
@@ -25,82 +23,82 @@ type ResetPasswordForm = z.infer<typeof resetPasswordSchema>;
 // Page component that wraps the content in Suspense
 export default function ResetPasswordPage() {
   return (
-    <Suspense fallback={<div>Loading...</div>}>
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-white">Loading...</div>}>
       <ResetPasswordContent />
     </Suspense>
   );
 }
 
-// Reset password component that handles both direct reset and token-based reset
+// Reset password component that handles Supabase reset flow
 function ResetPasswordContent() {
   const [loading, setLoading] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [hasSession, setHasSession] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [tokenValid, setTokenValid] = useState<boolean | null>(null);
   const router = useRouter();
-  const searchParams = useSearchParams();
 
-  // Extract email and token from URL if available
-  const emailFromUrl = searchParams?.get('email') || '';
-  const tokenFromUrl = searchParams?.get('token') || '';
-  
   const {
     register,
     handleSubmit,
-    setValue,
     formState: { errors },
   } = useForm<ResetPasswordForm>({
     resolver: zodResolver(resetPasswordSchema),
     defaultValues: {
-      email: emailFromUrl,
       password: '',
       confirmPassword: '',
-      token: tokenFromUrl,
     }
   });
-  
-  // Validate token if provided
+
+  // Check if user has a valid session from reset link
   useEffect(() => {
-    if (emailFromUrl && tokenFromUrl) {
-      fetch(`/api/auth/reset-password?email=${encodeURIComponent(emailFromUrl)}&token=${encodeURIComponent(tokenFromUrl)}`)
-        .then(res => res.json())
-        .then(data => {
-          setTokenValid(data.valid === true);
-          if (!data.valid) {
+    const checkSession = async () => {
+      try {
+        if (!supabase) {
+          setHasSession(false);
+          setCheckingSession(false);
+          return;
+        }
+
+        // Check for session (user should be authenticated from reset link)
+        const { data: { session }, error } = await supabase.auth.getSession();
+
+        if (error) {
+          console.error('Session check error:', error);
+          setHasSession(false);
+        } else {
+          setHasSession(!!session);
+          
+          if (!session) {
             toast.error('Invalid or expired reset link', {
               description: 'Please request a new password reset email.',
               duration: 5000,
             });
           }
-        })
-        .catch(err => {
-          console.error('Token validation error:', err);
-          setTokenValid(false);
-          toast.error('Could not validate reset link', {
-            description: 'Please try again or request a new reset link.',
-            duration: 5000,
-          });
-        });
-    }
-  }, [emailFromUrl, tokenFromUrl]);
+        }
+      } catch (error) {
+        console.error('Error checking session:', error);
+        setHasSession(false);
+      } finally {
+        setCheckingSession(false);
+      }
+    };
+
+    checkSession();
+  }, []);
 
   const onSubmit = async (data: ResetPasswordForm) => {
     setLoading(true);
     try {
-      // Check if we have a token from URL
-      const payload = {
-        password: data.password,
-        email: data.email,
-        ...(tokenFromUrl ? { token: tokenFromUrl } : {})
-      };
-      
-      // Password update request
+      // Update password via API
       const response = await fetch('/api/auth/update-password', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          password: data.password,
+        }),
       });
 
       const result = await response.json();
@@ -109,7 +107,7 @@ function ResetPasswordContent() {
         throw new Error(result.error || 'Failed to update password');
       }
 
-      toast.success('Password update successful!', {
+      toast.success('Password updated successfully!', {
         description: 'You can now login with your new password.',
         duration: 4000,
         style: {
@@ -120,11 +118,19 @@ function ResetPasswordContent() {
         },
       });
 
-      router.push('/auth');
+      // Sign out the temporary session and redirect to login
+      if (supabase) {
+        await supabase.auth.signOut();
+      }
+
+      // Small delay before redirect
+      setTimeout(() => {
+        router.push('/auth');
+      }, 1000);
     } catch (error) {
       console.error('Password reset error:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to reset password', {
-        description: 'Please try again later.',
+        description: 'Please try again or request a new reset link.',
         duration: 5000,
         style: {
           background: 'linear-gradient(135deg, #ef4444, #dc2626)',
@@ -137,6 +143,18 @@ function ResetPasswordContent() {
       setLoading(false);
     }
   };
+
+  // Show loading state while checking session
+  if (checkingSession) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016] flex items-center justify-center">
+        <div className="text-white text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-400 mx-auto mb-4"></div>
+          <p>Verifying reset link...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016]">
@@ -158,43 +176,20 @@ function ResetPasswordContent() {
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 shadow-2xl border border-white/20">
             <div className="mb-8 text-center">
               <h2 className="text-3xl font-bold text-white mb-2">Reset Password</h2>
-              {emailFromUrl && tokenFromUrl ? (
+              {hasSession ? (
                 <p className="text-teal-100/90">
-                  {tokenValid === true ? 
-                    "Create your new password below" : 
-                    tokenValid === false ?
-                    "This reset link is invalid or has expired" :
-                    "Verifying your reset link..."}
+                  Create your new password below
                 </p>
               ) : (
-                <p className="text-teal-100/90">
-                  Enter your email and new password below
+                <p className="text-red-200">
+                  This reset link is invalid or has expired
                 </p>
               )}
             </div>
 
-            {/* Show form only if token is valid or no token provided */}
-            {(tokenValid !== false || !tokenFromUrl) && (
+            {/* Show form only if session is valid */}
+            {hasSession ? (
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-                <div>
-                  <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-1">
-                    Email Address
-                  </label>
-                  <div className="relative">
-                    <input
-                      {...register('email')}
-                      type="email"
-                      id="email"
-                      className="w-full px-3 py-3 bg-white/10 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 backdrop-blur-sm"
-                      placeholder="Enter your email"
-                      disabled={!!emailFromUrl && !!tokenFromUrl}
-                    />
-                  </div>
-                  {errors.email && (
-                    <p className="mt-1 text-sm text-red-400">{errors.email.message}</p>
-                  )}
-                </div>
-              
                 <div>
                   <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-1">
                     New Password
@@ -265,16 +260,13 @@ function ResetPasswordContent() {
 
                 <button
                   type="submit"
-                  disabled={loading || (tokenValid === false && !!tokenFromUrl)}
+                  disabled={loading}
                   className="w-full bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 font-semibold py-3 px-4 rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105"
                 >
                   {loading ? 'Updating Password...' : 'Update Password'}
                 </button>
               </form>
-            )}
-
-            {/* Special message when token is invalid */}
-            {tokenValid === false && tokenFromUrl && (
+            ) : (
               <div className="p-4 my-4 bg-red-900/30 border border-red-500/30 rounded-lg text-center">
                 <p className="text-red-200">This password reset link has expired or is invalid.</p>
                 <p className="text-white mt-2">Please request a new reset link using the button below.</p>
@@ -289,23 +281,23 @@ function ResetPasswordContent() {
                 >
                   Back to Sign In
                 </Link>
-                <button
-                  type="button"
-                  onClick={() => {
-                    router.push('/auth');
-                    setTimeout(() => {
-                      // Open the forgot password dialog after navigation
-                      // This is a workaround since we can't directly control auth page state
-                      toast.info('Click "Forgot Password" to request a reset link', {
-                        description: 'Enter your email to receive a password reset link',
-                        duration: 8000,
-                      });
-                    }, 500);
-                  }}
-                  className="text-cyan-400 hover:text-cyan-300 font-medium transition-colors"
-                >
-                  Request a new reset link
-                </button>
+                {!hasSession && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      router.push('/auth');
+                      setTimeout(() => {
+                        toast.info('Click "Forgot Password" to request a reset link', {
+                          description: 'Enter your email to receive a password reset link',
+                          duration: 8000,
+                        });
+                      }, 500);
+                    }}
+                    className="text-cyan-400 hover:text-cyan-300 font-medium transition-colors"
+                  >
+                    Request a new reset link
+                  </button>
+                )}
               </div>
             </div>
           </div>
