@@ -10,6 +10,7 @@ interface Message {
   content: string;
   timestamp: Date;
   extractingFiles?: boolean;
+  wizardQuestion?: WizardQuestion;
 }
 
 interface AppChatProps {
@@ -26,21 +27,196 @@ interface WizardQuestion {
   question: string;
   placeholder?: string;
   type: 'text' | 'select' | 'multi-select';
-  options?: string[];
+  options?: Array<{ id: string; label: string; description?: string; color?: string }>;
   required: boolean;
 }
 
 const WIZARD_QUESTIONS: WizardQuestion[] = [
-  { key: 'appDescription', question: "Let's start! What kind of app or website do you want to build? Describe your idea in a few sentences.", type: 'text', required: true },
-  { key: 'appType', question: "What type of app is this? (e.g., Portfolio, Business Website, E-commerce, SaaS, Blog, Landing Page, or Other)", type: 'text', required: true },
-  { key: 'targetAudience', question: "Who is your target audience? (e.g., General Public, Businesses, Consumers, Developers, Students)", type: 'text', required: true },
-  { key: 'brandName', question: "What's your brand or project name?", type: 'text', required: false },
-  { key: 'tagline', question: "Do you have a tagline or short description?", type: 'text', required: false },
-  { key: 'designStyle', question: "What design style do you prefer? (Modern & Minimal, Bold & Colorful, Professional & Corporate, Creative & Artistic, or Clean & Simple)", type: 'text', required: true },
-  { key: 'colorScheme', question: "What color scheme do you want? (Professional Blue, Energetic Orange/Red, Calm Green/Teal, Elegant Purple, Neutral Gray/Black, or let AI choose)", type: 'text', required: false },
-  { key: 'layoutStyle', question: "What layout style? (Single Page Scroll, Multi-page Navigation, Dashboard/App Layout, Blog Layout, or Landing Page)", type: 'text', required: true },
-  { key: 'requiredSections', question: "What sections do you need? (e.g., Hero, About, Portfolio, Services, Contact, Blog, Testimonials, Pricing, FAQ, Team - separate with commas)", type: 'text', required: true },
-  { key: 'specialFeatures', question: "Any special features? (e.g., Contact Form, Newsletter, Social Links, Gallery, Video, Maps, Chat Widget - separate with commas)", type: 'text', required: false },
+  { 
+    key: 'appDescription', 
+    question: "Let's start! What kind of app or website do you want to build? Describe your idea in a few sentences.", 
+    type: 'text', 
+    required: true 
+  },
+  { 
+    key: 'appType', 
+    question: "What type of app is this?", 
+    type: 'select', 
+    options: [
+      { id: 'portfolio', label: 'Portfolio/Personal Website' },
+      { id: 'business', label: 'Business Website' },
+      { id: 'ecommerce', label: 'E-commerce Store' },
+      { id: 'saas', label: 'SaaS Application' },
+      { id: 'blog', label: 'Blog/Content Site' },
+      { id: 'landing', label: 'Landing Page' },
+      { id: 'other', label: 'Other' },
+    ],
+    required: true 
+  },
+  { 
+    key: 'mainPurpose', 
+    question: "What's the main purpose of your app?", 
+    type: 'select', 
+    options: [
+      { id: 'showcase', label: 'Showcase work/portfolio' },
+      { id: 'sell', label: 'Sell products/services' },
+      { id: 'leads', label: 'Generate leads' },
+      { id: 'share', label: 'Share information/blog' },
+      { id: 'application', label: 'Build a web application' },
+      { id: 'other', label: 'Other' },
+    ],
+    required: true 
+  },
+  { 
+    key: 'targetAudience', 
+    question: "Who is your target audience?", 
+    type: 'select', 
+    options: [
+      { id: 'general', label: 'General Public' },
+      { id: 'b2b', label: 'Businesses (B2B)' },
+      { id: 'b2c', label: 'Consumers (B2C)' },
+      { id: 'developers', label: 'Developers/Technical' },
+      { id: 'students', label: 'Students/Educational' },
+      { id: 'other', label: 'Other' },
+    ],
+    required: true 
+  },
+  { 
+    key: 'technicalLevel', 
+    question: "What's the technical level of your target audience?", 
+    type: 'select', 
+    options: [
+      { id: 'non-technical', label: 'Non-technical' },
+      { id: 'somewhat-technical', label: 'Somewhat technical' },
+      { id: 'very-technical', label: 'Very technical' },
+    ],
+    required: true 
+  },
+  { 
+    key: 'designStyle', 
+    question: "What design style do you prefer?", 
+    type: 'select', 
+    options: [
+      { id: 'modern-minimal', label: 'Modern & Minimal', description: 'Clean, simple, focused' },
+      { id: 'bold-colorful', label: 'Bold & Colorful', description: 'Vibrant, energetic' },
+      { id: 'professional', label: 'Professional & Corporate', description: 'Trustworthy, formal' },
+      { id: 'creative', label: 'Creative & Artistic', description: 'Unique, expressive' },
+      { id: 'clean-simple', label: 'Clean & Simple', description: 'Minimal, elegant' },
+    ],
+    required: true 
+  },
+  { 
+    key: 'layoutStyle', 
+    question: "What layout style?", 
+    type: 'select', 
+    options: [
+      { id: 'single-page', label: 'Single Page (Scroll)', description: 'All content on one page' },
+      { id: 'multi-page', label: 'Multi-page Navigation', description: 'Separate pages' },
+      { id: 'dashboard', label: 'Dashboard/App Layout', description: 'Application interface' },
+      { id: 'blog', label: 'Blog/Content Layout', description: 'Content-focused' },
+      { id: 'landing', label: 'Landing Page Layout', description: 'Single focused page' },
+    ],
+    required: true 
+  },
+  { 
+    key: 'requiredSections', 
+    question: "What sections do you need? (Select all that apply)", 
+    type: 'multi-select', 
+    options: [
+      { id: 'hero', label: 'Home/Hero Section' },
+      { id: 'about', label: 'About/Bio' },
+      { id: 'portfolio', label: 'Portfolio/Projects' },
+      { id: 'services', label: 'Services/Features' },
+      { id: 'contact', label: 'Contact Form' },
+      { id: 'blog', label: 'Blog/News' },
+      { id: 'testimonials', label: 'Testimonials' },
+      { id: 'pricing', label: 'Pricing' },
+      { id: 'faq', label: 'FAQ' },
+      { id: 'team', label: 'Team/About Us' },
+    ],
+    required: true 
+  },
+  { 
+    key: 'specialFeatures', 
+    question: "Any special features? (Select all that apply)", 
+    type: 'multi-select', 
+    options: [
+      { id: 'contact-form', label: 'Contact Form' },
+      { id: 'newsletter', label: 'Email Newsletter Signup' },
+      { id: 'social', label: 'Social Media Links' },
+      { id: 'gallery', label: 'Image Gallery' },
+      { id: 'video', label: 'Video Integration' },
+      { id: 'maps', label: 'Maps Integration' },
+      { id: 'chat', label: 'Chat Widget' },
+      { id: 'analytics', label: 'Analytics Integration' },
+    ],
+    required: false 
+  },
+  { 
+    key: 'contentReady', 
+    question: "Do you have content ready?", 
+    type: 'select', 
+    options: [
+      { id: 'Yes, I have all content', label: 'Yes, I have all content' },
+      { id: 'Partial content', label: 'Partial content' },
+      { id: 'No, generate placeholder content', label: 'No, generate placeholder content' },
+    ],
+    required: true 
+  },
+  { 
+    key: 'brandName', 
+    question: "What's your brand or project name? (Optional)", 
+    type: 'text', 
+    required: false 
+  },
+  { 
+    key: 'tagline', 
+    question: "Do you have a tagline or short description? (Optional)", 
+    type: 'text', 
+    required: false 
+  },
+  { 
+    key: 'keyPoints', 
+    question: "Any key points to highlight? (Optional - separate with commas)", 
+    type: 'text', 
+    placeholder: "e.g., Fast performance, Easy to use, Modern design, Mobile-friendly",
+    required: false 
+  },
+  { 
+    key: 'frameworkPreference', 
+    question: "Framework preference?", 
+    type: 'select', 
+    options: [
+      { id: 'react', label: 'React (Recommended)' },
+      { id: 'nextjs', label: 'Next.js' },
+      { id: 'vue', label: 'Vue.js' },
+      { id: 'html', label: 'Plain HTML/CSS/JS' },
+      { id: 'auto', label: 'Auto (AI chooses)' },
+    ],
+    required: false 
+  },
+  { 
+    key: 'mobileResponsiveness', 
+    question: "Mobile responsiveness priority?", 
+    type: 'select', 
+    options: [
+      { id: 'essential', label: 'Essential (Mobile-first)' },
+      { id: 'important', label: 'Important' },
+      { id: 'not-priority', label: 'Not a priority' },
+    ],
+    required: false 
+  },
+  { 
+    key: 'performancePriority', 
+    question: "Performance priority?", 
+    type: 'select', 
+    options: [
+      { id: 'high', label: 'High (Optimize for speed)' },
+      { id: 'balanced', label: 'Balanced' },
+      { id: 'features', label: 'Features over performance' },
+    ],
+    required: false 
+  },
 ];
 
 export default function AppChat({ projectId, currentFile, projectFiles = [], onFilesCreated, startWizardMode = false, projectTitle = 'My App' }: AppChatProps) {
@@ -48,41 +224,58 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
-  const [wizardMode, setWizardMode] = useState(startWizardMode);
+  const [wizardMode, setWizardMode] = useState(false);
   const [wizardStep, setWizardStep] = useState(0);
   const [wizardAnswers, setWizardAnswers] = useState<Partial<QuestionnaireData & { appDescription: string }>>({});
+  const [multiSelectSelections, setMultiSelectSelections] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const wizardInitRef = useRef<string | null>(null);
 
-  // Sync wizard mode with prop
+  // Sync wizard mode with prop - MUST run first to prevent race condition
   useEffect(() => {
-    if (startWizardMode && !wizardMode) {
-      setWizardMode(true);
-      setWizardStep(0);
-      setWizardAnswers({});
-    } else if (!startWizardMode && wizardMode) {
-      setWizardMode(false);
+    if (!startWizardMode) {
+      wizardInitRef.current = null;
+      if (wizardMode) {
+        setWizardMode(false);
+        setWizardStep(0);
+        setWizardAnswers({});
+        setMultiSelectSelections([]);
+      }
+      return;
     }
-  }, [startWizardMode, wizardMode]);
 
-  // Initialize wizard mode
+    const wizardKey = projectId || 'new-project';
+    if (wizardInitRef.current === wizardKey) {
+      return;
+    }
+    wizardInitRef.current = wizardKey;
+
+    setWizardMode(true);
+    setWizardStep(0);
+    setWizardAnswers({});
+    setMultiSelectSelections([]);
+    const firstQuestion = WIZARD_QUESTIONS[0];
+    const welcomeMessage: Message = {
+      id: 'wizard-welcome',
+      role: 'assistant',
+      content: `🎨 **Welcome to the Project Wizard!**\n\nI'll ask you a few questions to understand what you want to build. Let's get started!\n\n**Question 1 of ${WIZARD_QUESTIONS.length}:**\n\n${firstQuestion.question}`,
+      timestamp: new Date(),
+      wizardQuestion: firstQuestion,
+    };
+    setMessages([welcomeMessage]);
+    setIsLoadingHistory(false);
+  }, [startWizardMode, projectId, wizardMode]);
+
+  // Load chat history from database on mount (skip if wizard mode OR startWizardMode prop is true)
   useEffect(() => {
-    if (wizardMode && wizardStep === 0 && messages.length === 0) {
-      const welcomeMessage: Message = {
-        id: 'wizard-welcome',
-        role: 'assistant',
-        content: `🎨 **Welcome to the Project Wizard!**\n\nI'll ask you a few questions to understand what you want to build. Let's get started!\n\n**Question 1 of ${WIZARD_QUESTIONS.length}:**\n\n${WIZARD_QUESTIONS[0].question}`,
-        timestamp: new Date(),
-      };
-      setMessages([welcomeMessage]);
+    // CRITICAL: Skip loading history if wizard mode is active OR if startWizardMode prop is true
+    // This prevents race condition where history loads before wizard initializes
+    if (startWizardMode) {
       setIsLoadingHistory(false);
+      return;
     }
-  }, [wizardMode, wizardStep, messages.length]);
-
-  // Load chat history from database on mount (skip if wizard mode)
-  useEffect(() => {
-    if (wizardMode && wizardStep === 0 && messages.length > 0) return; // Don't load history in wizard mode
     
     const loadChatHistory = async () => {
       if (!projectId) return;
@@ -108,14 +301,8 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
             setMessages(loadedMessages);
             console.log('✅ Loaded chat history:', loadedMessages.length, 'messages');
           } else {
-            // Default message if no history
-            const defaultMessage: Message = {
-              id: '1',
-              role: 'assistant',
-              content: "Hello! I'm your AI Code Assistant powered by **Azure DeepSeek**. I can help you generate, modify, and explain professional, production-ready code.\n\nWhat would you like to build?",
-              timestamp: new Date(),
-            };
-            setMessages([defaultMessage]);
+            // No chat history and not in wizard mode: start with empty chat
+            setMessages([]);
           }
         } else {
           console.warn('⚠️ Failed to load chat history:', response.status);
@@ -128,7 +315,7 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
     };
 
     loadChatHistory();
-  }, [projectId, wizardMode, wizardStep, messages.length]);
+  }, [projectId, startWizardMode]); // Only depend on projectId and startWizardMode, not wizardMode state
 
   useEffect(() => {
     // Auto-scroll to bottom when new messages arrive
@@ -353,20 +540,66 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
     }
   };
 
+  // Handle option selection for select/multi-select questions
+  const handleOptionSelect = (optionId: string) => {
+    const currentQuestion = WIZARD_QUESTIONS[wizardStep];
+    if (!currentQuestion) return;
+
+    if (currentQuestion.type === 'multi-select') {
+      // Toggle selection for multi-select
+      const newSelections = multiSelectSelections.includes(optionId)
+        ? multiSelectSelections.filter(id => id !== optionId)
+        : [...multiSelectSelections, optionId];
+      setMultiSelectSelections(newSelections);
+      
+      // Show selected options in user message
+      const selectedLabels = newSelections.map(id => {
+        const option = currentQuestion.options?.find(opt => opt.id === id);
+        return option?.label || id;
+      });
+      
+      const userMessage: Message = {
+        id: `wizard-select-${Date.now()}`,
+        role: 'user',
+        content: selectedLabels.length > 0 ? `Selected: ${selectedLabels.join(', ')}` : 'None selected',
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, userMessage]);
+    } else {
+      // Single select - proceed immediately
+      const option = currentQuestion.options?.find(opt => opt.id === optionId);
+      const answer = option?.label || optionId;
+      
+      const userMessage: Message = {
+        id: `wizard-select-${Date.now()}`,
+        role: 'user',
+        content: answer,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, userMessage]);
+      
+      // Process answer immediately for single select
+      setTimeout(() => {
+        processWizardAnswer(optionId, answer);
+      }, 300);
+    }
+  };
+
   // Process wizard answer and move to next question
-  const processWizardAnswer = (answer: string) => {
+  const processWizardAnswer = (answerId: string, answerLabel?: string) => {
     const currentQuestion = WIZARD_QUESTIONS[wizardStep];
     if (!currentQuestion) return;
 
     // Save answer
     const newAnswers = { ...wizardAnswers };
     
-    // Handle special cases
-    if (currentQuestion.key === 'requiredSections' || currentQuestion.key === 'specialFeatures') {
-      // Split comma-separated values
-      newAnswers[currentQuestion.key] = answer.split(',').map(s => s.trim()).filter(s => s.length > 0) as any;
+    if (currentQuestion.type === 'multi-select') {
+      // Use multiSelectSelections for multi-select questions
+      newAnswers[currentQuestion.key] = multiSelectSelections as any;
+      setMultiSelectSelections([]); // Reset for next question
     } else {
-      (newAnswers as any)[currentQuestion.key] = answer;
+      // For select questions, save the ID; for text, save the label or input value
+      (newAnswers as any)[currentQuestion.key] = answerId;
     }
     
     setWizardAnswers(newAnswers);
@@ -376,13 +609,17 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
       // Move to next question
       const nextStep = wizardStep + 1;
       setWizardStep(nextStep);
+      setMultiSelectSelections([]); // Reset multi-select for next question
       
       const nextQuestion = WIZARD_QUESTIONS[nextStep];
+      let questionContent = `✅ Got it!\n\n**Question ${nextStep + 1} of ${WIZARD_QUESTIONS.length}:**\n\n${nextQuestion.question}`;
+      
       const nextMessage: Message = {
         id: `wizard-q-${nextStep}`,
         role: 'assistant',
-        content: `✅ Got it!\n\n**Question ${nextStep + 1} of ${WIZARD_QUESTIONS.length}:**\n\n${nextQuestion.question}`,
+        content: questionContent,
         timestamp: new Date(),
+        wizardQuestion: nextQuestion, // Store question data for rendering options
       };
       setMessages((prev) => [...prev, nextMessage]);
       setIsLoading(false);
@@ -392,29 +629,53 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
     }
   };
 
+  // Handle "Continue" button for multi-select questions
+  const handleMultiSelectContinue = () => {
+    if (multiSelectSelections.length === 0) {
+      const currentQuestion = WIZARD_QUESTIONS[wizardStep];
+      if (currentQuestion?.required) {
+        // Show error if required
+        const errorMessage: Message = {
+          id: `wizard-error-${Date.now()}`,
+          role: 'assistant',
+          content: `⚠️ Please select at least one option to continue.`,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+        return;
+      }
+    }
+    processWizardAnswer('', '');
+  };
+
   // Build prompt from wizard answers and send it
   const buildAndSendWizardPrompt = async (answers: Partial<QuestionnaireData & { appDescription: string }>) => {
     setIsLoading(true);
     
     // Convert answers to QuestionnaireData format
     const questionnaireData: QuestionnaireData = {
-      appType: answers.appType || 'web app',
-      mainPurpose: answers.appDescription || '',
+      appType: answers.appType || 'other',
+      mainPurpose: answers.appDescription || answers.mainPurpose || '',
       targetAudience: answers.targetAudience || 'general',
-      technicalLevel: 'intermediate',
+      technicalLevel: answers.technicalLevel || 'intermediate',
       designStyle: answers.designStyle || 'modern-minimal',
       colorScheme: answers.colorScheme || 'auto',
       layoutStyle: answers.layoutStyle || 'single-page',
       requiredSections: Array.isArray(answers.requiredSections) ? answers.requiredSections : [],
       specialFeatures: Array.isArray(answers.specialFeatures) ? answers.specialFeatures : [],
-      contentReady: 'yes',
+      contentReady: answers.contentReady || 'yes',
       brandName: answers.brandName || projectTitle,
       tagline: answers.tagline || '',
-      keyPoints: answers.appDescription || '',
-      frameworkPreference: 'react',
-      mobileResponsiveness: 'essential',
-      performancePriority: 'balanced',
+      keyPoints: answers.keyPoints || answers.appDescription || '',
+      frameworkPreference: answers.frameworkPreference || 'react',
+      mobileResponsiveness: answers.mobileResponsiveness || 'essential',
+      performancePriority: answers.performancePriority || 'balanced',
     };
+    
+    console.log('📋 Wizard answers collected:', {
+      totalQuestions: WIZARD_QUESTIONS.length,
+      answers: questionnaireData,
+    });
 
     // Generate prompt
     const prompt = generateBuildPromptFromQuestionnaire(questionnaireData, answers.brandName || projectTitle);
@@ -432,6 +693,7 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
     setWizardMode(false);
     setWizardStep(0);
     setWizardAnswers({});
+    setMultiSelectSelections([]);
     
     // Send the prompt as a user message
     const promptMessage: Message = {
@@ -513,7 +775,47 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputValue.trim() || isLoading || !projectId) return;
+    if (isLoading || !projectId) return;
+
+    // Handle wizard mode first
+    if (wizardMode) {
+      const currentQuestion = WIZARD_QUESTIONS[wizardStep];
+      if (currentQuestion?.type === 'text') {
+        // For text questions, require input value
+        if (!inputValue.trim()) return;
+        
+        const userMessage: Message = {
+          id: Date.now().toString(),
+          role: 'user',
+          content: inputValue.trim(),
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, userMessage]);
+        const currentInput = inputValue.trim();
+        setInputValue('');
+        
+        setIsLoading(true);
+        setTimeout(() => {
+          processWizardAnswer(currentInput, currentInput);
+        }, 300);
+      } else if (currentQuestion?.type === 'multi-select') {
+        // For multi-select, handle continue button (no input needed)
+        handleMultiSelectContinue();
+      } else {
+        // For single select questions, options should be clicked, not typed
+        const errorMessage: Message = {
+          id: `wizard-error-${Date.now()}`,
+          role: 'assistant',
+          content: `Please select an option from the choices above.`,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+      }
+      return;
+    }
+
+    // Normal chat mode - require input
+    if (!inputValue.trim()) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -525,15 +827,6 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
     setMessages((prev) => [...prev, userMessage]);
     const currentInput = inputValue.trim();
     setInputValue('');
-
-    // Handle wizard mode
-    if (wizardMode) {
-      setIsLoading(true);
-      setTimeout(() => {
-        processWizardAnswer(currentInput);
-      }, 300); // Small delay for UX
-      return;
-    }
 
     setIsLoading(true);
 
@@ -1023,6 +1316,66 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
                   <div className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap break-words">
                     {message.content}
                   </div>
+                  {/* Show options for wizard questions */}
+                  {message.wizardQuestion && message.wizardQuestion.options && (
+                    <div className="mt-4 space-y-2">
+                      {message.wizardQuestion.type === 'multi-select' && (
+                        <div className="text-xs text-gray-400 mb-2">
+                          Select all that apply. Click "Continue" when done.
+                        </div>
+                      )}
+                      <div className="grid grid-cols-1 gap-2">
+                        {message.wizardQuestion.options.map((option) => {
+                          const isSelected = message.wizardQuestion?.type === 'multi-select'
+                            ? multiSelectSelections.includes(option.id)
+                            : false;
+                          
+                          return (
+                            <button
+                              key={option.id}
+                              onClick={() => handleOptionSelect(option.id)}
+                              className={`text-left px-4 py-3 rounded-lg border transition-all ${
+                                isSelected
+                                  ? 'border-emerald-500/50 bg-emerald-500/10 text-white'
+                                  : 'border-white/10 bg-[#0a0a0a] text-gray-300 hover:border-white/20 hover:bg-white/5'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                  {option.color && (
+                                    <div
+                                      className="w-6 h-6 rounded-full border-2 border-white/20 flex-shrink-0"
+                                      style={{ backgroundColor: option.color }}
+                                    />
+                                  )}
+                                  <div>
+                                    <div className="font-medium text-sm">{option.label}</div>
+                                    {option.description && (
+                                      <div className="text-xs text-gray-400 mt-1">{option.description}</div>
+                                    )}
+                                  </div>
+                                </div>
+                                {isSelected && (
+                                  <svg className="w-5 h-5 text-emerald-400" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                  </svg>
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {message.wizardQuestion.type === 'multi-select' && (
+                        <button
+                          onClick={handleMultiSelectContinue}
+                          disabled={multiSelectSelections.length === 0 && message.wizardQuestion.required}
+                          className="w-full mt-3 px-4 py-2 bg-gradient-to-r from-emerald-400 to-cyan-500 hover:from-emerald-500 hover:to-cyan-600 text-gray-900 font-medium rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Continue →
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
@@ -1071,16 +1424,36 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                placeholder={wizardMode ? (WIZARD_QUESTIONS[wizardStep]?.question || "Answer the question...") : "Ask me to generate code..."}
-                className="flex-1 bg-transparent text-white placeholder-gray-400 focus:outline-none text-sm"
+                placeholder={
+                  wizardMode 
+                    ? (WIZARD_QUESTIONS[wizardStep]?.type === 'text' 
+                        ? (WIZARD_QUESTIONS[wizardStep]?.placeholder || "Type your answer...")
+                        : "Select an option above...")
+                    : "Ask me to generate code..."
+                }
+                disabled={wizardMode && WIZARD_QUESTIONS[wizardStep]?.type !== 'text'}
+                className="flex-1 bg-transparent text-white placeholder-gray-400 focus:outline-none text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               />
             </div>
             <button
               type="submit"
-              disabled={!inputValue.trim() || isLoading}
+              disabled={
+                isLoading || 
+                (wizardMode 
+                  ? (WIZARD_QUESTIONS[wizardStep]?.type === 'text' 
+                      ? !inputValue.trim()
+                      : WIZARD_QUESTIONS[wizardStep]?.type === 'multi-select'
+                        ? multiSelectSelections.length === 0 && WIZARD_QUESTIONS[wizardStep]?.required
+                        : false)
+                  : !inputValue.trim())
+              }
               className="px-6 py-3.5 bg-gradient-to-r from-emerald-400 to-cyan-500 hover:from-emerald-500 hover:to-cyan-600 rounded-r-full border border-l-0 border-gray-500/30 text-white font-medium text-sm flex items-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
             >
-              <span>Send</span>
+              <span>
+                {wizardMode && WIZARD_QUESTIONS[wizardStep]?.type === 'multi-select' 
+                  ? 'Continue' 
+                  : 'Send'}
+              </span>
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
