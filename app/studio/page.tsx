@@ -12,11 +12,11 @@ import PreviewPanel from '../components/app-builder/PreviewPanel';
 import DeploymentPanel from '../components/app-builder/DeploymentPanel';
 import GenerationLoader from '../components/app-builder/GenerationLoader';
 import WelcomeScreen from '../components/app-builder/WelcomeScreen';
-import WizardFlow from '../components/app-builder/WizardFlow';
-import FrameworkSelector from '../components/app-builder/FrameworkSelector';
 import AdvertisementPlaceholder from '../components/app-builder/AdvertisementPlaceholder';
 import { useAuthCheck } from '../hooks/useAuthCheck';
 import type { Project, ProjectFile } from '../types/app-builder';
+import { getScaffoldFiles } from '../lib/app-builder/scaffolds';
+import { DEFAULT_FRAMEWORK } from '../lib/app-builder/constants';
 
 function AppBuilderPageContent() {
   const router = useRouter();
@@ -27,10 +27,7 @@ function AppBuilderPageContent() {
   const [project, setProject] = useState<Project | null>(null);
   const [files, setFiles] = useState<ProjectFile[]>([]);
   const [selectedFile, setSelectedFile] = useState<ProjectFile | null>(null);
-  const [rightPanelMode, setRightPanelMode] = useState<'chat' | 'preview' | 'deploy'>('chat');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generationProjectId, setGenerationProjectId] = useState<string | null>(null);
-  const [showWizard, setShowWizard] = useState(false);
   const [creatingSample, setCreatingSample] = useState(false);
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
   const [leftSidebarTab, setLeftSidebarTab] = useState<'projects' | 'code' | 'chat' | 'deploy'>('projects');
@@ -38,29 +35,18 @@ function AppBuilderPageContent() {
   const [isResizing, setIsResizing] = useState(false);
   const [showTabMenu, setShowTabMenu] = useState(false);
   const [chatWizardMode, setChatWizardMode] = useState(false);
-  const [showFrameworkSelector, setShowFrameworkSelector] = useState(false);
-  const [selectedFramework, setSelectedFramework] = useState<string | null>(null);
-  const [pendingProjectCreation, setPendingProjectCreation] = useState<{ framework: string } | null>(null);
+  const [selectedFramework, setSelectedFramework] = useState<string | null>(DEFAULT_FRAMEWORK);
 
   // Auto-create project when description is provided (from home page)
   useEffect(() => {
     const descriptionParam = searchParams.get('description');
-    const wizardParam = searchParams.get('wizard');
-    
-    // Only show wizard if explicitly requested
-    if (wizardParam === 'true') {
-      setShowWizard(true);
-      // Clean URL by removing query params
-      if (typeof window !== 'undefined' && window.location.search) {
-        router.replace('/studio', { scroll: false });
-      }
-      return;
-    }
-    
-    // If description is provided, auto-create project and go to editor
+    // If description is provided, start chat wizard mode
     if (descriptionParam && isAuthenticated === true && !selectedProjectId) {
       const description = decodeURIComponent(descriptionParam);
-      autoCreateProjectFromDescription(description);
+      // Start chat wizard mode instead of auto-creating
+      setLeftSidebarOpen(true);
+      setLeftSidebarTab('chat');
+      setChatWizardMode(true);
       // Clean URL by removing query params after processing
       if (typeof window !== 'undefined' && window.location.search) {
         router.replace('/studio', { scroll: false });
@@ -83,23 +69,73 @@ function AppBuilderPageContent() {
     }
   }, [leftSidebarTab]);
 
-  // Listen for wizard completion to create scaffold files
+  // Listen for wizard completion to create project and scaffold files
   useEffect(() => {
     const handleWizardComplete = async (event: Event) => {
       if (!(event instanceof CustomEvent)) {
         return;
       }
-      const { projectId, framework } = event.detail || {};
-      if (projectId && framework && selectedProjectId === projectId) {
+      const { projectId, framework, questionnaireData } = event.detail || {};
+      const frameworkToUse = framework || selectedFramework || DEFAULT_FRAMEWORK;
+      
+      // If no project exists yet, create it now
+      if (!projectId && !selectedProjectId && chatWizardMode) {
+        try {
+          console.log('🎯 Wizard complete - creating project with framework:', frameworkToUse);
+          
+          // Create the project with framework from questionnaire
+          const projectResponse = await fetch('/api/app-projects', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              title: questionnaireData?.brandName || 'New Project',
+              description: questionnaireData?.mainPurpose || '',
+              type: 'web',
+              framework: frameworkToUse,
+            }),
+          });
+
+          if (!projectResponse.ok) {
+            const errorData = await projectResponse.json().catch(() => ({ error: 'Failed to create project' }));
+            throw new Error(errorData.error || 'Failed to create project');
+          }
+
+          const newProject = await projectResponse.json();
+          const createdProjectId = newProject.id;
+
+          // Select the project
+          setSelectedProjectId(createdProjectId);
+          setProject(newProject);
+          setSelectedFramework(frameworkToUse);
+          
+          // Dispatch event that project is ready (for AppChat to send prompt)
+          if (typeof window !== 'undefined') {
+            (window as any).__pendingProjectId = createdProjectId;
+            window.dispatchEvent(new CustomEvent('project-created-for-wizard', {
+              detail: { projectId: createdProjectId }
+            }));
+          }
+          
+          // Create scaffold files for the selected framework
+          await createScaffoldFiles(createdProjectId, frameworkToUse);
+          // Refresh files and preview
+          await fetchFiles();
+          // Switch to preview mode (remove ads) after a short delay
+          setTimeout(() => {
+            setChatWizardMode(false);
+          }, 500);
+        } catch (error: any) {
+          console.error('Failed to create project after wizard:', error);
+          alert(`Failed to create project: ${error.message}`);
+        }
+      } else if (projectId && framework && selectedProjectId === projectId) {
+        // Project already exists, just create scaffold
         console.log('🎯 Wizard complete - creating scaffold for framework:', framework);
-        // Create scaffold files for the selected framework
         await createScaffoldFiles(projectId, framework);
-        // Refresh files and preview
         await fetchFiles();
-        // Switch to preview mode (remove ads) after a short delay
         setTimeout(() => {
           setChatWizardMode(false);
-          setRightPanelMode('preview');
         }, 500);
       }
     };
@@ -108,7 +144,7 @@ function AppBuilderPageContent() {
     return () => {
       window.removeEventListener('wizard-complete', handleWizardComplete);
     };
-  }, [selectedProjectId]);
+  }, [selectedProjectId, chatWizardMode, selectedFramework]);
 
   // Handle sidebar resize
   useEffect(() => {
@@ -144,9 +180,7 @@ function AppBuilderPageContent() {
   // Listen for generation events
   useEffect(() => {
     const handleGenerationStarted = (event: CustomEvent) => {
-      const { projectId } = event.detail;
       setIsGenerating(true);
-      setGenerationProjectId(projectId);
     };
 
     const handleGenerationComplete = (event: CustomEvent) => {
@@ -155,11 +189,6 @@ function AppBuilderPageContent() {
       // Small delay before hiding loader to show completion
       setTimeout(() => {
         setIsGenerating(false);
-        setGenerationProjectId(null);
-        // Switch to preview panel automatically after generation
-        if (selectedProjectId === projectId) {
-          setRightPanelMode('preview');
-        }
       }, 1000);
     };
 
@@ -196,14 +225,19 @@ function AppBuilderPageContent() {
       const res = await fetch(`/api/app-projects/${selectedProjectId}`);
       if (res.ok) {
         const data = await res.json();
-        setProject({
+        const fetchedProject = {
           id: data.id,
           title: data.title,
           type: data.type,
           framework: data.framework,
           createdAt: data.createdAt || new Date().toISOString(),
           updatedAt: data.updatedAt || new Date().toISOString(),
-        });
+        };
+        setProject(fetchedProject);
+        // Sync selected framework with project framework
+        if (data.framework) {
+          setSelectedFramework(data.framework);
+        }
       } else {
         let errorData: any = {};
         try {
@@ -334,269 +368,10 @@ function AppBuilderPageContent() {
       });
   };
 
-  const handleFileChange = () => {
-    fetchFiles();
-  };
 
   // Create scaffold files for a project based on framework
   const createScaffoldFiles = async (projectId: string, framework: string) => {
-    const templates: Record<string, any[]> = {
-      react: [
-        {
-          path: 'src/App.jsx',
-          name: 'App.jsx',
-          content: `import React from 'react';
-
-function App() {
-  return (
-    <div className="App">
-      <h1>Welcome to Your React App</h1>
-      <p>Start building your application here.</p>
-    </div>
-  );
-}
-
-export default App;`,
-          language: 'jsx',
-          isMain: true,
-        },
-        {
-          path: 'src/index.js',
-          name: 'index.js',
-          content: `import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './App';
-import './index.css';
-
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);`,
-          language: 'javascript',
-          isMain: false,
-        },
-        {
-          path: 'src/index.css',
-          name: 'index.css',
-          content: `* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-.App {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 2rem;
-}`,
-          language: 'css',
-          isMain: false,
-        },
-        {
-          path: 'index.html',
-          name: 'index.html',
-          content: `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>React App</title>
-</head>
-<body>
-  <div id="root"></div>
-</body>
-</html>`,
-          language: 'html',
-          isMain: false,
-        },
-      ],
-      nextjs: [
-        {
-          path: 'app/page.jsx',
-          name: 'page.jsx',
-          content: `export default function Home() {
-  return (
-    <main className="min-h-screen flex items-center justify-center">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold mb-4">Welcome to Next.js</h1>
-        <p className="text-gray-600">Get started by editing this page.</p>
-      </div>
-    </main>
-  );
-}`,
-          language: 'jsx',
-          isMain: true,
-        },
-        {
-          path: 'app/layout.jsx',
-          name: 'layout.jsx',
-          content: `export const metadata = {
-  title: 'Next.js App',
-  description: 'Generated by OpenIdea',
-};
-
-export default function RootLayout({ children }) {
-  return (
-    <html lang="en">
-      <body>{children}</body>
-    </html>
-  );
-}`,
-          language: 'jsx',
-          isMain: false,
-        },
-      ],
-      vue: [
-        {
-          path: 'src/App.vue',
-          name: 'App.vue',
-          content: `<template>
-  <div id="app">
-    <h1>Welcome to Your Vue App</h1>
-    <p>Start building your application here.</p>
-  </div>
-</template>
-
-<script>
-export default {
-  name: 'App'
-}
-</script>
-
-<style>
-#app {
-  font-family: Avenir, Helvetica, Arial, sans-serif;
-  text-align: center;
-  color: #2c3e50;
-  margin-top: 60px;
-}
-</style>`,
-          language: 'vue',
-          isMain: true,
-        },
-        {
-          path: 'src/main.js',
-          name: 'main.js',
-          content: `import { createApp } from 'vue';
-import App from './App.vue';
-
-createApp(App).mount('#app');`,
-          language: 'javascript',
-          isMain: false,
-        },
-        {
-          path: 'index.html',
-          name: 'index.html',
-          content: `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Vue App</title>
-</head>
-<body>
-  <div id="app"></div>
-</body>
-</html>`,
-          language: 'html',
-          isMain: false,
-        },
-      ],
-      html: [
-        {
-          path: 'index.html',
-          name: 'index.html',
-          content: `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>My Website</title>
-  <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-  <header>
-    <h1>Welcome to My Website</h1>
-  </header>
-  <main>
-    <section>
-      <h2>About</h2>
-      <p>This is a simple HTML website.</p>
-    </section>
-  </main>
-  <footer>
-    <p>&copy; 2024 My Website</p>
-  </footer>
-  <script src="script.js"></script>
-</body>
-</html>`,
-          language: 'html',
-          isMain: true,
-        },
-        {
-          path: 'styles.css',
-          name: 'styles.css',
-          content: `* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-body {
-  font-family: Arial, sans-serif;
-  line-height: 1.6;
-  color: #333;
-}
-
-header {
-  background: #333;
-  color: #fff;
-  padding: 1rem;
-  text-align: center;
-}
-
-main {
-  padding: 2rem;
-  max-width: 800px;
-  margin: 0 auto;
-}
-
-footer {
-  background: #333;
-  color: #fff;
-  text-align: center;
-  padding: 1rem;
-  margin-top: 2rem;
-}`,
-          language: 'css',
-          isMain: false,
-        },
-        {
-          path: 'script.js',
-          name: 'script.js',
-          content: `// Your JavaScript code here
-console.log('Welcome to your website!');`,
-          language: 'javascript',
-          isMain: false,
-        },
-      ],
-    };
-
-    const files = templates[framework] || templates.react;
+    const files = getScaffoldFiles(framework);
 
     try {
       for (const file of files) {
@@ -620,224 +395,24 @@ console.log('Welcome to your website!');`,
     }
   };
 
-  const handleWizardComplete = (projectId: string) => {
-    setSelectedProjectId(projectId);
-    setShowWizard(false);
-    router.replace('/studio', { scroll: false });
-  };
 
-  // Show framework selector when creating new project
+  // Start questionnaire without creating project - show advertisement placeholder
   const handleCreateProjectWithWizard = () => {
     if (isAuthenticated !== true) {
       alert('Please sign in to create a project');
       return;
     }
-    setShowFrameworkSelector(true);
+
+    // Don't create project yet - just start the questionnaire
+    // Open sidebar and switch to chat tab
+    setLeftSidebarOpen(true);
+    setLeftSidebarTab('chat');
+    
+    // Start wizard mode (questionnaire) - this will show advertisement placeholder
+    setChatWizardMode(true);
+    setSelectedFramework(DEFAULT_FRAMEWORK); // Set default framework (will be updated from questionnaire)
   };
 
-  // Handle framework selection - create project and start questionnaire
-  const handleFrameworkSelected = async (frameworkId: string) => {
-    setSelectedFramework(frameworkId);
-    setShowFrameworkSelector(false);
-
-    try {
-      // Create a new project with selected framework
-      const projectResponse = await fetch('/api/app-projects', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          title: 'New Project',
-          description: '',
-          type: 'web',
-          framework: frameworkId,
-        }),
-      });
-
-      if (!projectResponse.ok) {
-        const errorData = await projectResponse.json().catch(() => ({ error: 'Failed to create project' }));
-        throw new Error(errorData.error || 'Failed to create project');
-      }
-
-      const newProject = await projectResponse.json();
-      const projectId = newProject.id;
-
-      // Select the project
-      setSelectedProjectId(projectId);
-      setProject(newProject);
-      
-      // Open sidebar and switch to chat tab
-      setLeftSidebarOpen(true);
-      setLeftSidebarTab('chat');
-      
-      // Start wizard mode (questionnaire)
-      setChatWizardMode(true);
-      
-      // Fetch files (will be empty initially)
-      await fetchFiles();
-    } catch (error: any) {
-      console.error('Failed to create project:', error);
-      alert(`Failed to create project: ${error.message}`);
-      setShowFrameworkSelector(true); // Show selector again on error
-    }
-  };
-
-  // Auto-create project from description (from home page)
-  const autoCreateProjectFromDescription = async (description: string) => {
-    if (!description.trim() || isAuthenticated !== true) {
-      return;
-    }
-
-    try {
-      // Step 1: Extract info from description
-      const extractResponse = await fetch('/api/app-projects/extract-info', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description }),
-      });
-
-      let extractedInfo = {
-        features: [] as string[],
-        targetAudience: 'general',
-        designStyle: 'modern',
-      };
-
-      if (extractResponse.ok) {
-        extractedInfo = await extractResponse.json();
-      }
-
-      // Step 2: Create project with extracted info
-      const projectTitle = description.substring(0, 50) || 'My App';
-      const projectResponse = await fetch('/api/app-projects', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          title: projectTitle,
-          description: description,
-          type: 'web',
-          framework: 'react',
-          questionnaireData: {
-            idea: description,
-            features: extractedInfo.features,
-            targetAudience: extractedInfo.targetAudience,
-            designStyle: extractedInfo.designStyle,
-            framework: 'react',
-            language: 'javascript',
-            styling: 'tailwind',
-          },
-        }),
-      });
-
-      if (!projectResponse.ok) {
-        const errorData = await projectResponse.json().catch(() => ({ error: 'Failed to create project' }));
-        throw new Error(errorData.error || 'Failed to create project');
-      }
-
-      const project = await projectResponse.json();
-      const projectId = project.id;
-
-      // Step 3: Select project and fetch files
-      setSelectedProjectId(projectId);
-      await fetchFiles();
-
-      // Step 4: Auto-trigger AI generation via chat
-      const buildPrompt = `Create a complete React application with the following requirements:
-
-**App Description:**
-${description}
-
-**Key Features:**
-${extractedInfo.features.length > 0 ? extractedInfo.features.map(f => `- ${f}`).join('\n') : '- User interface\n- Navigation\n- Content sections'}
-
-**Target Audience:**
-${extractedInfo.targetAudience}
-
-**Technical Stack:**
-- Framework: React
-- Language: JavaScript
-- Styling: Tailwind CSS
-
-**Design Style:** ${extractedInfo.designStyle || 'Modern and clean'}
-
-Please generate a complete, production-ready application with:
-1. Proper file structure
-2. All necessary dependencies
-3. Modern UI/UX design
-4. Responsive layout
-5. Clean, well-commented code
-6. Best practices and patterns
-
-Generate all files needed for a fully functional application.`;
-
-      // Store prompt for AppChat to pick up
-      const generationStartTime = Date.now();
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem(`auto-prompt-${projectId}`, buildPrompt);
-        sessionStorage.setItem(`auto-prompt-timestamp-${projectId}`, Date.now().toString());
-        sessionStorage.setItem(`generation-start-${projectId}`, generationStartTime.toString());
-        window.dispatchEvent(new CustomEvent('generation-started', { detail: { projectId } }));
-        window.dispatchEvent(new CustomEvent('auto-prompt-ready', { detail: { projectId } }));
-      }
-
-      // Send to chat API
-      const startTime = generationStartTime; // Capture for closure
-      setTimeout(async () => {
-        try {
-          const chatResponse = await fetch(`/api/app-projects/${projectId}/chat`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({
-              message: buildPrompt,
-            }),
-          });
-
-          if (chatResponse.ok) {
-            const chatData = await chatResponse.json();
-            
-            // Trigger file refresh events
-            setTimeout(() => {
-              if (typeof window !== 'undefined') {
-                window.dispatchEvent(new CustomEvent('files-updated'));
-              }
-            }, 500);
-            setTimeout(() => {
-              if (typeof window !== 'undefined') {
-                window.dispatchEvent(new CustomEvent('files-updated'));
-              }
-            }, 1500);
-            setTimeout(() => {
-              if (typeof window !== 'undefined') {
-                window.dispatchEvent(new CustomEvent('preview-updated'));
-              }
-            }, 2000);
-            
-            // Stop generation loader
-            setTimeout(() => {
-              const generationDuration = ((Date.now() - startTime) / 1000).toFixed(1);
-              if (typeof window !== 'undefined') {
-                window.dispatchEvent(new CustomEvent('generation-complete', { 
-                  detail: { 
-                    projectId,
-                    duration: generationDuration,
-                    filesCreated: chatData.filesCreated?.length || 0
-                  } 
-                }));
-              }
-              setRightPanelMode('preview');
-            }, 3000);
-          }
-        } catch (error) {
-          console.error('Error triggering AI generation:', error);
-        }
-      }, 1000);
-    } catch (error: any) {
-      console.error('Error auto-creating project:', error);
-      // Fallback: show wizard instead
-      setShowWizard(true);
-    }
-  };
 
   const handleCreateSampleProject = async () => {
     // Check authentication first
@@ -910,10 +485,7 @@ Generate all files needed for a fully functional application.`;
             }));
           }, 800);
           
-          // Switch to preview panel to show the result
-          setTimeout(() => {
-            setRightPanelMode('preview');
-          }, 1500);
+          // Preview automatically shows after sample creation
         } catch (error) {
           console.error('Error fetching files after sample creation:', error);
         }
@@ -1007,7 +579,7 @@ Generate all files needed for a fully functional application.`;
     >
       <Header />
       <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-      {selectedProjectId ? (
+      {selectedProjectId || chatWizardMode ? (
         <div style={{ display: 'flex', height: '100%', overflow: 'hidden', position: 'relative' }}>
           {/* Left Sidebar - Collapsible */}
           <div 
@@ -1084,13 +656,13 @@ Generate all files needed for a fully functional application.`;
                   )}
                   {leftSidebarTab === 'chat' && (
                     <AppChat
-                      projectId={selectedProjectId}
+                      projectId={selectedProjectId || ''}
                       currentFile={selectedFile ? { id: selectedFile.id, path: selectedFile.path, name: selectedFile.name } : undefined}
                       projectFiles={files.map(f => ({ path: f.path, name: f.name }))}
                       onFilesCreated={fetchFiles}
-                      startWizardMode={chatWizardMode && selectedProjectId !== ''}
+                      startWizardMode={chatWizardMode}
                       projectTitle={project?.title || 'New Project'}
-                      projectFramework={selectedFramework || project?.framework || 'react'}
+                      projectFramework={selectedFramework || project?.framework || DEFAULT_FRAMEWORK}
                     />
                   )}
                   {leftSidebarTab === 'deploy' && (
@@ -1223,17 +795,15 @@ Generate all files needed for a fully functional application.`;
 
             {/* Preview - Full Width */}
             <div className="h-full overflow-hidden">
-              {selectedProjectId ? (
-                // Show advertisement placeholder during questionnaire, otherwise show preview
-                chatWizardMode ? (
-                  <AdvertisementPlaceholder />
-                ) : (
-                  <PreviewPanel
-                    projectId={selectedProjectId}
-                    projectType={project?.type || 'web'}
-                    onRefresh={fetchFiles}
-                  />
-                )
+              {/* Show advertisement placeholder during questionnaire */}
+              {chatWizardMode ? (
+                <AdvertisementPlaceholder />
+              ) : selectedProjectId ? (
+                <PreviewPanel
+                  projectId={selectedProjectId}
+                  projectType={project?.type || 'web'}
+                  onRefresh={fetchFiles}
+                />
               ) : (
                 <div className="h-full flex items-center justify-center bg-[#0a0a0a] text-gray-400">
                   <div className="text-center">
@@ -1258,7 +828,7 @@ Generate all files needed for a fully functional application.`;
 
           {/* Column 2: Welcome Screen */}
           <WelcomeScreen
-            onCreateProject={() => setShowWizard(true)}
+            onCreateProject={handleCreateProjectWithWizard}
             onCreateSample={handleCreateSampleProject}
             isCreatingSample={creatingSample}
             isAuthenticated={isAuthenticated === true}
@@ -1266,18 +836,6 @@ Generate all files needed for a fully functional application.`;
         </div>
       )}
       </div>
-      
-      {/* Wizard Flow Overlay */}
-      {showWizard && (
-        <WizardFlow
-          onComplete={handleWizardComplete}
-          onClose={() => {
-            setShowWizard(false);
-            router.replace('/studio', { scroll: false });
-          }}
-          initialDescription={searchParams.get('description') || undefined}
-        />
-      )}
 
       {/* Generation Loader Overlay */}
       <GenerationLoader
@@ -1288,15 +846,6 @@ Generate all files needed for a fully functional application.`;
         }}
       />
 
-      {/* Framework Selector Overlay */}
-      {showFrameworkSelector && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm">
-          <FrameworkSelector
-            onSelect={handleFrameworkSelected}
-            onCancel={() => setShowFrameworkSelector(false)}
-          />
-        </div>
-      )}
     </div>
   );
 }

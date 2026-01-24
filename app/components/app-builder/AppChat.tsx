@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { generateBuildPromptFromQuestionnaire } from '@/app/lib/utils/buildPrompt';
 import type { QuestionnaireData } from '@/app/types/app-builder';
+import { WIZARD_QUESTIONS as SHARED_WIZARD_QUESTIONS } from '@/app/lib/app-builder/wizard/questions';
 
 interface Message {
   id: string;
@@ -14,7 +15,7 @@ interface Message {
 }
 
 interface AppChatProps {
-  projectId: string;
+  projectId?: string;
   currentFile?: { id: string; path: string; name: string };
   projectFiles?: Array<{ path: string; name: string }>;
   onFilesCreated?: () => void;
@@ -32,195 +33,17 @@ interface WizardQuestion {
   required: boolean;
 }
 
-const WIZARD_QUESTIONS: WizardQuestion[] = [
-  { 
-    key: 'appDescription', 
-    question: "Let's start! What kind of app or website do you want to build? Describe your idea in a few sentences.", 
-    type: 'text', 
-    required: true 
-  },
-  { 
-    key: 'appType', 
-    question: "What type of app is this?", 
-    type: 'select', 
-    options: [
-      { id: 'portfolio', label: 'Portfolio/Personal Website' },
-      { id: 'business', label: 'Business Website' },
-      { id: 'ecommerce', label: 'E-commerce Store' },
-      { id: 'saas', label: 'SaaS Application' },
-      { id: 'blog', label: 'Blog/Content Site' },
-      { id: 'landing', label: 'Landing Page' },
-      { id: 'other', label: 'Other' },
-    ],
-    required: true 
-  },
-  { 
-    key: 'mainPurpose', 
-    question: "What's the main purpose of your app?", 
-    type: 'select', 
-    options: [
-      { id: 'showcase', label: 'Showcase work/portfolio' },
-      { id: 'sell', label: 'Sell products/services' },
-      { id: 'leads', label: 'Generate leads' },
-      { id: 'share', label: 'Share information/blog' },
-      { id: 'application', label: 'Build a web application' },
-      { id: 'other', label: 'Other' },
-    ],
-    required: true 
-  },
-  { 
-    key: 'targetAudience', 
-    question: "Who is your target audience?", 
-    type: 'select', 
-    options: [
-      { id: 'general', label: 'General Public' },
-      { id: 'b2b', label: 'Businesses (B2B)' },
-      { id: 'b2c', label: 'Consumers (B2C)' },
-      { id: 'developers', label: 'Developers/Technical' },
-      { id: 'students', label: 'Students/Educational' },
-      { id: 'other', label: 'Other' },
-    ],
-    required: true 
-  },
-  { 
-    key: 'technicalLevel', 
-    question: "What's the technical level of your target audience?", 
-    type: 'select', 
-    options: [
-      { id: 'non-technical', label: 'Non-technical' },
-      { id: 'somewhat-technical', label: 'Somewhat technical' },
-      { id: 'very-technical', label: 'Very technical' },
-    ],
-    required: true 
-  },
-  { 
-    key: 'designStyle', 
-    question: "What design style do you prefer?", 
-    type: 'select', 
-    options: [
-      { id: 'modern-minimal', label: 'Modern & Minimal', description: 'Clean, simple, focused' },
-      { id: 'bold-colorful', label: 'Bold & Colorful', description: 'Vibrant, energetic' },
-      { id: 'professional', label: 'Professional & Corporate', description: 'Trustworthy, formal' },
-      { id: 'creative', label: 'Creative & Artistic', description: 'Unique, expressive' },
-      { id: 'clean-simple', label: 'Clean & Simple', description: 'Minimal, elegant' },
-    ],
-    required: true 
-  },
-  { 
-    key: 'layoutStyle', 
-    question: "What layout style?", 
-    type: 'select', 
-    options: [
-      { id: 'single-page', label: 'Single Page (Scroll)', description: 'All content on one page' },
-      { id: 'multi-page', label: 'Multi-page Navigation', description: 'Separate pages' },
-      { id: 'dashboard', label: 'Dashboard/App Layout', description: 'Application interface' },
-      { id: 'blog', label: 'Blog/Content Layout', description: 'Content-focused' },
-      { id: 'landing', label: 'Landing Page Layout', description: 'Single focused page' },
-    ],
-    required: true 
-  },
-  { 
-    key: 'requiredSections', 
-    question: "What sections do you need? (Select all that apply)", 
-    type: 'multi-select', 
-    options: [
-      { id: 'hero', label: 'Home/Hero Section' },
-      { id: 'about', label: 'About/Bio' },
-      { id: 'portfolio', label: 'Portfolio/Projects' },
-      { id: 'services', label: 'Services/Features' },
-      { id: 'contact', label: 'Contact Form' },
-      { id: 'blog', label: 'Blog/News' },
-      { id: 'testimonials', label: 'Testimonials' },
-      { id: 'pricing', label: 'Pricing' },
-      { id: 'faq', label: 'FAQ' },
-      { id: 'team', label: 'Team/About Us' },
-    ],
-    required: true 
-  },
-  { 
-    key: 'specialFeatures', 
-    question: "Any special features? (Select all that apply)", 
-    type: 'multi-select', 
-    options: [
-      { id: 'contact-form', label: 'Contact Form' },
-      { id: 'newsletter', label: 'Email Newsletter Signup' },
-      { id: 'social', label: 'Social Media Links' },
-      { id: 'gallery', label: 'Image Gallery' },
-      { id: 'video', label: 'Video Integration' },
-      { id: 'maps', label: 'Maps Integration' },
-      { id: 'chat', label: 'Chat Widget' },
-      { id: 'analytics', label: 'Analytics Integration' },
-    ],
-    required: false 
-  },
-  { 
-    key: 'contentReady', 
-    question: "Do you have content ready?", 
-    type: 'select', 
-    options: [
-      { id: 'Yes, I have all content', label: 'Yes, I have all content' },
-      { id: 'Partial content', label: 'Partial content' },
-      { id: 'No, generate placeholder content', label: 'No, generate placeholder content' },
-    ],
-    required: true 
-  },
-  { 
-    key: 'brandName', 
-    question: "What's your brand or project name? (Optional)", 
-    type: 'text', 
-    required: false 
-  },
-  { 
-    key: 'tagline', 
-    question: "Do you have a tagline or short description? (Optional)", 
-    type: 'text', 
-    required: false 
-  },
-  { 
-    key: 'keyPoints', 
-    question: "Any key points to highlight? (Optional - separate with commas)", 
-    type: 'text', 
-    placeholder: "e.g., Fast performance, Easy to use, Modern design, Mobile-friendly",
-    required: false 
-  },
-  { 
-    key: 'frameworkPreference', 
-    question: "Framework preference?", 
-    type: 'select', 
-    options: [
-      { id: 'react', label: 'React (Recommended)' },
-      { id: 'nextjs', label: 'Next.js' },
-      { id: 'vue', label: 'Vue.js' },
-      { id: 'html', label: 'Plain HTML/CSS/JS' },
-      { id: 'auto', label: 'Auto (AI chooses)' },
-    ],
-    required: false 
-  },
-  { 
-    key: 'mobileResponsiveness', 
-    question: "Mobile responsiveness priority?", 
-    type: 'select', 
-    options: [
-      { id: 'essential', label: 'Essential (Mobile-first)' },
-      { id: 'important', label: 'Important' },
-      { id: 'not-priority', label: 'Not a priority' },
-    ],
-    required: false 
-  },
-  { 
-    key: 'performancePriority', 
-    question: "Performance priority?", 
-    type: 'select', 
-    options: [
-      { id: 'high', label: 'High (Optimize for speed)' },
-      { id: 'balanced', label: 'Balanced' },
-      { id: 'features', label: 'Features over performance' },
-    ],
-    required: false 
-  },
-];
+// Use shared wizard questions, converting to local interface format
+const WIZARD_QUESTIONS: WizardQuestion[] = SHARED_WIZARD_QUESTIONS.map(q => ({
+  ...q,
+  key: q.key as keyof QuestionnaireData | 'appDescription',
+  options: q.options?.map(opt => ({
+    ...opt,
+    color: undefined, // Add color property if needed
+  })),
+}));
 
-export default function AppChat({ projectId, currentFile, projectFiles = [], onFilesCreated, startWizardMode = false, projectTitle = 'My App', projectFramework = 'react' }: AppChatProps) {
+export default function AppChat({ projectId = '', currentFile, projectFiles = [], onFilesCreated, startWizardMode = false, projectTitle = 'My App', projectFramework = 'react' }: AppChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -233,6 +56,7 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const wizardInitRef = useRef<string | null>(null);
+  const pendingPromptRef = useRef<{ prompt: string; questionnaireData: QuestionnaireData } | null>(null);
 
   // Sync wizard mode with prop - MUST run first to prevent race condition
   useEffect(() => {
@@ -261,7 +85,7 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
     const welcomeMessage: Message = {
       id: 'wizard-welcome',
       role: 'assistant',
-      content: `🎨 **Welcome to the Project Wizard!**\n\nI'll ask you a few questions to understand what you want to build. Let's get started!\n\n**Question 1 of ${WIZARD_QUESTIONS.length}:**\n\n${firstQuestion.question}`,
+      content: `🎨 **Welcome to the Project Wizard!**\n\nI'll ask you a few questions to understand what you want to build. Let's get started!\n\n${firstQuestion.question}`,
       timestamp: new Date(),
       wizardQuestion: firstQuestion,
     };
@@ -332,6 +156,98 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // Helper function to send prompt to API (defined before useEffect so it's accessible)
+  const sendPromptToAPI = async (targetProjectId: string, prompt: string) => {
+    // Send the prompt as a user message
+    const promptMessage: Message = {
+      id: `wizard-prompt-${Date.now()}`,
+      role: 'user',
+      content: prompt,
+      timestamp: new Date(),
+    };
+    
+    // Update messages and get the latest for conversation history
+    let updatedMessages: Message[] = [];
+    setMessages((prev) => {
+      updatedMessages = [...prev, promptMessage];
+      return updatedMessages;
+    });
+    
+    // Now send to chat API
+    try {
+      const requestBody: any = {
+        message: prompt,
+        currentFile: currentFile?.path,
+        conversationHistory: updatedMessages.map(msg => ({
+          role: msg.role,
+          content: msg.content,
+        })),
+      };
+
+      const response = await fetch(`/api/app-projects/${targetProjectId}/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(requestBody),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        let responseContent = data.response || 'Files are being generated...';
+        
+        if (data.filesCreated && data.filesCreated.length > 0) {
+          const successfulFiles = data.filesCreated.filter((f: any) => f.success);
+          if (successfulFiles.length > 0) {
+            responseContent += `\n\n✅ **Files Created:**\n`;
+            successfulFiles.forEach((file: any) => {
+              responseContent += `- \`${file.path}\` ✓\n`;
+            });
+          }
+          
+          if (onFilesCreated) {
+            setTimeout(() => {
+              onFilesCreated();
+            }, 1000);
+          }
+        }
+        
+        const assistantMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: responseContent,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, assistantMessage]);
+      } else {
+        throw new Error('Failed to generate project');
+      }
+    } catch (error: any) {
+      const errorMessage: Message = {
+        id: `wizard-error-${Date.now()}`,
+        role: 'assistant',
+        content: `❌ **Error generating project**\n\n${error.message}\n\nPlease try again or ask me manually.`,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Send pending prompt when projectId becomes available
+  useEffect(() => {
+    if (projectId && pendingPromptRef.current && !wizardMode) {
+      // Project is now available and wizard is complete, send the prompt
+      const { prompt } = pendingPromptRef.current;
+      setTimeout(async () => {
+        await sendPromptToAPI(projectId, prompt);
+        pendingPromptRef.current = null;
+      }, 2000); // Wait for scaffold files
+    }
+  }, [projectId, wizardMode]);
 
   // Check for auto-generated prompt from questionnaire
   useEffect(() => {
@@ -613,10 +529,10 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
       setMultiSelectSelections([]); // Reset multi-select for next question
       
       const nextQuestion = WIZARD_QUESTIONS[nextStep];
-      let questionContent = `✅ Got it!\n\n**Question ${nextStep + 1} of ${WIZARD_QUESTIONS.length}:**\n\n${nextQuestion.question}`;
+      let questionContent = `✅ Got it!\n\n${nextQuestion.question}`;
       
       const nextMessage: Message = {
-        id: `wizard-q-${nextStep}`,
+        id: `wizard-q-${nextStep}-${Date.now()}`,
         role: 'assistant',
         content: questionContent,
         timestamp: new Date(),
@@ -681,11 +597,12 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
     // Get framework from questionnaire or use project framework
     const framework = questionnaireData.frameworkPreference || projectFramework || 'react';
     
-    // Dispatch wizard-complete event to create scaffold files
+    // Dispatch wizard-complete event to create project and scaffold files
+    // This will create the project if it doesn't exist yet
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('wizard-complete', {
         detail: {
-          projectId,
+          projectId: projectId || null, // null if no project exists yet
           framework,
           questionnaireData
         }
@@ -699,7 +616,7 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
     const completionMessage: Message = {
       id: 'wizard-complete',
       role: 'assistant',
-      content: `🎉 **Perfect! I have all the information I need.**\n\nCreating scaffold and building your project now...`,
+      content: `🎉 **Perfect! I have all the information I need.**\n\nCreating project and scaffold now...`,
       timestamp: new Date(),
     };
     setMessages((prev) => [...prev, completionMessage]);
@@ -710,92 +627,60 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
     setWizardAnswers({});
     setMultiSelectSelections([]);
     
-    // Wait a bit for scaffold files to be created before sending prompt
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // Store prompt for later sending (when project is created)
+    pendingPromptRef.current = { prompt, questionnaireData };
     
-    // Send the prompt as a user message
-    const promptMessage: Message = {
-      id: `wizard-prompt-${Date.now()}`,
-      role: 'user',
-      content: prompt,
-      timestamp: new Date(),
-    };
-    
-    // Update messages and get the latest for conversation history
-    let updatedMessages: Message[] = [];
-    setMessages((prev) => {
-      updatedMessages = [...prev, promptMessage];
-      return updatedMessages;
-    });
-    
-    // Now send to chat API
-    try {
-      const requestBody: any = {
-        message: prompt,
-        currentFile: currentFile?.path,
-        conversationHistory: updatedMessages.map(msg => ({
-          role: msg.role,
-          content: msg.content,
-        })),
-      };
-
-      const response = await fetch(`/api/app-projects/${projectId}/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify(requestBody),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        let responseContent = data.response || 'Files are being generated...';
-        
-        if (data.filesCreated && data.filesCreated.length > 0) {
-          const successfulFiles = data.filesCreated.filter((f: any) => f.success);
-          if (successfulFiles.length > 0) {
-            responseContent += `\n\n✅ **Files Created:**\n`;
-            successfulFiles.forEach((file: any) => {
-              responseContent += `- \`${file.path}\` ✓\n`;
-            });
-          }
-          
-          if (onFilesCreated) {
-            setTimeout(() => {
-              onFilesCreated();
-            }, 1000);
-          }
+    // Wait for project to be created (if it doesn't exist) and scaffold files to be created
+    // Listen for project-created event from studio page
+    if (!projectId) {
+      // No project exists yet, wait for it to be created
+      const handleProjectCreated = async (event: Event) => {
+        if (!(event instanceof CustomEvent)) {
+          return;
         }
-        
-        const assistantMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: responseContent,
-          timestamp: new Date(),
-        };
-        setMessages((prev) => [...prev, assistantMessage]);
-      } else {
-        throw new Error('Failed to generate project');
-      }
-    } catch (error: any) {
-      const errorMessage: Message = {
-        id: `wizard-error-${Date.now()}`,
-        role: 'assistant',
-        content: `❌ **Error generating project**\n\n${error.message}\n\nPlease try again or ask me manually.`,
-        timestamp: new Date(),
+        const { projectId: newProjectId } = event.detail || {};
+        if (newProjectId && pendingPromptRef.current) {
+          window.removeEventListener('project-created-for-wizard', handleProjectCreated);
+          // Wait a bit for scaffold files to be created
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          // Send the prompt
+          await sendPromptToAPI(newProjectId, pendingPromptRef.current.prompt);
+          pendingPromptRef.current = null;
+        }
       };
-      setMessages((prev) => [...prev, errorMessage]);
-    } finally {
-      setIsLoading(false);
+      
+      window.addEventListener('project-created-for-wizard', handleProjectCreated);
+      
+      // Also set a timeout in case event doesn't fire
+      setTimeout(() => {
+        window.removeEventListener('project-created-for-wizard', handleProjectCreated);
+        const pendingProjectId = (window as any).__pendingProjectId;
+        if (pendingProjectId && pendingPromptRef.current) {
+          sendPromptToAPI(pendingProjectId, pendingPromptRef.current.prompt);
+          pendingPromptRef.current = null;
+        } else if (!pendingProjectId) {
+          const errorMessage: Message = {
+            id: `wizard-error-${Date.now()}`,
+            role: 'assistant',
+            content: `❌ **Error:** Project creation is taking longer than expected. Please refresh and try again.`,
+            timestamp: new Date(),
+          };
+          setMessages((prev) => [...prev, errorMessage]);
+        }
+      }, 10000); // 10 second timeout
+    } else {
+      // Project already exists, wait for scaffold and send prompt
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      await sendPromptToAPI(projectId, prompt);
+      pendingPromptRef.current = null;
     }
   };
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isLoading || !projectId) return;
+    if (isLoading) return;
 
-    // Handle wizard mode first
+    // Handle wizard mode first (doesn't require projectId)
     if (wizardMode) {
       const currentQuestion = WIZARD_QUESTIONS[wizardStep];
       if (currentQuestion?.type === 'text') {
@@ -832,8 +717,8 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
       return;
     }
 
-    // Normal chat mode - require input
-    if (!inputValue.trim()) return;
+    // Normal chat mode - require projectId and input
+    if (!projectId || !inputValue.trim()) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),

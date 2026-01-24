@@ -1,46 +1,9 @@
 /**
- * Unified Build Prompt Generator
- * Handles both wizard flow (AppIdea + ProjectConfig) and questionnaire flow
+ * Build Prompt Generator
+ * Generates prompts from questionnaire data
  */
 
-import type { AppIdea, ProjectConfig, QuestionnaireData } from '@/app/types/app-builder';
-
-/**
- * Generate build prompt from wizard flow (AppIdea + ProjectConfig)
- */
-export function generateBuildPromptFromWizard(
-  idea: AppIdea,
-  config: ProjectConfig
-): string {
-  return `Create a complete ${config.framework} application with the following requirements:
-
-**App Description:**
-${idea.description}
-
-**Key Features:**
-${idea.features.map(f => `- ${f}`).join('\n')}
-
-**Target Audience:**
-${idea.targetAudience}
-
-**Technical Stack:**
-- Framework: ${config.framework}
-- Language: ${config.language}
-- Styling: ${config.styling}
-${config.additionalPackages.length > 0 ? `- Additional Packages: ${config.additionalPackages.join(', ')}` : ''}
-
-**Design Style:** ${idea.designStyle || 'Modern and clean'}
-
-Please generate a complete, production-ready application with:
-1. Proper file structure
-2. All necessary dependencies
-3. Modern UI/UX design
-4. Responsive layout
-5. Clean, well-commented code
-6. Best practices and patterns
-
-Generate all files needed for a fully functional application.`;
-}
+import type { QuestionnaireData } from '@/app/types/app-builder';
 
 /**
  * Generate comprehensive build prompt from questionnaire data
@@ -120,18 +83,4 @@ export function generateBuildPromptFromQuestionnaire(
   prompt += `Remember: Generate ALL components, App.jsx, index.js, and CSS files NOW.`;
 
   return prompt;
-}
-
-/**
- * Unified function that detects input type and generates appropriate prompt
- */
-export function generateBuildPrompt(
-  input: { idea: AppIdea; config: ProjectConfig } | { questionnaire: QuestionnaireData | any; projectTitle: string }
-): string {
-  if ('idea' in input && 'config' in input) {
-    return generateBuildPromptFromWizard(input.idea, input.config);
-  } else if ('questionnaire' in input && 'projectTitle' in input) {
-    return generateBuildPromptFromQuestionnaire(input.questionnaire, input.projectTitle);
-  }
-  throw new Error('Invalid input for build prompt generation');
 }

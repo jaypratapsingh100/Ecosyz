@@ -54,6 +54,9 @@ function cleanJSXCode(code: string): string {
   
   // Remove named exports
   code = code.replace(/export\s+\{[^}]+\}\s*;?\s*/g, '');
+
+  // Remove Next.js metadata exports (not valid in inline Babel)
+  code = code.replace(/export\s+const\s+metadata\s*=\s*\{[\s\S]*?\}\s*;?\s*/g, '');
   
   // Remove CommonJS exports
   code = code.replace(/module\.exports\s*=\s*[^;]+;?\s*/g, '');
@@ -106,6 +109,36 @@ function generateSimplePreview(project: any): string {
     f.path.endsWith('.tsx') || f.path.endsWith('.ts')
   );
   const cssFiles = files.filter((f: any) => f.path.endsWith('.css'));
+  const htmlFile = files.find((f: any) => f.path.endsWith('index.html') || f.name === 'index.html');
+
+  // If we have a static HTML entry, render that (HTML/Vue/Vanilla)
+  if (htmlFile) {
+    const rawCssContent = cssFiles.map((f: any) => f.content).join('\n\n');
+    const jsFiles = files.filter((f: any) => f.path.endsWith('.js') && !f.path.endsWith('.jsx'));
+    const rawJsContent = jsFiles.map((f: any) => f.content).join('\n\n');
+
+    let html = htmlFile.content || '';
+    // Strip local asset links that won't resolve in preview iframe
+    html = html.replace(/<link[^>]+href=["'][^"']+\.css["'][^>]*>\s*/gi, '');
+    html = html.replace(/<script[^>]+src=["'][^"']+\.js["'][^>]*><\/script>\s*/gi, '');
+
+    // Ensure Vue CDN is present when framework is vue
+    if ((project.framework === 'vue' || /Vue\.createApp|createApp\(/.test(rawJsContent)) && !/vue\.global\.js/.test(html)) {
+      html = html.replace(
+        /<\/head>/i,
+        `<script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>\n</head>`
+      );
+    }
+
+    if (rawCssContent.trim().length > 0) {
+      html = html.replace(/<\/head>/i, `<style>\n${rawCssContent}\n</style>\n</head>`);
+    }
+    if (rawJsContent.trim().length > 0) {
+      html = html.replace(/<\/body>/i, `<script>\n${rawJsContent}\n</script>\n</body>`);
+    }
+
+    return html.trim();
+  }
 
   if (jsxFiles.length === 0) {
     return generateEmptyPreview(project.title);
@@ -143,6 +176,7 @@ function generateSimplePreview(project: any): string {
 
   // Process components: clean and make available globally
   let componentsJS = '';
+  let appDefinedInComponents = false;
   componentFiles.forEach((file: any) => {
     let cleanCode = cleanJSXCode(file.content);
     
@@ -158,6 +192,10 @@ function generateSimplePreview(project: any): string {
       componentName = functionMatch[1];
     }
     
+    if (componentName === 'App') {
+      appDefinedInComponents = true;
+    }
+
     componentsJS += `
 // Component: ${file.path}
 ${cleanCode}
@@ -181,7 +219,8 @@ if (typeof ${componentName} !== 'undefined') {
   
   // Ensure App component is properly defined
   // If the code doesn't define App but has a component, wrap it
-  if (!appCode.includes('function App') && !appCode.includes('const App') && !appCode.includes('class App')) {
+  const hasAppDeclaration = /\bfunction\s+App\b|\bconst\s+App\b|\bclass\s+App\b/.test(appCode);
+  if (!hasAppDeclaration && !appDefinedInComponents) {
     // Try to find any component definition
     const componentMatch = appCode.match(/(?:function|const|class)\s+([A-Z][a-zA-Z0-9]*)/);
     if (componentMatch && componentMatch[1]) {

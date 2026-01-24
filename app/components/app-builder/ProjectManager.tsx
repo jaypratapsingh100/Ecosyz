@@ -16,11 +16,6 @@ interface Project {
   };
 }
 
-interface Workspace {
-  id: string;
-  title: string;
-}
-
 interface ProjectManagerProps {
   onSelectProject: (projectId: string) => void;
   selectedProjectId?: string;
@@ -28,139 +23,14 @@ interface ProjectManagerProps {
   showActionButtons?: boolean;
 }
 
-const PROJECT_TEMPLATES = [
-  {
-    id: 'react',
-    name: 'React App',
-    type: 'web',
-    framework: 'react',
-    description: 'Create a React application',
-    files: [
-      {
-        path: 'src/App.jsx',
-        name: 'App.jsx',
-        content: `import React from 'react';
-
-function App() {
-  return (
-    <div className="App">
-      <h1>Hello, React!</h1>
-      <p>Start building your React app here.</p>
-    </div>
-  );
-}
-
-export default App;`,
-        language: 'jsx',
-        isMain: true,
-      },
-      {
-        path: 'src/index.js',
-        name: 'index.js',
-        content: `import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './App';
-
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);`,
-        language: 'javascript',
-        isMain: false,
-      },
-      {
-        path: 'index.html',
-        name: 'index.html',
-        content: `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>React App</title>
-</head>
-<body>
-  <div id="root"></div>
-</body>
-</html>`,
-        language: 'html',
-        isMain: false,
-      },
-    ],
-  },
-  {
-    id: 'nextjs',
-    name: 'Next.js App',
-    type: 'web',
-    framework: 'nextjs',
-    description: 'Create a Next.js application',
-    files: [
-      {
-        path: 'pages/index.js',
-        name: 'index.js',
-        content: `export default function Home() {
-  return (
-    <div>
-      <h1>Welcome to Next.js!</h1>
-      <p>Start building your Next.js app here.</p>
-    </div>
-  );
-}`,
-        language: 'javascript',
-        isMain: true,
-      },
-    ],
-  },
-  {
-    id: 'python',
-    name: 'Python Script',
-    type: 'other',
-    framework: 'python',
-    description: 'Create a Python script',
-    files: [
-      {
-        path: 'main.py',
-        name: 'main.py',
-        content: `#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-def main():
-    print("Hello, Python!")
-    print("Start building your Python application here.")
-
-if __name__ == "__main__":
-    main()`,
-        language: 'python',
-        isMain: true,
-      },
-    ],
-  },
-  {
-    id: 'blank',
-    name: 'Blank Project',
-    type: 'web',
-    framework: undefined,
-    description: 'Start with an empty project',
-    files: [],
-  },
-];
-
 export default function ProjectManager({ onSelectProject, selectedProjectId, onOpenWizard, showActionButtons = true }: ProjectManagerProps) {
   const [projects, setProjects] = useState<Project[]>([]);
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newProjectTitle, setNewProjectTitle] = useState('');
-  const [selectedTemplate, setSelectedTemplate] = useState<string>('react');
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>('');
-  const [creating, setCreating] = useState(false);
   const [creatingSample, setCreatingSample] = useState(false);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchProjects();
-    fetchWorkspaces();
   }, []);
 
   // Listen for projects-updated event to refresh projects list
@@ -176,18 +46,6 @@ export default function ProjectManager({ onSelectProject, selectedProjectId, onO
     };
   }, []);
 
-  const fetchWorkspaces = async () => {
-    try {
-      const res = await fetch('/api/workspaces');
-      if (res.ok) {
-        const data = await res.json();
-        setWorkspaces(data);
-      }
-    } catch (error) {
-      console.error('Failed to fetch workspaces:', error);
-    }
-  };
-
   const fetchProjects = async () => {
     try {
       const res = await fetch('/api/app-projects');
@@ -200,11 +58,6 @@ export default function ProjectManager({ onSelectProject, selectedProjectId, onO
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleCreateProject = async () => {
-    // ProjectManager creates template projects only; the wizard lives outside.
-    await handleCreateProjectWithoutQuestionnaire();
   };
 
   const handleCreateSampleProject = async () => {
@@ -436,144 +289,7 @@ export default function ProjectManager({ onSelectProject, selectedProjectId, onO
           </div>
         )}
       </div>
-
-      {/* Create Project Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setShowCreateModal(false)}>
-          <div className="bg-[#1a1a1a] border border-white/10 rounded-xl shadow-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-white font-semibold text-lg mb-4">Create New Project</h3>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-white text-sm font-medium mb-2">
-                  Project Name
-                </label>
-                <input
-                  type="text"
-                  value={newProjectTitle}
-                  onChange={(e) => setNewProjectTitle(e.target.value)}
-                  placeholder="My Awesome App"
-                  className="w-full px-4 py-2 bg-[#0a0a0a] border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-emerald-400/50"
-                  autoFocus
-                />
-              </div>
-
-              <div>
-                <label className="block text-white text-sm font-medium mb-2">
-                  Template
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {PROJECT_TEMPLATES.map((template) => (
-                    <button
-                      key={template.id}
-                      onClick={() => setSelectedTemplate(template.id)}
-                      className={`p-3 rounded-lg border text-left transition-colors ${
-                        selectedTemplate === template.id
-                          ? 'border-emerald-500/50 bg-emerald-500/10'
-                          : 'border-white/10 bg-[#0a0a0a] hover:border-white/20'
-                      }`}
-                    >
-                      <div className="text-white text-sm font-medium">{template.name}</div>
-                      <div className="text-gray-400 text-xs mt-1">{template.description}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {workspaces.length > 0 && (
-                <div>
-                  <label className="block text-white text-sm font-medium mb-2">
-                    Workspace (Optional)
-                  </label>
-                  <select
-                    value={selectedWorkspaceId}
-                    onChange={(e) => setSelectedWorkspaceId(e.target.value)}
-                    className="w-full px-4 py-2 bg-[#0a0a0a] border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-emerald-400/50"
-                  >
-                    <option value="">No workspace</option>
-                    {workspaces.map((workspace) => (
-                      <option key={workspace.id} value={workspace.id}>
-                        {workspace.title}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-gray-500 text-xs mt-1">
-                    Link this project to a workspace for better organization
-                  </p>
-                </div>
-              )}
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => setShowCreateModal(false)}
-                  className="flex-1 px-4 py-2 bg-gray-800/60 hover:bg-gray-700/60 border border-gray-700/50 rounded-lg text-white text-sm font-medium transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleCreateProject}
-                  disabled={!newProjectTitle.trim() || creating}
-                  className="flex-1 px-4 py-2 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 rounded-lg text-white text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {creating ? 'Creating...' : 'Create'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
     </div>
   );
-
-  async function handleCreateProjectWithoutQuestionnaire() {
-    if (!newProjectTitle.trim()) return;
-
-    setCreating(true);
-    try {
-      const template = PROJECT_TEMPLATES.find((t) => t.id === selectedTemplate);
-      if (!template) return;
-
-      const projectRes = await fetch('/api/app-projects', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: newProjectTitle,
-          type: template.type,
-          framework: template.framework,
-          description: template.description,
-          workspaceId: selectedWorkspaceId || undefined,
-        }),
-      });
-
-      if (!projectRes.ok) {
-        const errorData = await projectRes.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(errorData.error || `Failed to create project (${projectRes.status})`);
-      }
-
-      const project = await projectRes.json();
-
-      if (template.files.length > 0) {
-        for (const file of template.files) {
-          await fetch(`/api/app-projects/${project.id}/files`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(file),
-          });
-        }
-      }
-
-      setShowCreateModal(false);
-      setNewProjectTitle('');
-      setSelectedWorkspaceId('');
-      await fetchProjects();
-      onSelectProject(project.id);
-    } catch (error: any) {
-      console.error('Failed to create project:', error);
-      alert(error?.message || 'Failed to create project. Please try again.');
-    } finally {
-      setCreating(false);
-    }
-  }
 }
 
