@@ -309,7 +309,7 @@ function AuthPageContent() {
 
   const handleOAuthSignIn = async (provider: 'github' | 'google') => {
     try {
-      window.location.href = `/api/auth/${provider}`;
+      window.location.href = `/api/auth/oauth/${provider}`;
     } catch (error) {
       console.error('OAuth signin error:', error);
       toast.error(`Failed to sign in with ${provider}`, {

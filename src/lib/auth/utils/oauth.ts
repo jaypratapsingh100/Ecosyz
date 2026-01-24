@@ -6,7 +6,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/src/lib/supabase';
 
-type OAuthProvider = 'google' | 'github';
+/**
+ * Supported OAuth providers
+ * Add new providers here as they're added to Supabase
+ */
+export const SUPPORTED_OAUTH_PROVIDERS = ['google', 'github'] as const;
+
+export type OAuthProvider = typeof SUPPORTED_OAUTH_PROVIDERS[number];
+
+/**
+ * Validate if a provider is supported
+ */
+export function isValidOAuthProvider(provider: string): provider is OAuthProvider {
+  return SUPPORTED_OAUTH_PROVIDERS.includes(provider as OAuthProvider);
+}
 
 /**
  * Initiate OAuth flow for a provider

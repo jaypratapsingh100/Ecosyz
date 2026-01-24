@@ -139,7 +139,7 @@ echo "5. Check that user profile is created with GitHub data"
 echo ""
 
 echo "🔍 To test GitHub OAuth programmatically, run:"
-echo "curl -I $BASE_URL/api/auth/github"
+echo "curl -I $BASE_URL/api/auth/oauth/github"
 echo ""
 
 echo "🌐 Google OAuth Testing (ysony7070@gmail.com)"
@@ -154,7 +154,7 @@ echo "5. Check that user profile is created with Google data"
 echo ""
 
 echo "🔍 To test Google OAuth programmatically, run:"
-echo "curl -I $BASE_URL/api/auth/google"
+echo "curl -I $BASE_URL/api/auth/oauth/google"
 echo ""
 
 echo "✅ Testing Complete!"

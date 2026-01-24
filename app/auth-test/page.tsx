@@ -33,14 +33,14 @@ export default async function AuthTestPage() {
 
             <div className="space-y-3">
               <a
-                href="/api/auth/github"
+                href="/api/auth/oauth/github"
                 className="w-full bg-gray-800 text-white py-2 px-4 rounded-md hover:bg-gray-900 transition-colors block text-center"
               >
                 Sign in with GitHub
               </a>
 
               <a
-                href="/api/auth/google"
+                href="/api/auth/oauth/google"
                 className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors block text-center"
               >
                 Sign in with Google
