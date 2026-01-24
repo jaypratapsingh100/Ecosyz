@@ -153,6 +153,7 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
   const [selectedTemplate, setSelectedTemplate] = useState<string>('react');
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>('');
   const [creating, setCreating] = useState(false);
+  const [creatingSample, setCreatingSample] = useState(false);
 
   useEffect(() => {
     fetchProjects();
@@ -203,6 +204,40 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
     await handleCreateProjectWithoutQuestionnaire();
   };
 
+  const handleCreateSampleProject = async () => {
+    if (!confirm('Create a sample portfolio project?')) return;
+    
+    setCreatingSample(true);
+    try {
+      const res = await fetch('/api/app-projects/create-sample', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || 'Failed to create sample project');
+      }
+
+      const data = await res.json();
+      console.log('Sample project created:', data);
+
+      // Refresh projects list
+      await fetchProjects();
+      
+      // Select the new project
+      onSelectProject(data.id);
+      
+      console.log('✅ Sample project created and selected');
+    } catch (error: any) {
+      console.error('Failed to create sample project:', error);
+      alert(error?.message || 'Failed to create sample project. Please try again.');
+    } finally {
+      setCreatingSample(false);
+    }
+  };
+
   const handleDeleteProject = async (projectId: string) => {
     if (!confirm('Are you sure you want to delete this project?')) return;
 
@@ -231,7 +266,7 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
   return (
     <div className="h-full flex flex-col bg-gradient-to-b from-[#0a0a0a] via-[#0d0d0d] to-[#0a0a0a] border-r border-white/5 overflow-hidden">
       <div className="p-5 border-b border-white/5 flex-shrink-0 bg-gradient-to-r from-[#0a0a0a]/50 to-[#0d0d0d]/50 backdrop-blur-sm">
-        <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-white font-bold text-xl mb-1 bg-gradient-to-r from-white via-emerald-100 to-cyan-100 bg-clip-text text-transparent">
               Projects
@@ -240,6 +275,38 @@ export default function ProjectManager({ onSelectProject, selectedProjectId }: P
               {projects.length} {projects.length === 1 ? 'project' : 'projects'}
             </p>
           </div>
+        </div>
+        
+        {/* Quick Actions */}
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-emerald-500/10 to-cyan-500/10 hover:from-emerald-500/20 hover:to-cyan-500/20 border border-emerald-500/30 rounded-lg text-emerald-400 text-xs font-medium transition-all"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            New
+          </button>
+          <button
+            onClick={handleCreateSampleProject}
+            disabled={creatingSample}
+            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-purple-500/10 to-pink-500/10 hover:from-purple-500/20 hover:to-pink-500/20 border border-purple-500/30 rounded-lg text-purple-400 text-xs font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {creatingSample ? (
+              <>
+                <div className="w-3 h-3 border-2 border-purple-400 border-t-transparent rounded-full animate-spin"></div>
+                Creating...
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Sample
+              </>
+            )}
+          </button>
         </div>
       </div>
 

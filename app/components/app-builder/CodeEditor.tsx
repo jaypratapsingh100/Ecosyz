@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Editor, { OnMount } from '@monaco-editor/react';
 import * as monaco from 'monaco-editor';
+import { validateJSXCode } from '../../../src/lib/utils/validateJSX';
 
 interface File {
   id: string;
@@ -21,20 +22,59 @@ interface CodeEditorProps {
 export default function CodeEditor({ file, projectId, onChange }: CodeEditorProps) {
   const [content, setContent] = useState('');
   const [saving, setSaving] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const editorRef = useRef<any>(null);
 
   useEffect(() => {
     if (file) {
       setContent(file.content);
+      // Validate on file load
+      validateContent(file.content, file.path);
     } else {
       setContent('');
+      setValidationErrors([]);
     }
   }, [file]);
+
+  const validateContent = (code: string, filename: string) => {
+    // Only validate JSX/JS files
+    if (!filename.match(/\.(jsx?|tsx?)$/)) {
+      setValidationErrors([]);
+      return;
+    }
+
+    const result = validateJSXCode(code, filename);
+    const errors = result.errors.map(e => e.message);
+    setValidationErrors(errors);
+
+    // Show markers in editor if available
+    if (editorRef.current && result.errors.length > 0) {
+      const monaco = editorRef.current.monaco;
+      const model = editorRef.current.getModel();
+      if (model && monaco) {
+        const markers = result.errors.map(error => ({
+          severity: monaco.MarkerSeverity.Error,
+          startLineNumber: error.line || 1,
+          startColumn: 1,
+          endLineNumber: error.line || 1,
+          endColumn: 1000,
+          message: error.message + (error.suggestion ? `\n💡 ${error.suggestion}` : ''),
+        }));
+        monaco.editor.setModelMarkers(model, 'jsx-validator', markers);
+      }
+    }
+  };
 
   const handleEditorChange = (value: string | undefined) => {
     const newContent = value || '';
     setContent(newContent);
     onChange(newContent);
+
+    // Validate on change
+    if (file) {
+      validateContent(newContent, file.path);
+    }
 
     // Auto-save after 1 second of inactivity
     if (saveTimeoutRef.current) {
@@ -195,6 +235,14 @@ export default function CodeEditor({ file, projectId, onChange }: CodeEditorProp
       <div className="flex items-center justify-between px-4 py-2 bg-[#252526] border-b border-white/10 flex-shrink-0">
         <div className="flex items-center gap-2">
           <span className="text-white text-sm font-medium">{file.name}</span>
+          {validationErrors.length > 0 && (
+            <span className="flex items-center gap-1 text-xs text-red-400 bg-red-500/10 px-2 py-0.5 rounded">
+              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+              {validationErrors.length}
+            </span>
+          )}
           {saving && (
             <span className="text-xs text-gray-400">Saving...</span>
           )}
@@ -230,6 +278,25 @@ export default function CodeEditor({ file, projectId, onChange }: CodeEditorProp
           }}
         />
       </div>
+      
+      {/* Validation Errors Panel */}
+      {validationErrors.length > 0 && (
+        <div className="border-t border-white/10 bg-[#1e1e1e] p-3 max-h-32 overflow-y-auto flex-shrink-0">
+          <div className="text-xs font-semibold text-red-400 mb-2 flex items-center gap-2">
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            Validation Errors
+          </div>
+          <div className="space-y-1">
+            {validationErrors.map((error, index) => (
+              <div key={index} className="text-xs text-gray-300 bg-red-500/5 border border-red-500/20 rounded px-2 py-1">
+                {error}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

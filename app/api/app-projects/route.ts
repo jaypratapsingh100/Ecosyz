@@ -212,83 +212,67 @@ export async function POST(req: NextRequest) {
       {
         path: 'src/App.jsx',
         name: 'App.jsx',
-        content: `import React from 'react';
-import './App.css';
-
-function App() {
+        content: `function App() {
   return (
-    <div className="App">
-      <header className="App-header">
+    <div className="app-container">
+      <header className="app-header">
         <h1>${brandName}</h1>
-        <p>${tagline}</p>
-        <div className="App-info">
-          <p style={{ marginTop: '30px', fontSize: '14px', opacity: 0.8 }}>
-            🚀 Start building your app by asking the AI to create components!
-          </p>
+        <p className="tagline">${tagline}</p>
+        <div className="info-box">
+          <p>🚀 Start building your app by asking the AI to create components!</p>
         </div>
       </header>
     </div>
   );
-}
-
-export default App;`,
+}`,
         language: 'javascript',
         isMain: true
       },
       {
         path: 'src/index.js',
         name: 'index.js',
-        content: `import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './App';
-import './index.css';
-
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);`,
+        content: `// This file is not used in preview - App.jsx is rendered directly`,
         language: 'javascript',
         isMain: false
       },
       {
         path: 'src/App.css',
         name: 'App.css',
-        content: `.App {
-  text-align: center;
-}
-
-.App-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 60px 20px;
-  color: white;
+        content: `.app-container {
   min-height: 100vh;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 
-.App-header h1 {
+.app-header {
+  text-align: center;
+  color: white;
+  padding: 40px 20px;
+  max-width: 800px;
+}
+
+.app-header h1 {
   font-size: 3rem;
   margin-bottom: 20px;
   font-weight: 700;
   text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
 }
 
-.App-header p {
+.tagline {
   font-size: 1.5rem;
-  margin-bottom: 10px;
+  margin-bottom: 30px;
   opacity: 0.95;
 }
 
-.App-info {
+.info-box {
   margin-top: 40px;
   padding: 20px;
   background: rgba(255,255,255,0.1);
   border-radius: 10px;
   backdrop-filter: blur(10px);
+  font-size: 1rem;
 }`,
         language: 'css',
         isMain: false

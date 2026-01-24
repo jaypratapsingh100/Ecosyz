@@ -31,6 +31,8 @@ function AppBuilderPageContent() {
   const [generationProjectId, setGenerationProjectId] = useState<string | null>(null);
   const [showWizard, setShowWizard] = useState(false);
   const [creatingSample, setCreatingSample] = useState(false);
+  const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
+  const [leftSidebarTab, setLeftSidebarTab] = useState<'projects' | 'files' | 'code' | 'chat' | 'deploy'>('projects');
 
   // Auto-create project when description is provided (from home page)
   useEffect(() => {
@@ -599,124 +601,147 @@ Generate all files needed for a fully functional application.`;
       }}
     >
       <Header />
-      {/* Beta Banner */}
-      <div className="bg-yellow-500/10 border-b border-yellow-500/30 px-4 py-2 flex items-center justify-center gap-2 text-sm text-yellow-200 flex-shrink-0">
-        <svg className="w-4 h-4 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-        </svg>
-        <span className="font-semibold">Beta:</span>
-        <span>Studio is in beta. Please report issues.</span>
-      </div>
       <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
       {selectedProjectId ? (
-        <div 
-          style={{ 
-            display: 'grid',
-            gridTemplateColumns: '256px 256px 1fr 384px',
-            height: '100%',
-            overflow: 'hidden'
-          }}
-        >
-          {/* Column 1: Projects */}
-          <div style={{ height: '100%', overflow: 'hidden' }}>
-            <ProjectManager
-              onSelectProject={setSelectedProjectId}
-              selectedProjectId={selectedProjectId}
-            />
-          </div>
-
-          {/* Column 2: File Explorer */}
-          <div style={{ height: '100%', overflow: 'hidden', borderRight: '1px solid rgba(255, 255, 255, 0.1)' }}>
-            <FileExplorer
-              projectId={selectedProjectId}
-              onSelectFile={handleFileSelect}
-              selectedFileId={selectedFile?.id}
-              onFileChange={handleFileChange}
-            />
-          </div>
-
-          {/* Column 3: Editor */}
-          <div style={{ height: '100%', overflow: 'hidden' }}>
-            <CodeEditor
-              file={selectedFile}
-              projectId={selectedProjectId}
-              onChange={handleEditorChange}
-            />
-          </div>
-
-          {/* Column 4: Chat Panel - Fixed Width */}
+        <div style={{ display: 'flex', height: '100%', overflow: 'hidden', position: 'relative' }}>
+          {/* Left Sidebar - Collapsible */}
           <div 
-            style={{ 
-              height: '100%', 
-              overflow: 'hidden',
-              display: 'flex',
-              flexDirection: 'column'
-            }}
+            className={`transition-all duration-300 ease-in-out ${
+              leftSidebarOpen ? 'w-80' : 'w-0'
+            } border-r border-white/10 bg-[#0a0a0a] overflow-hidden`}
+            style={{ flexShrink: 0 }}
           >
-            {/* Tabs */}
-            <div className="flex border-b border-white/10 bg-[#0a0a0a] flex-shrink-0">
-              <button
-                onClick={() => setRightPanelMode('chat')}
-                className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
-                  rightPanelMode === 'chat'
-                    ? 'text-emerald-400 border-b-2 border-emerald-400'
-                    : 'text-gray-400 hover:text-gray-300'
-                }`}
-              >
-                Chat
-              </button>
-              {selectedProjectId && (
-                <button
-                  onClick={() => setRightPanelMode('preview')}
-                  className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
-                    rightPanelMode === 'preview'
-                      ? 'text-emerald-400 border-b-2 border-emerald-400'
-                      : 'text-gray-400 hover:text-gray-300'
-                  }`}
-                >
-                  Preview
-                </button>
-              )}
-              <button
-                onClick={() => setRightPanelMode('deploy')}
-                className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
-                  rightPanelMode === 'deploy'
-                    ? 'text-emerald-400 border-b-2 border-emerald-400'
-                    : 'text-gray-400 hover:text-gray-300'
-                }`}
-              >
-                Deploy
-              </button>
-            </div>
+            {leftSidebarOpen && (
+              <div className="h-full flex flex-col">
+                {/* Sidebar Tabs */}
+                <div className="flex border-b border-white/10 bg-[#0d0d0d] flex-shrink-0 overflow-x-auto">
+                  <button
+                    onClick={() => setLeftSidebarTab('projects')}
+                    className={`px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap ${
+                      leftSidebarTab === 'projects'
+                        ? 'text-emerald-400 border-b-2 border-emerald-400 bg-[#0a0a0a]'
+                        : 'text-gray-400 hover:text-gray-300'
+                    }`}
+                  >
+                    Projects
+                  </button>
+                  <button
+                    onClick={() => setLeftSidebarTab('files')}
+                    className={`px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap ${
+                      leftSidebarTab === 'files'
+                        ? 'text-emerald-400 border-b-2 border-emerald-400 bg-[#0a0a0a]'
+                        : 'text-gray-400 hover:text-gray-300'
+                    }`}
+                  >
+                    Files
+                  </button>
+                  <button
+                    onClick={() => setLeftSidebarTab('code')}
+                    className={`px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap ${
+                      leftSidebarTab === 'code'
+                        ? 'text-emerald-400 border-b-2 border-emerald-400 bg-[#0a0a0a]'
+                        : 'text-gray-400 hover:text-gray-300'
+                    }`}
+                  >
+                    Code
+                  </button>
+                  <button
+                    onClick={() => setLeftSidebarTab('chat')}
+                    className={`px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap ${
+                      leftSidebarTab === 'chat'
+                        ? 'text-emerald-400 border-b-2 border-emerald-400 bg-[#0a0a0a]'
+                        : 'text-gray-400 hover:text-gray-300'
+                    }`}
+                  >
+                    Chat
+                  </button>
+                  <button
+                    onClick={() => setLeftSidebarTab('deploy')}
+                    className={`px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap ${
+                      leftSidebarTab === 'deploy'
+                        ? 'text-emerald-400 border-b-2 border-emerald-400 bg-[#0a0a0a]'
+                        : 'text-gray-400 hover:text-gray-300'
+                    }`}
+                  >
+                    Deploy
+                  </button>
+                </div>
 
-            {/* Panel Content - Fixed height container */}
-            <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-              {rightPanelMode === 'chat' ? (
-                <AppChat
+                {/* Sidebar Content */}
+                <div className="flex-1 overflow-hidden">
+                  {leftSidebarTab === 'projects' && (
+                    <ProjectManager
+                      onSelectProject={setSelectedProjectId}
+                      selectedProjectId={selectedProjectId}
+                    />
+                  )}
+                  {leftSidebarTab === 'files' && (
+                    <FileExplorer
+                      projectId={selectedProjectId}
+                      onSelectFile={handleFileSelect}
+                      selectedFileId={selectedFile?.id}
+                      onFileChange={handleFileChange}
+                    />
+                  )}
+                  {leftSidebarTab === 'code' && (
+                    <CodeEditor
+                      file={selectedFile}
+                      projectId={selectedProjectId}
+                      onChange={handleEditorChange}
+                    />
+                  )}
+                  {leftSidebarTab === 'chat' && (
+                    <AppChat
+                      projectId={selectedProjectId}
+                      currentFile={selectedFile ? { id: selectedFile.id, path: selectedFile.path, name: selectedFile.name } : undefined}
+                      projectFiles={files.map(f => ({ path: f.path, name: f.name }))}
+                      onFilesCreated={fetchFiles}
+                    />
+                  )}
+                  {leftSidebarTab === 'deploy' && (
+                    <DeploymentPanel
+                      projectId={selectedProjectId}
+                      projectName={project?.title || 'Untitled Project'}
+                    />
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Main Content Area - Full Width Preview */}
+          <div className="flex-1 overflow-hidden relative">
+            {/* Animated Toggle Icon - Positioned before Preview */}
+            <button
+              onClick={() => setLeftSidebarOpen(!leftSidebarOpen)}
+              className="absolute left-0 top-1/2 -translate-y-1/2 z-20 bg-[#0d0d0d] border border-white/10 rounded-r-lg p-2 hover:bg-[#1a1a1a] transition-all shadow-lg group"
+              title={leftSidebarOpen ? 'Close sidebar' : 'Open sidebar'}
+              style={{ 
+                transform: 'translateY(-50%)',
+                animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+              }}
+            >
+              <img 
+                src="/icon.svg" 
+                alt="OpenIdea" 
+                className={`w-6 h-6 transition-transform duration-300 ${leftSidebarOpen ? 'rotate-90' : ''} group-hover:scale-110`}
+              />
+            </button>
+
+            {/* Preview - Full Width */}
+            <div className="h-full overflow-hidden">
+              {selectedProjectId ? (
+                <PreviewPanel
                   projectId={selectedProjectId}
-                  currentFile={selectedFile ? { id: selectedFile.id, path: selectedFile.path, name: selectedFile.name } : undefined}
-                  projectFiles={files.map(f => ({ path: f.path, name: f.name }))}
-                  onFilesCreated={fetchFiles}
+                  projectType={project?.type || 'web'}
+                  onRefresh={fetchFiles}
                 />
-              ) : rightPanelMode === 'preview' ? (
-                selectedProjectId ? (
-                  <PreviewPanel
-                    projectId={selectedProjectId}
-                    projectType={project?.type || 'web'}
-                    onRefresh={fetchFiles}
-                  />
-                ) : (
-                  <div className="h-full flex items-center justify-center bg-[#0a0a0a] text-gray-400">
-                    <div className="text-center">
-                      <p className="text-sm">Please select a project to preview</p>
-                    </div>
-                  </div>
-                )
               ) : (
-                <DeploymentPanel
-                  projectId={selectedProjectId}
-                  projectName={project?.title || 'Untitled Project'}
-                />
+                <div className="h-full flex items-center justify-center bg-[#0a0a0a] text-gray-400">
+                  <div className="text-center">
+                    <p className="text-sm">Please select a project to preview</p>
+                  </div>
+                </div>
               )}
             </div>
           </div>
