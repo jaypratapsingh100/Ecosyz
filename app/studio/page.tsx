@@ -478,6 +478,11 @@ Generate all files needed for a fully functional application.`;
       // Set project ID first
       setSelectedProjectId(projectId);
       
+      // Trigger projects list refresh immediately
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('projects-updated'));
+      }, 300);
+      
       // Fetch files after project is created
       // Wait a bit for files to be saved to database
       setTimeout(async () => {
@@ -505,9 +510,7 @@ Generate all files needed for a fully functional application.`;
         } catch (error) {
           console.error('Error fetching files after sample creation:', error);
         }
-      }, 500);
-      
-      alert(`✅ Sample project created successfully!\n\nCreated ${data.filesCreated} files.\n\nThis is a beautiful, modern portfolio website with:\n- Smooth animations\n- Professional design\n- Responsive layout\n- Modern UI/UX`);
+          }, 500);
     } catch (error: any) {
       console.error('Failed to create sample project:', error);
       alert(`Failed to create sample project: ${error.message}`);

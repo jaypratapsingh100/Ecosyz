@@ -95,9 +95,6 @@ export default function FileExplorer({ projectId, onSelectFile, selectedFileId, 
       
       if (res.ok) {
         const data = await res.json();
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FileExplorer.tsx:97',message:'FileExplorer fetched files from API',data:{projectId,filesCount:data.length,filePaths:data.map((f:File)=>f.path)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-        // #endregion
         console.log('✅ FileExplorer: Files fetched:', {
           count: data.length,
           files: data.map((f: File) => ({ path: f.path, name: f.name }))

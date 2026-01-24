@@ -382,23 +382,14 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
           console.log('Response summary:', data.summary);
           
           // CRITICAL: Verify filesCreated structure
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AppChat.tsx:385',message:'Frontend received response with filesCreated',data:{hasFilesCreated:!!data.filesCreated,isArray:Array.isArray(data.filesCreated),length:data.filesCreated?.length||0,filePaths:data.filesCreated?.map((f:any)=>f.path)||[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-          // #endregion
           if (data.filesCreated && Array.isArray(data.filesCreated)) {
             const successful = data.filesCreated.filter((f: any) => f.success);
             console.log('✅ Successful files:', successful.length);
             successful.forEach((f: any, idx: number) => {
               console.log(`  ${idx + 1}. ${f.path} - ${f.success ? '✅' : '❌'}`);
             });
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AppChat.tsx:390',message:'Successful files extracted',data:{successfulCount:successful.length,successfulPaths:successful.map((f:any)=>f.path)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-            // #endregion
           } else {
             console.warn('⚠️ filesCreated is not an array or missing!');
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AppChat.tsx:392',message:'filesCreated missing or not array',data:{hasFilesCreated:!!data.filesCreated,type:typeof data.filesCreated},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-            // #endregion
           }
           console.log('='.repeat(60) + '\n');
         } catch (jsonError: any) {
@@ -475,28 +466,16 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
             // IMMEDIATE: Multiple refresh methods for reliability
             const refreshFiles = () => {
               console.log('🔄 Calling refreshFiles()...');
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AppChat.tsx:467',message:'BEFORE refreshFiles execution',data:{hasOnFilesCreated:!!onFilesCreated,successfulFilesCount:successfulFiles.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-              // #endregion
               console.log('  - Calling onFilesCreated callback:', !!onFilesCreated);
               if (onFilesCreated) {
                 try {
                   onFilesCreated();
                   console.log('  ✅ onFilesCreated callback executed');
-                  // #region agent log
-                  fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AppChat.tsx:472',message:'onFilesCreated callback executed',data:{success:true},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-                  // #endregion
                 } catch (err) {
                   console.error('  ❌ Error calling onFilesCreated:', err);
-                  // #region agent log
-                  fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AppChat.tsx:475',message:'onFilesCreated callback error',data:{error:String(err)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-                  // #endregion
                 }
               } else {
                 console.warn('  ⚠️ onFilesCreated callback is not available');
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AppChat.tsx:478',message:'onFilesCreated callback missing',data:{hasOnFilesCreated:false},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-                // #endregion
               }
               
               console.log('  - Dispatching files-updated event...');
@@ -508,9 +487,6 @@ export default function AppChat({ projectId, currentFile, projectFiles = [], onF
               });
               window.dispatchEvent(event);
               console.log('  ✅ files-updated event dispatched:', event.detail);
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AppChat.tsx:489',message:'files-updated event dispatched',data:{projectId,filesCreated:successfulFiles.map((f:any)=>f.path)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-              // #endregion
             };
             
             const refreshPreview = () => {
