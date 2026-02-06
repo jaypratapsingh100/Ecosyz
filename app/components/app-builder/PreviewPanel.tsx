@@ -76,7 +76,19 @@ export default function PreviewPanel({
       setError(errorMessage);
     } catch (err: any) {
       console.error('❌ PreviewPanel: Preview exception', err);
-      setError(err?.message || 'Failed to generate preview');
+      let errorMessage = 'Failed to generate preview';
+      
+      if (err?.message) {
+        if (err.message.includes('network') || err.message.includes('fetch')) {
+          errorMessage = 'Network error. Please check your connection and try again.';
+        } else if (err.message.includes('timeout')) {
+          errorMessage = 'Preview generation timed out. Your project may be too large or complex.';
+        } else {
+          errorMessage = err.message;
+        }
+      }
+      
+      setError(errorMessage);
     } finally {
       setLoading(false);
       inFlightRef.current = false;
@@ -138,10 +150,68 @@ export default function PreviewPanel({
             </div>
           </div>
         ) : error && !previewHtml ? (
-          <div className="absolute inset-0 flex items-center justify-center p-4">
-            <div className="text-center">
-              <p className="text-red-400 text-sm mb-2">Preview unavailable</p>
-              <p className="text-gray-400 text-xs">{error}</p>
+          <div className="absolute inset-0 flex items-center justify-center p-8 bg-gradient-to-br from-[#0a0a0a] via-[#0d0d0d] to-[#0a0a0a]">
+            <div className="text-center max-w-md mx-auto">
+              {/* Open Idea Icon */}
+              <div className="relative mb-8 flex justify-center">
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-32 h-32 bg-gradient-to-r from-emerald-500/20 to-cyan-500/20 rounded-full blur-3xl animate-pulse"></div>
+                </div>
+                <div className="relative">
+                  <img
+                    src="/icon.svg"
+                    alt="Open Idea"
+                    className="w-24 h-24 mx-auto drop-shadow-2xl animate-pulse"
+                  />
+                </div>
+              </div>
+
+              {/* Branding */}
+              <h2 className="text-2xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent mb-3">
+                Open Idea
+              </h2>
+              
+              {/* Message */}
+              <p className="text-gray-300 text-sm mb-4 leading-relaxed">
+                {error === 'No HTML file found in project' || error?.includes('No files') 
+                  ? 'Start building your app! Use the Chat tab to describe your idea and generate code.'
+                  : 'Preview will be available once you generate your app.'}
+              </p>
+
+              {/* Features */}
+              <div className="mt-8 space-y-3 text-left">
+                <div className="flex items-start gap-3 text-gray-400 text-xs">
+                  <svg className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span>AI-powered code generation with Groq</span>
+                </div>
+                <div className="flex items-start gap-3 text-gray-400 text-xs">
+                  <svg className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span>Real-time preview and live editing</span>
+                </div>
+                <div className="flex items-start gap-3 text-gray-400 text-xs">
+                  <svg className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span>One-click deployment to Vercel</span>
+                </div>
+              </div>
+
+              {/* CTA */}
+              <div className="mt-8 pt-6 border-t border-white/10">
+                <p className="text-gray-500 text-xs mb-4">
+                  Ready to build something amazing?
+                </p>
+                <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-500/10 to-cyan-500/10 border border-emerald-500/20 rounded-lg">
+                  <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  <span className="text-emerald-400 text-xs font-medium">Switch to Chat tab to get started</span>
+                </div>
+              </div>
             </div>
           </div>
         ) : previewHtml ? (
@@ -159,10 +229,67 @@ export default function PreviewPanel({
             }}
           />
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <p className="text-gray-400 text-sm">
-              Preview will generate automatically
-            </p>
+          <div className="absolute inset-0 flex items-center justify-center p-8 bg-gradient-to-br from-[#0a0a0a] via-[#0d0d0d] to-[#0a0a0a]">
+            <div className="text-center max-w-md mx-auto">
+              {/* Open Idea Icon */}
+              <div className="relative mb-8 flex justify-center">
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-32 h-32 bg-gradient-to-r from-emerald-500/20 to-cyan-500/20 rounded-full blur-3xl animate-pulse"></div>
+                </div>
+                <div className="relative">
+                  <img
+                    src="/icon.svg"
+                    alt="Open Idea"
+                    className="w-24 h-24 mx-auto drop-shadow-2xl animate-pulse"
+                  />
+                </div>
+              </div>
+
+              {/* Branding */}
+              <h2 className="text-2xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent mb-3">
+                Open Idea
+              </h2>
+              
+              {/* Message */}
+              <p className="text-gray-300 text-sm mb-4 leading-relaxed">
+                Start building your app! Use the Chat tab to describe your idea and generate code.
+              </p>
+
+              {/* Features */}
+              <div className="mt-8 space-y-3 text-left">
+                <div className="flex items-start gap-3 text-gray-400 text-xs">
+                  <svg className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span>AI-powered code generation with Groq</span>
+                </div>
+                <div className="flex items-start gap-3 text-gray-400 text-xs">
+                  <svg className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span>Real-time preview and live editing</span>
+                </div>
+                <div className="flex items-start gap-3 text-gray-400 text-xs">
+                  <svg className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span>One-click deployment to Vercel</span>
+                </div>
+              </div>
+
+              {/* CTA */}
+              <div className="mt-8 pt-6 border-t border-white/10">
+                <p className="text-gray-500 text-xs mb-4">
+                  Ready to build something amazing?
+                </p>
+                <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-500/10 to-cyan-500/10 border border-emerald-500/20 rounded-lg">
+                  <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  <span className="text-emerald-400 text-xs font-medium">Switch to Chat tab to get started</span>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>

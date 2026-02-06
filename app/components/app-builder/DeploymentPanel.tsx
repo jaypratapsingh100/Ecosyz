@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 
 interface DeploymentPanelProps {
   projectId: string;
@@ -11,6 +12,41 @@ export default function DeploymentPanel({ projectId, projectName }: DeploymentPa
   const [downloading, setDownloading] = useState(false);
   const [deploying, setDeploying] = useState(false);
   const [deployResult, setDeployResult] = useState<{ url: string; claimUrl: string } | null>(null);
+  const [loadingDeployment, setLoadingDeployment] = useState(true);
+
+  // Load existing deployment URLs when component mounts
+  useEffect(() => {
+    if (!projectId) {
+      setLoadingDeployment(false);
+      return;
+    }
+
+    const loadDeploymentInfo = async () => {
+      try {
+        const res = await fetch(`/api/app-projects/${projectId}`, {
+          method: 'GET',
+          credentials: 'include',
+        });
+
+        if (res.ok) {
+          const project = await res.json();
+          if (project.deploymentUrl || project.claimUrl) {
+            setDeployResult({
+              url: project.deploymentUrl || '',
+              claimUrl: project.claimUrl || '',
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error loading deployment info:', error);
+        // Don't show toast for loading errors - deployment panel will show empty state
+      } finally {
+        setLoadingDeployment(false);
+      }
+    };
+
+    loadDeploymentInfo();
+  }, [projectId]);
 
   const handleDownloadZip = async () => {
     if (!projectId) return;
@@ -32,7 +68,22 @@ export default function DeploymentPanel({ projectId, projectName }: DeploymentPa
       URL.revokeObjectURL(url);
     } catch (e) {
       console.error(e);
-      alert(e instanceof Error ? e.message : 'Download failed');
+      let errorMessage = 'Unable to download project';
+      
+      if (e instanceof Error) {
+        if (e.message.includes('network') || e.message.includes('fetch')) {
+          errorMessage = 'Network error. Please check your internet connection and try again.';
+        } else if (e.message.includes('permission') || e.message.includes('access')) {
+          errorMessage = 'You don\'t have permission to download this project.';
+        } else {
+          errorMessage = e.message || errorMessage;
+        }
+      }
+      
+      toast.error('Download Failed', {
+        description: errorMessage,
+        duration: 6000,
+      });
     } finally {
       setDownloading(false);
     }
@@ -58,7 +109,26 @@ export default function DeploymentPanel({ projectId, projectName }: DeploymentPa
       });
     } catch (e) {
       console.error(e);
-      alert(e instanceof Error ? e.message : 'Deploy failed');
+      let errorMessage = 'Unable to deploy to Vercel';
+      
+      if (e instanceof Error) {
+        if (e.message.includes('network') || e.message.includes('fetch')) {
+          errorMessage = 'Network error. Please check your internet connection and try again.';
+        } else if (e.message.includes('permission') || e.message.includes('access')) {
+          errorMessage = 'You don\'t have permission to deploy this project.';
+        } else if (e.message.includes('configuration') || e.message.includes('config')) {
+          errorMessage = 'Project configuration error. Please ensure your project has valid files and try again.';
+        } else if (e.message.includes('vercel') || e.message.includes('deployment')) {
+          errorMessage = e.message;
+        } else {
+          errorMessage = e.message || errorMessage;
+        }
+      }
+      
+      toast.error('Deployment Failed', {
+        description: errorMessage + ' If the problem persists, try downloading the project and deploying manually.',
+        duration: 7000,
+      });
     } finally {
       setDeploying(false);
     }
@@ -86,37 +156,41 @@ export default function DeploymentPanel({ projectId, projectName }: DeploymentPa
             Deploys using our Vercel account. You can claim the project to your email so it appears in your Vercel dashboard.
           </p>
           <button
-            disabled={!projectId || deploying}
+            disabled={!projectId || deploying || loadingDeployment}
             onClick={handleDeployVercel}
             className="w-full px-4 py-2 bg-gradient-to-r from-black to-gray-800 hover:from-gray-900 hover:to-black border border-white/20 rounded-lg text-white text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {deploying ? 'Deploying…' : 'Deploy to Vercel'}
+            {deploying ? 'Deploying…' : loadingDeployment ? 'Loading…' : 'Deploy to Vercel'}
           </button>
-          {deployResult && (
+          {(deployResult?.url || deployResult?.claimUrl) && (
             <div className="mt-3 space-y-2 pt-3 border-t border-white/10">
-              <div>
-                <p className="text-gray-400 text-xs mb-1">Live URL</p>
-                <a
-                  href={deployResult.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-emerald-400 hover:text-emerald-300 text-sm break-all"
-                >
-                  {deployResult.url}
-                </a>
-              </div>
-              <div>
-                <p className="text-gray-400 text-xs mb-1">Claim with your email</p>
-                <a
-                  href={deployResult.claimUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-cyan-400 hover:text-cyan-300 text-sm break-all"
-                >
-                  {deployResult.claimUrl}
-                </a>
-                <p className="text-gray-500 text-xs mt-0.5">Open this link and sign in with your Vercel account to add this project to your team.</p>
-              </div>
+              {deployResult.url && (
+                <div>
+                  <p className="text-gray-400 text-xs mb-1">Live URL</p>
+                  <a
+                    href={deployResult.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-emerald-400 hover:text-emerald-300 text-sm break-all underline"
+                  >
+                    {deployResult.url}
+                  </a>
+                </div>
+              )}
+              {deployResult.claimUrl && (
+                <div>
+                  <p className="text-gray-400 text-xs mb-1">Claim with your email</p>
+                  <a
+                    href={deployResult.claimUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-cyan-400 hover:text-cyan-300 text-sm break-all underline"
+                  >
+                    {deployResult.claimUrl}
+                  </a>
+                  <p className="text-gray-500 text-xs mt-0.5">Open this link and sign in with your Vercel account to add this project to your team.</p>
+                </div>
+              )}
             </div>
           )}
         </div>

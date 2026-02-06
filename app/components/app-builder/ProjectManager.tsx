@@ -18,6 +18,7 @@ interface ProjectManagerProps {
   onDeleteProject?: (projectId: string) => void;
   onCreateNewProject?: () => void;
   isCreatingNewProject?: boolean;
+  onProjectUpdated?: () => void;
 }
 
 export default function ProjectManager({
@@ -28,9 +29,13 @@ export default function ProjectManager({
   onDeleteProject,
   onCreateNewProject,
   isCreatingNewProject = false,
+  onProjectUpdated,
 }: ProjectManagerProps) {
   const hasProjects = projects.length > 0;
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState<string>('');
+  const [isUpdating, setIsUpdating] = useState(false);
 
   const sortedProjects = useMemo(
     () => [...projects],
@@ -46,6 +51,62 @@ export default function ProjectManager({
       day: 'numeric',
       year: 'numeric',
     });
+  };
+
+  const handleStartEdit = (project: ProjectListItem, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingProjectId(project.id);
+    setEditingTitle(project.title || '');
+  };
+
+  const handleCancelEdit = () => {
+    setEditingProjectId(null);
+    setEditingTitle('');
+  };
+
+  const handleSaveEdit = async (projectId: string) => {
+    const trimmedTitle = editingTitle.trim();
+    if (!trimmedTitle) {
+      setEditingTitle('');
+      setEditingProjectId(null);
+      return;
+    }
+
+    setIsUpdating(true);
+    try {
+      const res = await fetch(`/api/app-projects/${projectId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ title: trimmedTitle }),
+      });
+
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ error: 'Failed to update project' }));
+        console.error('Failed to update project:', error);
+        alert(error.error || 'Failed to update project name');
+        return;
+      }
+
+      setEditingProjectId(null);
+      setEditingTitle('');
+      onProjectUpdated?.();
+    } catch (error) {
+      console.error('Error updating project:', error);
+      alert('Failed to update project name');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent, projectId: string) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSaveEdit(projectId);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      handleCancelEdit();
+    }
   };
 
   return (
@@ -88,24 +149,145 @@ export default function ProjectManager({
                     <button
                       type="button"
                       onClick={() => {
-                        onSelectProject(project.id);
-                        setExpandedProjectId((prev) => (prev === project.id ? null : project.id));
+                        if (editingProjectId !== project.id) {
+                          onSelectProject(project.id);
+                          setExpandedProjectId((prev) => (prev === project.id ? null : project.id));
+                        }
                       }}
                       className="w-full px-3 py-2.5 flex items-center justify-between gap-2 text-left"
                     >
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-100 truncate">
-                          {project.title || 'Untitled project'}
-                        </p>
-                        {(project.framework || project.createdAt) && (
-                          <p className="text-[11px] text-gray-500 mt-0.5 truncate">
-                            {project.framework && <span className="uppercase">{project.framework}</span>}
-                            {project.framework && project.createdAt && <span className="mx-1">•</span>}
-                            {project.createdAt && <span>{formatCreatedAt(project.createdAt)}</span>}
-                          </p>
+                      <div className="min-w-0 flex-1">
+                        {editingProjectId === project.id ? (
+                          <input
+                            type="text"
+                            value={editingTitle}
+                            onChange={(e) => setEditingTitle(e.target.value)}
+                            onKeyDown={(e) => handleKeyDown(e, project.id)}
+                            onBlur={() => handleSaveEdit(project.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            disabled={isUpdating}
+                            className="w-full bg-[#1a1a1a] border border-emerald-500/50 rounded px-2 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50 disabled:opacity-50"
+                            autoFocus
+                            maxLength={100}
+                          />
+                        ) : (
+                          <>
+                            <p className="text-sm font-medium text-gray-100 truncate">
+                              {project.title || 'Untitled project'}
+                            </p>
+                            {(project.framework || project.createdAt) && (
+                              <p className="text-[11px] text-gray-500 mt-0.5 truncate">
+                                {project.framework && <span className="uppercase">{project.framework}</span>}
+                                {project.framework && project.createdAt && <span className="mx-1">•</span>}
+                                {project.createdAt && <span>{formatCreatedAt(project.createdAt)}</span>}
+                              </p>
+                            )}
+                          </>
                         )}
                       </div>
                       <div className="flex items-center gap-2 ml-2">
+                        {/* Edit button */}
+                        {editingProjectId !== project.id && (
+                          <div
+                            role="button"
+                            tabIndex={0}
+                            onClick={(e) => handleStartEdit(project, e)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                handleStartEdit(project, e as any);
+                              }
+                            }}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/15 text-gray-300 hover:bg-white/10 hover:text-white transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-400/50"
+                            title="Edit project name"
+                          >
+                            <svg
+                              className="h-3.5 w-3.5"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                              strokeWidth="2"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                              />
+                            </svg>
+                          </div>
+                        )}
+                        {editingProjectId === project.id && (
+                          <div className="flex items-center gap-1">
+                            <div
+                              role="button"
+                              tabIndex={0}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSaveEdit(project.id);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.stopPropagation();
+                                  e.preventDefault();
+                                  handleSaveEdit(project.id);
+                                }
+                              }}
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/20 transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-400/50"
+                              title="Save"
+                              disabled={isUpdating}
+                            >
+                              {isUpdating ? (
+                                <div className="w-3 h-3 border-2 border-emerald-400/30 border-t-emerald-400 rounded-full animate-spin"></div>
+                              ) : (
+                                <svg
+                                  className="h-3.5 w-3.5"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                  strokeWidth="2"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    d="M5 13l4 4L19 7"
+                                  />
+                                </svg>
+                              )}
+                            </div>
+                            <div
+                              role="button"
+                              tabIndex={0}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleCancelEdit();
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.stopPropagation();
+                                  e.preventDefault();
+                                  handleCancelEdit();
+                                }
+                              }}
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/15 text-gray-300 hover:bg-white/10 transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-400/50"
+                              title="Cancel"
+                            >
+                              <svg
+                                className="h-3.5 w-3.5"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                                strokeWidth="2"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M6 18L18 6M6 6l12 12"
+                                />
+                              </svg>
+                            </div>
+                          </div>
+                        )}
                         {/* GitHub button (future save/push) */}
                         <div
                           role="button"

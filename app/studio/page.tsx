@@ -10,14 +10,14 @@ import CodeEditor from '../components/app-builder/CodeEditor';
 import AppChat from '../components/app-builder/AppChat';
 import PreviewPanel from '../components/app-builder/PreviewPanel';
 import DeploymentPanel from '../components/app-builder/DeploymentPanel';
+import { ErrorBoundary } from '../components/app-builder/ErrorBoundary';
 import GenerationLoader from '../components/app-builder/GenerationLoader';
 import ProjectLoadingOverlay from '../components/app-builder/ProjectLoadingOverlay';
 import DeleteConfirmModal from '../components/app-builder/DeleteConfirmModal';
 import CreateProjectModal from '../components/app-builder/CreateProjectModal';
 import WelcomeScreen from '../components/app-builder/WelcomeScreen';
 import { useAuthCheck } from '../hooks/useAuthCheck';
-import { SAMPLE_PORTFOLIO_PROJECT, SAMPLE_PORTFOLIO_FILES } from './samplePortfolioProject';
-import { SAMPLE_REACT_PROJECT, SAMPLE_REACT_FILES } from './sampleReactProject';
+import FeedbackForm from '../components/FeedbackForm';
 
 function AppBuilderPageContent() {
   const router = useRouter();
@@ -27,11 +27,17 @@ function AppBuilderPageContent() {
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
   const [leftSidebarTab, setLeftSidebarTab] = useState<'projects' | 'code' | 'chat' | 'deploy'>('projects');
-  const [sidebarWidth] = useState(320);
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('sidebarWidth');
+      return saved ? parseInt(saved, 10) : 320;
+    }
+    return 320;
+  });
+  const [isResizing, setIsResizing] = useState(false);
   const [showTabMenu, setShowTabMenu] = useState(false);
-  const [isCreatingSample, setIsCreatingSample] = useState(false);
-  const [isCreatingReactSample, setIsCreatingReactSample] = useState(false);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [isLoadingProject, setIsLoadingProject] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -185,6 +191,45 @@ function AppBuilderPageContent() {
     [projectToDelete, fetchProjects, selectedProjectId],
   );
 
+  // Sidebar resize handlers
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const newWidth = e.clientX;
+      const minWidth = 256;
+      const maxWidth = 800;
+      const clampedWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
+      setSidebarWidth(clampedWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('sidebarWidth', sidebarWidth.toString());
+      }
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizing, sidebarWidth]);
+
+  // Save sidebar width to localStorage when it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !isResizing) {
+      localStorage.setItem('sidebarWidth', sidebarWidth.toString());
+    }
+  }, [sidebarWidth, isResizing]);
+
   // Show loading state while checking auth
   if (isLoading || isAuthenticated === null) {
     return (
@@ -264,8 +309,23 @@ function AppBuilderPageContent() {
       }}
     >
       <Header />
+      {/* Beta Ribbon */}
+      <div className="w-full bg-gradient-to-r from-yellow-500/20 via-yellow-500/15 to-yellow-500/20 border-b border-yellow-500/30 px-4 py-2 flex items-center justify-center gap-2 relative z-50">
+        <span className="px-2 py-0.5 bg-yellow-500/30 text-yellow-300 text-xs font-semibold rounded border border-yellow-500/50">
+          BETA
+        </span>
+        <span className="text-yellow-200/90 text-xs font-medium">
+          App Builder is in beta. Your feedback helps us improve!
+        </span>
+        <button
+          onClick={() => setShowFeedbackModal(true)}
+          className="text-yellow-300 hover:text-yellow-200 text-xs font-medium underline transition-colors"
+        >
+          Share Feedback
+        </button>
+      </div>
       <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-      {selectedProjectId ? (
+        {selectedProjectId ? (
         <div style={{ display: 'flex', height: '100%', overflow: 'hidden', position: 'relative' }}>
           {/* Left Sidebar - Collapsible */}
           <div 
@@ -273,7 +333,7 @@ function AppBuilderPageContent() {
             style={{ 
               width: leftSidebarOpen ? `${sidebarWidth}px` : '0px',
               flexShrink: 0,
-              transition: leftSidebarOpen ? 'none' : 'width 300ms ease-in-out',
+              transition: leftSidebarOpen && !isResizing ? 'none' : leftSidebarOpen ? 'none' : 'width 300ms ease-in-out',
               zIndex: 10
             }}
           >
@@ -333,32 +393,39 @@ function AppBuilderPageContent() {
                       onDeleteProject={handleDeleteProject}
                       onCreateNewProject={handleCreateNewProject}
                       isCreatingNewProject={isCreatingNew}
+                      onProjectUpdated={fetchProjects}
                     />
                   )}
                   {leftSidebarTab === 'code' && (
-                    <CodeEditor
-                      file={selectedFile}
-                      projectId={selectedProjectId}
-                      onChange={() => {}}
-                      files={projectFiles}
-                      onFileSelect={setSelectedFile}
-                    />
+                    <ErrorBoundary componentName="Code Editor">
+                      <CodeEditor
+                        file={selectedFile}
+                        projectId={selectedProjectId}
+                        onChange={() => {}}
+                        files={projectFiles}
+                        onFileSelect={setSelectedFile}
+                      />
+                    </ErrorBoundary>
                   )}
                   {leftSidebarTab === 'chat' && (
-                    <AppChat
-                      projectId={selectedProjectId || ''}
-                      currentFile={undefined}
-                      projectFiles={projectFiles}
-                      onFilesCreated={() => selectedProjectId && fetchProjectFiles(selectedProjectId)}
-                      projectTitle="New Project"
-                      projectFramework="react"
-                    />
+                    <ErrorBoundary componentName="App Chat">
+                      <AppChat
+                        projectId={selectedProjectId || ''}
+                        currentFile={undefined}
+                        projectFiles={projectFiles}
+                        onFilesCreated={() => selectedProjectId && fetchProjectFiles(selectedProjectId)}
+                        projectTitle="New Project"
+                        projectFramework="react"
+                      />
+                    </ErrorBoundary>
                   )}
                   {leftSidebarTab === 'deploy' && (
-                    <DeploymentPanel
-                      projectId={selectedProjectId}
-                      projectName="Untitled Project"
-                    />
+                    <ErrorBoundary componentName="Deployment Panel">
+                      <DeploymentPanel
+                        projectId={selectedProjectId}
+                        projectName="Untitled Project"
+                      />
+                    </ErrorBoundary>
                   )}
                 </div>
               </div>
@@ -366,8 +433,18 @@ function AppBuilderPageContent() {
             
             {/* Resize Handle */}
             {leftSidebarOpen && (
-              <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-400/50 transition-colors group">
-                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-12 bg-emerald-400/30 group-hover:bg-emerald-400 transition-all rounded-full" />
+              <div
+                className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-400/50 transition-colors group z-20"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsResizing(true);
+                }}
+                style={{ touchAction: 'none' }}
+              >
+                <div className={`absolute right-0 top-1/2 -translate-y-1/2 w-1 h-12 transition-all rounded-full ${
+                  isResizing ? 'bg-emerald-400' : 'bg-emerald-400/30 group-hover:bg-emerald-400'
+                }`} />
               </div>
             )}
           </div>
@@ -462,11 +539,13 @@ function AppBuilderPageContent() {
             {/* Preview - Full Width */}
             <div className="h-full overflow-hidden">
               {selectedProjectId ? (
-                <PreviewPanel
-                  projectId={selectedProjectId}
-                  projectType="web"
-                  onRefresh={() => {}}
-                />
+                <ErrorBoundary componentName="Preview Panel">
+                  <PreviewPanel
+                    projectId={selectedProjectId}
+                    projectType="web"
+                    onRefresh={() => {}}
+                  />
+                </ErrorBoundary>
               ) : (
                 <div className="h-full flex items-center justify-center bg-[#0a0a0a] text-gray-400">
                   <div className="text-center">
@@ -478,89 +557,54 @@ function AppBuilderPageContent() {
           </div>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: '256px 1fr', height: '100%', overflow: 'hidden' }}>
-          <div style={{ height: '100%', overflow: 'hidden' }}>
-            <ProjectManager
-              onSelectProject={setSelectedProjectId}
-              selectedProjectId={selectedProjectId}
-              showActionButtons={false}
-              projects={projects}
-              onDeleteProject={handleDeleteProject}
+        <div style={{ display: 'flex', height: '100%', overflow: 'hidden', position: 'relative', width: '100%' }}>
+          {/* Left Sidebar - Resizable */}
+          <div 
+            className="border-r border-white/10 bg-[#0a0a0a] overflow-hidden relative"
+            style={{ 
+              width: `${Math.min(sidebarWidth, Math.max(256, sidebarWidth))}px`,
+              minWidth: '256px',
+              maxWidth: '50%',
+              flexShrink: 0,
+              transition: !isResizing ? 'width 300ms ease-in-out' : 'none',
+              zIndex: 10
+            }}
+          >
+            <div className="h-full flex flex-col" style={{ position: 'relative', zIndex: 10 }}>
+              <ProjectManager
+                onSelectProject={setSelectedProjectId}
+                selectedProjectId={selectedProjectId}
+                showActionButtons={false}
+                projects={projects}
+                onDeleteProject={handleDeleteProject}
+                onProjectUpdated={fetchProjects}
+              />
+            </div>
+            
+            {/* Resize Handle */}
+            <div
+              className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-400/50 transition-colors group z-20"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsResizing(true);
+              }}
+              style={{ touchAction: 'none' }}
+            >
+              <div className={`absolute right-0 top-1/2 -translate-y-1/2 w-1 h-12 transition-all rounded-full ${
+                isResizing ? 'bg-emerald-400' : 'bg-emerald-400/30 group-hover:bg-emerald-400'
+              }`} />
+            </div>
+          </div>
+          
+          {/* Main Content Area */}
+          <div className="flex-1 overflow-hidden flex items-center justify-center min-w-0">
+            <WelcomeScreen
+              onCreateNew={handleCreateNewProject}
+              isCreatingNew={isCreatingNew}
+              isAuthenticated={isAuthenticated === true}
             />
           </div>
-          <WelcomeScreen
-            onCreateSample={async () => {
-              setIsCreatingSample(true);
-              try {
-                const projectRes = await fetch('/api/app-projects', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(SAMPLE_PORTFOLIO_PROJECT),
-                });
-
-                if (!projectRes.ok) {
-                  throw new Error('Failed to create project');
-                }
-
-                const project = await projectRes.json();
-                const projectId = project.id;
-
-                for (const file of SAMPLE_PORTFOLIO_FILES) {
-                  await fetch(`/api/app-projects/${projectId}/files`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(file),
-                  });
-                }
-
-                setSelectedProjectId(projectId);
-                await fetchProjects();
-              } catch (error) {
-                console.error('Error creating sample project:', error);
-                alert('Failed to create sample project. Please try again.');
-              } finally {
-                setIsCreatingSample(false);
-              }
-            }}
-            onCreateReactSample={async () => {
-              setIsCreatingReactSample(true);
-              try {
-                const projectRes = await fetch('/api/app-projects', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(SAMPLE_REACT_PROJECT),
-                });
-
-                if (!projectRes.ok) {
-                  throw new Error('Failed to create project');
-                }
-
-                const project = await projectRes.json();
-                const projectId = project.id;
-
-                for (const file of SAMPLE_REACT_FILES) {
-                  await fetch(`/api/app-projects/${projectId}/files`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(file),
-                  });
-                }
-
-                setSelectedProjectId(projectId);
-                await fetchProjects();
-              } catch (error) {
-                console.error('Error creating React sample project:', error);
-                alert('Failed to create React sample project. Please try again.');
-              } finally {
-                setIsCreatingReactSample(false);
-              }
-            }}
-            onCreateNew={handleCreateNewProject}
-            isCreatingSample={isCreatingSample}
-            isCreatingReactSample={isCreatingReactSample}
-            isCreatingNew={isCreatingNew}
-            isAuthenticated={isAuthenticated === true}
-          />
         </div>
       )}
       </div>
@@ -599,6 +643,33 @@ function AppBuilderPageContent() {
         onCreate={confirmCreateProject}
         isLoading={isCreatingNew}
       />
+
+      {/* Feedback Modal */}
+      {showFeedbackModal && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
+          onClick={() => setShowFeedbackModal(false)}
+        >
+          <div 
+            className="relative max-w-2xl w-full bg-[#0a0a0a] border border-white/10 rounded-lg p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-white font-semibold text-lg">Share Your Feedback</h3>
+              <button
+                onClick={() => setShowFeedbackModal(false)}
+                className="text-gray-400 hover:text-white transition-colors"
+                aria-label="Close feedback modal"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <FeedbackForm />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
