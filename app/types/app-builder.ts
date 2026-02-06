@@ -1,74 +1,40 @@
-/**
- * Shared Type Definitions for App Builder
- * Used across wizard flow, IDE interface, and API routes
- */
+// Minimal type definitions for the app builder chat and scaffolds.
+// The original detailed types file was removed; this stub restores the
+// module path expected by older routes without changing runtime behavior.
 
-export interface Project {
-  id: string;
-  title: string;
-  type: string;
-  framework?: string;
-  description?: string;
-  workspaceId?: string;
-  createdAt: string;
-  updatedAt: string;
-  _count?: {
-    files: number;
-  };
+export type Role = 'user' | 'assistant' | 'system';
+
+export interface ChatMessage {
+  role: Role;
+  content: string;
+  timestamp?: string | Date;
+}
+
+export interface ChatRequestBody {
+  message: string;
+  currentFile?: string;
+  // Additional fields are ignored by older routes but kept for compatibility.
+  userApiKey?: string;
+  userModel?: string;
+  userProvider?: string;
+  questionnaireData?: unknown;
+}
+
+export interface DatabaseError extends Error {
+  code?: string;
+}
+
+export interface QuestionnaireData {
+  language?: 'javascript' | 'typescript';
+  frameworkPreference?: string;
+  [key: string]: unknown;
 }
 
 export interface ProjectFile {
-  id: string;
   path: string;
   name: string;
   content: string;
-  language?: string;
-  isMain: boolean;
+  language?: string | null;
+  isMain?: boolean;
 }
 
-export interface AppIdea {
-  description: string;
-  features: string[];
-  targetAudience: string;
-  designStyle?: string;
-}
-
-export interface ProjectConfig {
-  framework: 'react' | 'nextjs' | 'vue' | 'vanilla';
-  language: 'javascript' | 'typescript';
-  styling: 'tailwind' | 'css' | 'styled-components';
-  additionalPackages: string[];
-}
-
-export interface GeneratedProject {
-  id: string;
-  title: string;
-  files: Array<{
-    id: string;
-    path: string;
-    name: string;
-    content: string;
-    language?: string;
-  }>;
-}
-
-export type WizardStep = 'idea' | 'questionnaire' | 'configuration' | 'generation' | 'result';
-
-export interface QuestionnaireData {
-  appType: string;
-  mainPurpose: string;
-  targetAudience: string;
-  technicalLevel: string;
-  designStyle: string;
-  colorScheme: string;
-  layoutStyle: string;
-  requiredSections: string[];
-  specialFeatures: string[];
-  contentReady: string;
-  brandName: string;
-  tagline: string;
-  keyPoints: string;
-  frameworkPreference: string;
-  mobileResponsiveness: string;
-  performancePriority: string;
-}

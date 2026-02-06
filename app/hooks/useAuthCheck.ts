@@ -3,7 +3,7 @@
  * Replaces duplicate auth check logic from both app-builder routes
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 interface UseAuthCheckOptions {
   maxRetries?: number;
@@ -19,64 +19,65 @@ interface UseAuthCheckResult {
 
 export function useAuthCheck(options: UseAuthCheckOptions = {}): UseAuthCheckResult {
   const {
-    maxRetries = 5,
-    retryDelay = 300,
-    enableRetry = true,
+    maxRetries = 3,
+    retryDelay = 500,
+    enableRetry = false, // Disable retry by default to prevent hanging
   } = options;
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const isAuthenticatedRef = useRef<boolean | null>(null);
 
-  const checkAuth = async (isRetry = false) => {
-    let retryCount = 0;
+  // Update ref when state changes
+  useEffect(() => {
+    isAuthenticatedRef.current = isAuthenticated;
+  }, [isAuthenticated]);
 
-    const performCheck = async (): Promise<void> => {
-      try {
-        const response = await fetch('/api/auth/session', {
-          cache: 'no-store',
-          credentials: 'include',
-        });
+  const checkAuth = useCallback(async (): Promise<void> => {
+    try {
+      // Add timeout to prevent hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
 
-        if (response.ok) {
-          setIsAuthenticated(true);
-          setIsLoading(false);
-        } else {
-          if (enableRetry && retryCount < maxRetries) {
-            retryCount++;
-            setTimeout(() => {
-              performCheck();
-            }, retryDelay);
-          } else {
-            setIsAuthenticated(false);
-            setIsLoading(false);
-          }
-        }
-      } catch (error) {
-        console.error('Auth check error:', error);
-        if (enableRetry && retryCount < maxRetries) {
-          retryCount++;
-          setTimeout(() => {
-            performCheck();
-          }, retryDelay);
-        } else {
-          setIsAuthenticated(false);
-          setIsLoading(false);
-        }
+      const response = await fetch('/api/auth/session', {
+        cache: 'no-store',
+        credentials: 'include',
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        setIsAuthenticated(true);
+        setIsLoading(false);
+      } else {
+        setIsAuthenticated(false);
+        setIsLoading(false);
       }
-    };
-
-    await performCheck();
-  };
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.warn('Auth check timed out');
+      } else {
+        console.error('Auth check error:', error);
+      }
+      setIsAuthenticated(false);
+      setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
+    let mounted = true;
+
     // Small initial delay to allow cookies to be set after redirect
     const timeoutId = setTimeout(() => {
-      checkAuth();
+      if (mounted) {
+        checkAuth();
+      }
     }, 200);
 
     // Re-check when window gains focus (handles tab switching after login)
     const handleFocus = () => {
-      if (isAuthenticated === false || isAuthenticated === null) {
+      if (mounted && (isAuthenticatedRef.current === false || isAuthenticatedRef.current === null)) {
         checkAuth();
       }
     };
@@ -84,10 +85,11 @@ export function useAuthCheck(options: UseAuthCheckOptions = {}): UseAuthCheckRes
     window.addEventListener('focus', handleFocus);
 
     return () => {
+      mounted = false;
       clearTimeout(timeoutId);
       window.removeEventListener('focus', handleFocus);
     };
-  }, []);
+  }, [checkAuth]);
 
   return {
     isAuthenticated,

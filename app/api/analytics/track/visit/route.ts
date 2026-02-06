@@ -35,9 +35,10 @@ export async function POST(req: NextRequest) {
         },
       });
       return NextResponse.json({ success: true });
-    } catch (dbError: any) {
+    } catch (dbError: unknown) {
       // Handle P2021 error (table doesn't exist) gracefully
-      if (dbError?.code === 'P2021') {
+      const prismaError = dbError as { code?: string; message?: string };
+      if (prismaError?.code === 'P2021') {
         console.warn('PageVisit table does not exist. Run migrations: npx prisma migrate deploy');
         // Return success with warning - don't break the app if analytics table is missing
         // Analytics should never break the user experience
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
         });
       }
       // Handle database authentication errors
-      if (dbError?.message?.includes('authentication failed') || dbError?.code === 'P1001' || dbError?.code === 'P1000') {
+      if (prismaError?.message?.includes('authentication failed') || prismaError?.code === 'P1001' || prismaError?.code === 'P1000') {
         console.error('Database connection error in analytics:', dbError);
         // Return success: false but with 200 status - analytics failures shouldn't break the app
         return NextResponse.json({ 
@@ -64,7 +65,7 @@ export async function POST(req: NextRequest) {
         error: 'Tracking failed' 
       });
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Unexpected error in visit tracking:', error);
     // Don't fail the request if tracking fails - analytics should never break the app
     return NextResponse.json({ 

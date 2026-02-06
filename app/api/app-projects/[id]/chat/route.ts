@@ -2,28 +2,52 @@ import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { prisma } from '@/lib/db';
 import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
+import { getScaffoldFiles } from '@/app/lib/app-builder/scaffolds';
+import { validateProjectFiles } from '../../../../../src/lib/utils/validateJSX';
+import type { ChatMessage, ChatRequestBody, DatabaseError, QuestionnaireData, ProjectFile } from '@/app/types/app-builder';
+
+type FileCreationResult = { path: string; success: boolean; error?: string; validated?: boolean; validationError?: string; sandboxIssues?: string[] };
 
 // ============================================
-// AZURE DEEPSEEK CONFIGURATION (ONLY PROVIDER)
+// AI PROVIDER CONFIGURATION (Groq Only)
 // ============================================
-// Your self-hosted DeepSeek API on Azure
-// Model: deepseek-coder (from deepseek_api_optimized.py)
-// Endpoint: http://74.225.138.116:8000/v1/chat/completions
 
-const AZURE_DEEPSEEK_URL = process.env.AZURE_DEEPSEEK_URL || 'http://74.225.138.116:8000';
-const AZURE_DEEPSEEK_MODEL = 'deepseek-coder'; // From your FastAPI: /v1/models returns "deepseek-coder"
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GROQ_MODEL = 'llama-3.3-70b-versatile'; // Best for code generation
 
-// Create OpenAI-compatible client for Azure DeepSeek
-function createAzureDeepSeekClient() {
-  console.log('🔧 Creating Azure DeepSeek client:', {
-    baseURL: `${AZURE_DEEPSEEK_URL}/v1`,
-    model: AZURE_DEEPSEEK_MODEL,
+function buildScaffoldContext(framework: string) {
+  const scaffoldFiles = getScaffoldFiles(framework);
+  const entryPoints = scaffoldFiles.filter((file) => file.isMain).map((file) => file.path);
+  const fileList = scaffoldFiles.map((file) => file.path).join(', ');
+
+  let scaffoldContext = `\nPROJECT SCAFFOLD (align output to this structure):\n`;
+  if (entryPoints.length > 0) {
+    scaffoldContext += `- Entry: ${entryPoints.join(', ')}\n`;
+  }
+  scaffoldContext += `- Files: ${fileList}\n`;
+
+  return scaffoldContext;
+}
+
+// Create AI client - Groq only
+function createAIClient(): { client: OpenAI; model: string; provider: string } {
+  if (!GROQ_API_KEY) {
+    throw new Error('GROQ_API_KEY is not configured.');
+  }
+
+  console.log('🔧 Creating Groq client:', {
+    baseURL: 'https://api.groq.com/openai/v1',
+    model: GROQ_MODEL,
   });
-  
-  return new OpenAI({
-    baseURL: `${AZURE_DEEPSEEK_URL}/v1`,
-    apiKey: 'not-required', // Your FastAPI doesn't require API key
-  });
+
+  return {
+    client: new OpenAI({
+      baseURL: 'https://api.groq.com/openai/v1',
+      apiKey: GROQ_API_KEY,
+    }),
+    model: GROQ_MODEL,
+    provider: 'groq',
+  };
 }
 
 // GET endpoint to fetch chat history
@@ -49,9 +73,6 @@ export async function GET(
     }
 
     // Load project WITH FILES - CRITICAL FIX
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:52',message:'Loading project - BEFORE query',data:{projectId:id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
     const project = await prisma.appProject.findUnique({
       where: { id },
       include: { 
@@ -59,9 +80,6 @@ export async function GET(
         files: { orderBy: { path: 'asc' } } // ✅ FIX: Include files to check existing files
       },
     });
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:58',message:'Project loaded - checking files',data:{projectId:id,hasFiles:!!project?.files,filesLength:project?.files?.length||0,filesIncluded:project?.files!==undefined,filePaths:project?.files?.map((f:any)=>f.path)||[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
 
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
@@ -74,20 +92,23 @@ export async function GET(
 
     // Get the most recent chat (or create empty one)
     const chat = project.chats[0];
-    const messages = chat ? (chat.messages as any[]) : [];
+    const rawMessages = chat?.messages;
+    const messages: ChatMessage[] = Array.isArray(rawMessages) ?
+      (rawMessages as unknown as ChatMessage[]) : [];
 
     return NextResponse.json({
-      messages: messages.map((msg: any, idx: number) => ({
+      messages: messages.map((msg: ChatMessage, idx: number) => ({
         id: `msg-${idx}`,
         role: msg.role,
         content: msg.content,
-        timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
+        timestamp: msg.timestamp ? new Date(msg.timestamp as string) : new Date(),
       })),
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching chat history:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
-      { error: 'Failed to fetch chat history', message: error.message },
+      { error: 'Failed to fetch chat history', message: errorMessage },
       { status: 500 }
     );
   }
@@ -97,19 +118,24 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  console.log('\n' + '='.repeat(60));
-  console.log('🚀 AZURE DEEPSEEK CHAT API - REQUEST RECEIVED');
-  console.log('='.repeat(60));
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[CHAT] Request received');
+  }
+  
+  // Declare provider at function scope for error handling
+  let provider: string = 'unknown';
+  let model: string = 'unknown';
   
   try {
     // Step 1: Authentication
     let user;
     try {
       user = await getCurrentUser();
-    } catch (authError: any) {
+    } catch (authError: unknown) {
       console.error('❌ Authentication error:', authError);
+      const errorMessage = authError instanceof Error ? authError.message : 'Failed to authenticate user';
       return NextResponse.json(
-        { error: 'Authentication failed', message: authError?.message || 'Failed to authenticate user' },
+        { error: 'Authentication failed', message: errorMessage },
         { status: 401 }
       );
     }
@@ -124,8 +150,9 @@ export async function POST(
     // Step 2: Ensure user in database
     try {
       await ensureUserInDb(user);
-    } catch (dbError: any) {
-      console.error('❌ Database error (ensureUserInDb):', dbError);
+    } catch (dbError: unknown) {
+      const err = dbError as DatabaseError;
+      console.error('❌ Database error (ensureUserInDb):', err.message);
       return NextResponse.json(
         { error: 'Database error', message: 'Failed to ensure user in database' },
         { status: 500 }
@@ -138,8 +165,9 @@ export async function POST(
       prismaUser = await prisma.user.findUnique({
         where: { supabaseId: user.id },
       });
-    } catch (dbError: any) {
-      console.error('❌ Database error (findUnique user):', dbError);
+    } catch (dbError: unknown) {
+      const err = dbError as DatabaseError;
+      console.error('❌ Database error (findUnique user):', err.message);
       return NextResponse.json(
         { error: 'Database error', message: 'Failed to fetch user from database' },
         { status: 500 }
@@ -158,10 +186,11 @@ export async function POST(
     try {
       const paramsObj = await params;
       id = paramsObj.id;
-    } catch (paramsError: any) {
+    } catch (paramsError: unknown) {
       console.error('❌ Error getting params:', paramsError);
+      const errorMessage = paramsError instanceof Error ? paramsError.message : 'Failed to get project ID from request';
       return NextResponse.json(
-        { error: 'Invalid request', message: 'Failed to get project ID from request' },
+        { error: 'Invalid request', message: errorMessage },
         { status: 400 }
       );
     }
@@ -193,10 +222,11 @@ export async function POST(
           },
         },
       });
-    } catch (projectError: any) {
+    } catch (projectError: unknown) {
       console.error('❌ Database error (findUnique project):', projectError);
+      const errorMessage = projectError instanceof Error ? projectError.message : 'Failed to load project from database';
       return NextResponse.json(
-        { error: 'Database error', message: 'Failed to load project from database' },
+        { error: 'Database error', message: errorMessage },
         { status: 500 }
       );
     }
@@ -248,18 +278,20 @@ export async function POST(
     }
 
     // Step 5: Parse request body
-    let body: any;
+    let body: ChatRequestBody;
     try {
       body = await req.json();
-    } catch (parseError: any) {
-      console.error('❌ Error parsing request body:', parseError);
+    } catch (parseError: unknown) {
+      const error = parseError as Error;
+      console.error('❌ Error parsing request body:', error.message);
       return NextResponse.json(
         { error: 'Invalid request', message: 'Failed to parse request body' },
         { status: 400 }
       );
     }
     
-    let { message, currentFile } = body;
+    let { message } = body;
+    const currentFile = body.currentFile;
     
     // Validate message
     if (!message || typeof message !== 'string') {
@@ -269,9 +301,9 @@ export async function POST(
       );
     }
     
-    // currentFile can be a path string or undefined
-    const currentFilePath = typeof currentFile === 'string' ? currentFile : currentFile?.path;
-    // Note: userApiKey, userModel, userProvider are ignored - only using Azure DeepSeek
+    // currentFile is a path string or undefined
+    const currentFilePath = currentFile;
+    // Note: userApiKey, userModel, userProvider are ignored - Groq only
 
     if (!message || typeof message !== 'string') {
       return NextResponse.json(
@@ -281,39 +313,12 @@ export async function POST(
     }
 
     // ============================================
-    // AZURE DEEPSEEK - OPTIMIZED FOR 6.7B MODEL
+    // CREATE SCAFFOLD FILES FIRST (BEFORE AI REQUEST)
     // ============================================
-    // Model: deepseek-coder-6.7b-instruct
-    // Max Context: 16K tokens
-    // Max New Tokens: 4000 (capped by model)
-    // Strategy: Simple system prompt + focused user message
-    // ============================================
+    // Ensure scaffold files exist so preview renders immediately
+    // This happens BEFORE AI client creation so users see something right away
     
-    console.log('✅ Using Azure DeepSeek:', {
-      url: AZURE_DEEPSEEK_URL,
-      model: AZURE_DEEPSEEK_MODEL,
-      maxContext: '16K tokens',
-      maxNewTokens: '4000'
-    });
-    
-    // Step 6: Create Azure DeepSeek client
-    let client;
-    try {
-      client = createAzureDeepSeekClient();
-    } catch (clientError: any) {
-      console.error('❌ Error creating Azure DeepSeek client:', clientError);
-      return NextResponse.json(
-        { error: 'Configuration error', message: 'Failed to create Azure DeepSeek client' },
-        { status: 500 }
-      );
-    }
-    
-    const model = AZURE_DEEPSEEK_MODEL;
-    
-    const questionnaireData = project.questionnaireData as any;
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:312',message:'Checking project files and questionnaire',data:{projectId:id,hasQuestionnaireData:!!questionnaireData,projectFilesCount:project.files?.length||0,projectFilesPaths:project.files?.map((f:any)=>f.path)||[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
+    const questionnaireData: QuestionnaireData = project.questionnaireData as QuestionnaireData || {};
     
     // Determine language from questionnaire or default to JavaScript
     const projectLanguage = questionnaireData?.language || 'javascript';
@@ -323,135 +328,320 @@ export async function POST(
     
     // Check for existing files to prevent duplicates
     const existingFiles = project.files || [];
-    const hasAppJsx = existingFiles.some(f => f.path.includes('App.jsx'));
-    const hasAppTsx = existingFiles.some(f => f.path.includes('App.tsx'));
-    const hasIndexJs = existingFiles.some(f => f.path.includes('index.js'));
-    const hasIndexTs = existingFiles.some(f => f.path.includes('index.ts'));
-    
-    // Determine which files exist and should be used/updated
-    const shouldUseAppJsx = hasAppJsx && !useTypeScript;
-    const shouldUseAppTsx = hasAppTsx && useTypeScript;
-    const shouldUseIndexJs = hasIndexJs && !useTypeScript;
-    const shouldUseIndexTs = hasIndexTs && useTypeScript;
+    const hasAppJsx = existingFiles.some((f: ProjectFile) => f.path.includes('App.jsx'));
+    const hasAppTsx = existingFiles.some((f: ProjectFile) => f.path.includes('App.tsx'));
+    const hasIndexJs = existingFiles.some((f: ProjectFile) => f.path.includes('index.js'));
+    const hasIndexTs = existingFiles.some((f: ProjectFile) => f.path.includes('index.ts'));
     
     const hasScaffoldFiles = hasAppJsx || hasAppTsx || hasIndexJs || hasIndexTs || 
-      project.files?.some(f => f.path.includes('App.css')) || false;
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:315',message:'Scaffold files check result',data:{hasScaffoldFiles,projectFilesAvailable:!!project.files},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
+      project.files?.some((f: ProjectFile) => f.path.includes('App.css')) || false;
+    const frameworkPreference = questionnaireData?.frameworkPreference;
+    const frameworkForScaffold = (frameworkPreference && frameworkPreference !== 'auto')
+      ? frameworkPreference
+      : (project.framework || 'react');
     
-    // SYSTEM PROMPT - Optimized for DeepSeek 6.7B to generate proper file format
-    // Model: deepseek-coder-6.7b-instruct
-    // Strategy: Clear format instructions to ensure files are properly formatted
-    // DECLARE FIRST to avoid "Cannot access before initialization" error
-    const systemPrompt = `You are an intelligent React code generator. Your job is to:
-
-1. IDENTIFY ALL components and features needed from the user's request
-2. CREATE complete, production-ready files in ONE response
-3. ENSURE all components are properly structured and exported
-4. UPDATE App file to import and render ALL components
-
-MANDATORY FILE FORMAT - USE THIS FOR EVERY FILE:
-\`\`\`file:src/components/ComponentName.${fileExtension}
-[complete component code here]
-\`\`\`
-
-CRITICAL REQUIREMENTS:
-1. ALWAYS use \`\`\`file:path/to/file.${fileExtension} format for EVERY file
-2. LANGUAGE CONSISTENCY: Use ${useTypeScript ? 'TypeScript' : 'JavaScript'} ONLY
-   - Components: src/components/ComponentName.${fileExtension}
-   - App file: src/App.${fileExtension}
-   - Index file: src/index.${indexExtension}
-   - DO NOT create duplicate files (e.g., don't create both App.jsx AND App.tsx)
-3. Create ALL components mentioned in the request (check "COMPONENTS TO CREATE" section)
-4. Each component must be in src/components/ComponentName.${fileExtension}
-5. Use Tailwind CSS classes (className, not classname)
-6. Export components properly: export default ComponentName;
-7. Import React: ${useTypeScript ? "import React from 'react';" : "import React from 'react';"}
-8. Make components responsive and beautiful
-9. After creating components, ALWAYS update App.${fileExtension} to import and render ALL of them
-10. CREATE EVERYTHING IN ONE RESPONSE - don't split across multiple responses
-
-EXAMPLE FORMAT (${useTypeScript ? 'TypeScript' : 'JavaScript'}):
-\`\`\`file:src/components/Header.${fileExtension}
-import React from 'react';
-
-function Header() {
+    // Track scaffold creation for response
+    let scaffoldCreated = 0;
+    
+    // Create scaffold files if they don't exist (works for all providers, not just Groq)
+    if (!hasScaffoldFiles) {
+      console.log(`\n📦 Creating scaffold files for framework: ${frameworkForScaffold}`);
+      console.log('='.repeat(60));
+      
+      try {
+        const scaffoldFiles = getScaffoldFiles(frameworkForScaffold);
+        let scaffoldSkipped = 0;
+        
+        // Create a visible default App component
+        
+        const defaultAppContent = `function App() {
   return (
-    <header className="bg-gray-800 py-4 px-8 flex justify-between items-center">
-      <h1 className="text-white text-lg font-bold">Portfolio</h1>
-    </header>
-  );
-}
-
-export default Header;
-\`\`\`
-
-\`\`\`file:src/App.${fileExtension}
-import React from 'react';
-import Header from './components/Header';
-
-function App() {
-  return (
-    <div className="min-h-screen">
-      <Header />
+    <div className="App" style={{
+      minHeight: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      color: '#fff',
+      padding: '2rem',
+      textAlign: 'center'
+    }}>
+      <div style={{
+        background: 'rgba(255, 255, 255, 0.1)',
+        padding: '3rem',
+        borderRadius: '20px',
+        backdropFilter: 'blur(10px)',
+        maxWidth: '600px',
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)'
+      }}>
+        <h1 style={{ fontSize: '2.5rem', marginBottom: '1rem', textShadow: '2px 2px 4px rgba(0,0,0,0.2)' }}>
+          🚀 Welcome to Your App
+        </h1>
+        <p style={{ fontSize: '1.2rem', marginBottom: '2rem', opacity: 0.95 }}>
+          Start building by asking the AI to create components!
+        </p>
+        <div style={{
+          display: 'flex',
+          gap: '1rem',
+          justifyContent: 'center',
+          flexWrap: 'wrap'
+        }}>
+          <div style={{
+            padding: '1rem 2rem',
+            background: 'rgba(255, 255, 255, 0.2)',
+            borderRadius: '10px',
+            fontSize: '0.9rem'
+          }}>
+            ✨ Ready to Build
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
-export default App;
-\`\`\`
-
-\`\`\`file:src/index.${indexExtension}
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './App';
-import './index.css';
-
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
-\`\`\`
-
-IMPORTANT: 
-- Use ${fileExtension} for React components, ${indexExtension} for entry point
-- DO NOT create duplicate files (e.g., don't create App.jsx if App.tsx exists)
-- Create ALL components and features in ONE response
-
-WORKFLOW:
-1. Read the user request carefully
-2. Identify ALL components and features that need to be created
-3. Create EVERY component file in ONE response (don't split across responses)
-4. Create/update App.${fileExtension} to import and render ALL components
-5. Create index.${indexExtension} entry point if needed
-6. Ensure proper file structure and imports
-7. Use consistent language: ${useTypeScript ? 'TypeScript' : 'JavaScript'} ONLY
-
-REMEMBER: 
-- Generate ALL files in ONE response
-- Every file MUST use \`\`\`file:path format
-- Use .${fileExtension} for components, .${indexExtension} for index
-- DO NOT create duplicate files (e.g., don't create both .jsx and .tsx)
-- Create ALL features/components mentioned in the request`;
+export default App;`;
+        
+        for (const scaffoldFile of scaffoldFiles) {
+          // Adjust file extensions based on project language
+          let filePath = scaffoldFile.path;
+          let fileName = scaffoldFile.name;
+          let fileContent = scaffoldFile.content;
+          
+          // Replace extensions if TypeScript is used
+          if (useTypeScript) {
+            filePath = filePath.replace(/\.jsx?$/i, '.tsx').replace(/\.js$/i, '.ts');
+            fileName = fileName.replace(/\.jsx?$/i, '.tsx').replace(/\.js$/i, '.ts');
+            // Remove import React statements (not needed in modern React)
+            fileContent = fileContent.replace(/import\s+React\s+from\s+['"]react['"];?\s*/g, '');
+          }
+          
+          // Use custom default App component instead of scaffold default
+          if (scaffoldFile.isMain && (filePath.includes('App.') || fileName.includes('App.'))) {
+            fileContent = defaultAppContent;
+            console.log(`  🎨 Using custom default App component for immediate rendering`);
+          }
+          
+          // Check if file already exists
+          const fileExists = existingFiles.some((f: ProjectFile) => f.path === filePath);
+          if (fileExists) {
+            console.log(`  ⏭️ Skipping existing file: ${filePath}`);
+            scaffoldSkipped++;
+            continue;
+          }
+          
+          // Create scaffold file
+          try {
+            await prisma.appFile.create({
+              data: {
+                projectId: id,
+                path: filePath,
+                name: fileName,
+                content: fileContent,
+                language: scaffoldFile.language,
+                isMain: scaffoldFile.isMain,
+              },
+            });
+            console.log(`  ✅ Created scaffold file: ${filePath}`);
+            scaffoldCreated++;
+          } catch (scaffoldError: unknown) {
+            const errorMessage = scaffoldError instanceof Error ? scaffoldError.message : 'Unknown error';
+            console.error(`  ❌ Error creating scaffold file ${filePath}:`, errorMessage);
+          }
+        }
+        
+        console.log(`\n📊 Scaffold creation summary:`);
+        console.log(`  Created: ${scaffoldCreated} files`);
+        console.log(`  Skipped: ${scaffoldSkipped} files (already exist)`);
+        console.log(`  🎨 Default component ready for immediate rendering`);
+        console.log('='.repeat(60) + '\n');
+        
+        // Refresh existing files list after scaffold creation
+        if (scaffoldCreated > 0) {
+          const updatedProject = await prisma.appProject.findUnique({
+            where: { id },
+            include: { files: true },
+          });
+          if (updatedProject) {
+            project.files = updatedProject.files;
+            existingFiles.push(...updatedProject.files.filter((f: ProjectFile) => 
+              !existingFiles.some((ef: ProjectFile) => ef.path === f.path)
+            ));
+            
+            console.log(`  🔄 Default component created - preview should auto-refresh`);
+          }
+        }
+      } catch (scaffoldError: unknown) {
+        console.error('❌ Error creating scaffold files:', scaffoldError);
+        // Don't fail the request - continue without scaffold
+      }
+    } else if (hasScaffoldFiles) {
+      console.log(`✅ Scaffold files already exist, skipping creation`);
+    }
     
-    // Build minimal user message - only what's needed
-    // Don't overwhelm the model with context
+    // ============================================
+    // AI PROVIDER SELECTION (Groq Only - Currently Disabled)
+    // ============================================
+    
+    // Check if this is a "Create default React app" request - if so, return early without AI generation
+    const isDefaultAppRequest = message.toLowerCase().trim() === 'create default react app' || 
+                                 message.toLowerCase().trim() === 'create default app' ||
+                                 message.toLowerCase().includes('create default react app');
+    
+    // If Groq is disabled OR this is a default app request, return early with scaffold files created
+    // Users can see the preview immediately without AI code generation
+    if (!GROQ_API_KEY || isDefaultAppRequest) {
+      const reason = isDefaultAppRequest ? 'Default app request - skipping AI generation' : 'Groq API is disabled';
+      console.log(`⚠️ ${reason} - returning early with scaffold files`);
+      
+      // Get list of created scaffold files for response
+      const scaffoldFilePaths: string[] = [];
+      if (scaffoldCreated > 0) {
+        const updatedProject = await prisma.appProject.findUnique({
+          where: { id },
+          include: { files: { orderBy: { path: 'asc' } } },
+        });
+        if (updatedProject) {
+          scaffoldFilePaths.push(...updatedProject.files.map((f: { path: string }) => f.path));
+        }
+      } else if (hasScaffoldFiles) {
+        scaffoldFilePaths.push(...(project.files || []).map((f: { path: string }) => f.path));
+      }
+      
+      return NextResponse.json({
+        response: scaffoldCreated > 0 
+          ? `✅ Default React app created! You can now see your app in the preview.`
+          : `✅ Project is ready! Scaffold files already exist.`,
+        suggestions: [
+          scaffoldCreated > 0 
+            ? `✅ Created ${scaffoldCreated} scaffold file(s): ${scaffoldFilePaths.join(', ')}`
+            : `✅ Scaffold files already exist: ${scaffoldFilePaths.join(', ')}`,
+          '🔄 Preview should auto-refresh to show your app'
+        ],
+        filesCreated: scaffoldFilePaths.map(path => ({ path, success: true, validated: true })),
+        provider: 'none',
+        model: 'none',
+        summary: {
+          totalFiles: scaffoldFilePaths.length,
+          successful: scaffoldFilePaths.length,
+          validated: scaffoldFilePaths.length,
+          warnings: 0,
+          failed: 0,
+          provider: 'none',
+          filePaths: scaffoldFilePaths,
+          hasDefaultComponent: scaffoldCreated > 0 || hasScaffoldFiles
+        }
+      });
+    }
+    
+    // Step 6: Create AI client (Groq only)
+    let client;
+    try {
+      const clientResult = createAIClient();
+      client = clientResult.client;
+      model = clientResult.model;
+      provider = clientResult.provider;
+    } catch (clientError: unknown) {
+      console.error('❌ Error creating AI client:', clientError);
+      const errorMessage = clientError instanceof Error ? clientError.message : String(clientError);
+      // Even if AI client fails, scaffold files are created, so return success
+      return NextResponse.json({
+        response: scaffoldCreated > 0 
+          ? `✅ Default React component created! Preview should render now. AI client configuration error: ${errorMessage}`
+          : `⚠️ AI client configuration error: ${errorMessage}. Scaffold files already exist.`,
+        suggestions: [
+          scaffoldCreated > 0 
+            ? `✅ Created ${scaffoldCreated} scaffold file(s) - preview should render now`
+            : `✅ Scaffold files already exist`,
+          `⚠️ AI client error: ${errorMessage}`
+        ],
+        filesCreated: scaffoldCreated > 0 ? [{ path: 'scaffold', success: true, validated: true }] : [],
+        provider: 'none',
+        model: 'none',
+        summary: {
+          totalFiles: scaffoldCreated,
+          successful: scaffoldCreated,
+          validated: scaffoldCreated,
+          warnings: 0,
+          failed: 0,
+          provider: 'none',
+          filePaths: [],
+          hasDefaultComponent: scaffoldCreated > 0 || hasScaffoldFiles
+        }
+      });
+    }
+    
+    console.log(`✅ Using ${provider.toUpperCase()}:`, {
+      model: model,
+      maxContext: provider === 'groq' ? '128K tokens' : '16K tokens',
+      maxNewTokens: provider === 'groq' ? '8192' : '4000'
+    });
+    
+    const scaffoldContext = buildScaffoldContext(frameworkForScaffold);
+    
+    // SYSTEM PROMPT - Optimized for Groq
+    // Strategy: Extend existing React app, don't recreate
+    // DECLARE FIRST to avoid "Cannot access before initialization" error
+    const existingFilesList = project.files?.map((f: { path: string }) => `- ${f.path}`).join('\n') || 'No existing files';
+    const existingFileCount = project.files?.length || 0;
+    
+    const systemPrompt = `You are a Senior Full-Stack Engineer extending an existing React application.
+
+CORE PRINCIPLES:
+1. NEVER delete or rewrite existing files unless explicitly requested
+2. Extend components, hooks, and utilities - build ON TOP of existing structure
+3. Reuse existing patterns, naming conventions, and styling
+4. Maintain backward compatibility at all times
+5. All changes must be incremental and additive
+
+EXISTING PROJECT STRUCTURE:
+Framework: ${frameworkForScaffold}
+Language: ${useTypeScript ? 'TypeScript' : 'JavaScript'}
+Existing files (${existingFileCount}):
+${existingFilesList}
+
+${scaffoldContext}
+
+OUTPUT FORMAT:
+Use code blocks with file paths:
+\`\`\`file:path/to/file.ext
+[code]
+\`\`\`
+
+EXECUTION RULES:
+1) For NEW files: Create in appropriate location (src/components/, src/hooks/, etc.)
+2) For EXISTING files: EXTEND them - add imports, functions, components
+3) Preserve existing code structure and patterns
+4) Follow existing naming conventions (camelCase, PascalCase, etc.)
+5) Use existing styling approach (CSS modules, Tailwind, inline styles)
+6) Integrate new features seamlessly with existing code
+7) Do NOT recreate App.jsx or index.js - EXTEND them if needed
+8) Generate ALL required files/components in one response
+9) Clean, professional, responsive UI that matches existing style`;
+    
+    // Build user message with existing project context
+    // Include existing files structure to ensure Groq extends, not recreates
     let userMessage = message;
     
-    // Only add minimal context for generation requests
+    // Add existing project context for generation requests
     if (message.toLowerCase().includes('create') || message.toLowerCase().includes('build') || message.toLowerCase().includes('generate')) {
-      const brandName = project.brandName || project.title || 'My App';
       
-      // Minimal requirements only
+      // Add existing files context FIRST - critical for extension approach
+      if (hasScaffoldFiles && project.files && project.files.length > 0) {
+        userMessage += `\n\nEXISTING PROJECT FILES (${project.files.length} files already exist - EXTEND these, don't recreate):\n`;
+        project.files.forEach((file: { path: string; language?: string | null }) => {
+          userMessage += `- ${file.path} (${file.language || 'unknown'})\n`;
+        });
+        userMessage += `\nCRITICAL: These files already exist. EXTEND them by adding imports and components. Do NOT recreate App.jsx or index.js - UPDATE them to include new components.\n`;
+      }
+      
+      // Add questionnaire requirements
       if (questionnaireData) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:376',message:'Adding questionnaire context to user message',data:{hasQuestionnaireData:true,appType:questionnaireData.appType,requiredSections:questionnaireData.requiredSections,originalMessage:message.substring(0,100)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
         // INTELLIGENT COMPONENT IDENTIFICATION FROM QUESTIONNAIRE
-        const requiredSections = questionnaireData.requiredSections || [];
+        // requiredSections is stored in questionnaireData but not strongly typed here,
+        // so we treat it as a string array for flexibility.
+        const requiredSections = ((questionnaireData as any).requiredSections as string[] | undefined) || [];
         const componentMap: Record<string, string> = {
           'portfolio': 'Portfolio',
           'header': 'Header',
@@ -473,23 +663,68 @@ REMEMBER:
           .filter((comp: string, index: number, self: string[]) => self.indexOf(comp) === index); // Remove duplicates
         
         userMessage = `${message}\n\n`;
+        
+        // ✅ Add ALL questionnaire features to ensure Groq generates complete app
         if (questionnaireData.appType) userMessage += `App type: ${questionnaireData.appType}\n`;
+        
+        // Add design requirements
+        if (questionnaireData.designStyle) {
+          userMessage += `Design style: ${questionnaireData.designStyle}\n`;
+        }
+        if (questionnaireData.colorScheme) {
+          userMessage += `Color scheme: ${questionnaireData.colorScheme}\n`;
+        }
+        if (questionnaireData.layoutStyle) {
+          userMessage += `Layout style: ${questionnaireData.layoutStyle}\n`;
+        }
+        
+        // Add special features (contact form, newsletter, gallery, etc.)
+        if (questionnaireData.specialFeatures && Array.isArray(questionnaireData.specialFeatures) && questionnaireData.specialFeatures.length > 0) {
+          userMessage += `\nSPECIAL FEATURES TO IMPLEMENT:\n`;
+          questionnaireData.specialFeatures.forEach((feature: string) => {
+            userMessage += `- ${feature}\n`;
+          });
+          userMessage += `\nCRITICAL: Implement ALL special features listed above. Each feature should be functional and integrated into the app.\n`;
+        }
+        
+        // Add required sections/components
         if (identifiedComponents.length > 0) {
           userMessage += `\nCOMPONENTS TO CREATE (${useTypeScript ? 'TypeScript' : 'JavaScript'}):\n`;
           identifiedComponents.forEach((comp: string) => {
             userMessage += `- ${comp} component (create as src/components/${comp}.${fileExtension})\n`;
           });
           userMessage += `\nCRITICAL: Create ALL components listed above in ONE response. Each component must be in a separate file.\n`;
-          userMessage += `\nLANGUAGE: Use ${useTypeScript ? 'TypeScript' : 'JavaScript'} ONLY. File extensions: .${fileExtension} for components, .${indexExtension} for index.\n`;
-          userMessage += `\nNO DUPLICATES: Do NOT create both .jsx and .tsx files. Use .${fileExtension} only.\n`;
-        }
-        if (hasScaffoldFiles) {
-          userMessage += `\nIMPORTANT: After creating components, update App.jsx to import and render ALL new components.\n`;
         }
         
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:395',message:'Components identified from questionnaire',data:{requiredSections,identifiedComponents},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'})}).catch(()=>{});
-        // #endregion
+        // Add brand information
+        if (questionnaireData.brandName) {
+          userMessage += `\nBrand name: ${questionnaireData.brandName}\n`;
+        }
+        if (questionnaireData.tagline) {
+          userMessage += `Tagline: ${questionnaireData.tagline}\n`;
+        }
+        if (questionnaireData.keyPoints) {
+          userMessage += `Key points: ${questionnaireData.keyPoints}\n`;
+        }
+        if (questionnaireData.targetAudience) {
+          userMessage += `Target audience: ${questionnaireData.targetAudience}\n`;
+        }
+        
+        userMessage += `\nLANGUAGE: Use ${useTypeScript ? 'TypeScript' : 'JavaScript'} ONLY. File extensions: .${fileExtension} for components, .${indexExtension} for index.\n`;
+        userMessage += `\nNO DUPLICATES: Do NOT create both .jsx and .tsx files. Use .${fileExtension} only.\n`;
+        
+        if (hasScaffoldFiles) {
+          userMessage += `\nEXTENSION STRATEGY:\n`;
+          userMessage += `- For NEW components: Create in src/components/ directory\n`;
+          userMessage += `- For App.jsx: ADD imports and render new components - DO NOT recreate the entire file\n`;
+          userMessage += `- For index.js: Keep existing code - only update if needed for new features\n`;
+          userMessage += `- Follow existing code patterns, naming conventions, and styling approach\n`;
+          userMessage += `- Maintain backward compatibility - existing functionality must continue working\n`;
+        }
+        userMessage += buildScaffoldContext(frameworkForScaffold);
+        
+      } else {
+        userMessage += buildScaffoldContext(frameworkForScaffold);
       }
     }
     
@@ -504,7 +739,7 @@ REMEMBER:
     
     if (fileToEdit) {
       // Find the file (check multiple patterns)
-      const file = project.files.find(f => 
+      const file = project.files.find((f: { path: string; name: string }) => 
         f.path === fileToEdit || 
         f.path.endsWith(`/${fileToEdit}`) ||
         f.path.endsWith(`\\${fileToEdit}`) ||
@@ -514,19 +749,25 @@ REMEMBER:
       
       if (file) {
         if (file.content.length < 8000) {
-          // Include full file for editing
-          userMessage += `\n\nCurrent file to edit (${file.path}):\n${file.content}`;
-          console.log(`📝 CURSOR-LIKE: Including file context for editing: ${file.path} (${file.content.length} chars)`);
+          // Include full file for editing - instruct to EXTEND, not replace
+          userMessage += `\n\nEXISTING FILE TO EXTEND (${file.path}):\n`;
+          userMessage += `⚠️ DO NOT DELETE OR REWRITE THIS FILE. EXTEND IT by adding new imports, functions, or components.\n`;
+          userMessage += `Preserve all existing code and functionality.\n\n`;
+          userMessage += file.content;
+          console.log(`📝 EXTEND MODE: Including full file context for extension: ${file.path} (${file.content.length} chars)`);
         } else {
-          // Large file - include beginning and end
+          // Large file - include beginning and end with extension instructions
           const start = file.content.substring(0, 2000);
           const end = file.content.substring(file.content.length - 1000);
-          userMessage += `\n\nCurrent file (${file.path}) - showing start and end:\n${start}\n\n... (${file.content.length - 3000} chars omitted) ...\n\n${end}`;
-          console.log(`📝 CURSOR-LIKE: Including partial file context: ${file.path} (showing start/end of ${file.content.length} chars)`);
+          userMessage += `\n\nEXISTING FILE TO EXTEND (${file.path}):\n`;
+          userMessage += `⚠️ DO NOT DELETE OR REWRITE THIS FILE. EXTEND IT by adding new imports, functions, or components.\n`;
+          userMessage += `Preserve all existing code and functionality.\n\n`;
+          userMessage += `File start:\n${start}\n\n... (${file.content.length - 3000} chars omitted) ...\n\nFile end:\n${end}`;
+          console.log(`📝 EXTEND MODE: Including partial file context: ${file.path} (showing start/end of ${file.content.length} chars)`);
         }
       } else {
         console.log(`⚠️ File mentioned/selected but not found: ${fileToEdit}`);
-        console.log(`Available files:`, project.files.map(f => f.path));
+        console.log(`Available files:`, project.files.map((f: { path: string }) => f.path));
       }
     }
     
@@ -554,7 +795,7 @@ REMEMBER:
         }
 
         // Check if we have at least one JS file (required for preview)
-        const jsFiles = updatedProject.files.filter(f => f.path.endsWith('.js') || f.path.endsWith('.jsx'));
+        const jsFiles = updatedProject.files.filter((f: { path: string }) => f.path.endsWith('.js') || f.path.endsWith('.jsx'));
         if (jsFiles.length === 0) {
           // No JS files yet - this is okay for CSS files
           if (filePath.endsWith('.css')) {
@@ -564,7 +805,7 @@ REMEMBER:
         }
 
         // Basic syntax validation first (fast check)
-        const appFile = jsFiles.find(f => 
+        const appFile = jsFiles.find((f: { path: string; name: string }) => 
           (f.path.includes('App') || f.name.includes('App')) && 
           !f.path.includes('index')
         ) || jsFiles[0];
@@ -616,9 +857,10 @@ REMEMBER:
 
         // Validation passed
         return { valid: true, previewLength: content.length };
-      } catch (validationError: any) {
+      } catch (validationError: unknown) {
         console.error(`⚠️ Validation error for ${filePath}:`, validationError);
-        return { valid: false, error: validationError.message || 'Validation failed' };
+        const errorMessage = validationError instanceof Error ? validationError.message : 'Validation failed';
+        return { valid: false, error: errorMessage };
       }
     };
 
@@ -628,11 +870,9 @@ REMEMBER:
     // Each file is created and validated individually
     // If validation fails, we log the error but continue
     
-    const parseAndCreateFiles = async (responseText: string): Promise<Array<{ path: string; success: boolean; error?: string; validated?: boolean; validationError?: string }>> => {
-      const brandName = project.brandName || project.title || 'My App';
-      const tagline = project.tagline || 'Welcome to my application!';
+    const parseAndCreateFiles = async (responseText: string): Promise<FileCreationResult[]> => {
       
-      const createdFiles: Array<{ path: string; success: boolean; error?: string; validated?: boolean; validationError?: string }> = [];
+      const createdFiles: FileCreationResult[] = [];
 
       console.log('\n' + '='.repeat(60));
       console.log('📁 SANDBOXED FILE CREATION - STARTING');
@@ -681,7 +921,7 @@ REMEMBER:
         }
 
         // Normalize path: remove spaces, fix extensions, clean up
-        let normalizedPath = filePath
+        const normalizedPath = filePath
           .replace(/\s+/g, '') // Remove ALL spaces (fixes "src/ App. jsx")
           .replace(/\\/g, '/') // Normalize path separators
           .replace(/\/+/g, '/') // Remove double slashes
@@ -713,9 +953,6 @@ REMEMBER:
         }
       }
       
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:650',message:'File parsing results',data:{allMatchesCount:allMatches.length,filePaths:allMatches.map(m=>m.path)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       
       console.log('\n' + '='.repeat(60));
       console.log(`📁 FILE PARSING RESULTS`);
@@ -958,9 +1195,6 @@ REMEMBER:
         if (fixesApplied.length > 0) {
           console.log(`🔧 Auto-fixed ${fixesApplied.length} issues:`, fixesApplied);
           fileContent = processedContent; // Now this works because fileContent is declared as 'let'
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:920',message:'Auto-fixes applied',data:{filePath,fixesAppliedCount:fixesApplied.length,fixesApplied},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
-          // #endregion
         }
         
         // Log syntax errors but don't block file creation (preview will show errors)
@@ -1037,7 +1271,7 @@ REMEMBER:
             const conflictingExt = fileExt === 'jsx' ? 'tsx' : fileExt === 'tsx' ? 'jsx' : null;
             if (conflictingExt) {
               const conflictingPath = normalizedPath.replace(`.${fileExt}`, `.${conflictingExt}`);
-              const hasConflict = existingFiles.some(f => f.path === conflictingPath);
+              const hasConflict = existingFiles.some((f: ProjectFile) => f.path === conflictingPath);
               if (hasConflict) {
                 console.log(`  ⚠️ DUPLICATE DETECTED: ${conflictingPath} exists, skipping ${normalizedPath}`);
                 createdFiles.push({ 
@@ -1055,7 +1289,7 @@ REMEMBER:
             const conflictingExt = fileExt === 'js' ? 'ts' : fileExt === 'ts' ? 'js' : null;
             if (conflictingExt) {
               const conflictingPath = normalizedPath.replace(`.${fileExt}`, `.${conflictingExt}`);
-              const hasConflict = existingFiles.some(f => f.path === conflictingPath);
+              const hasConflict = existingFiles.some((f: ProjectFile) => f.path === conflictingPath);
               if (hasConflict) {
                 console.log(`  ⚠️ DUPLICATE DETECTED: ${conflictingPath} exists, skipping ${normalizedPath}`);
                 createdFiles.push({ 
@@ -1101,6 +1335,10 @@ REMEMBER:
           console.log(`  📝 Is main file: ${isMain}`);
 
           // CRITICAL: Create file IMMEDIATELY (incremental creation like Cursor/Lovable)
+          // Add small delay between files to allow preview to update and render
+          if (createdFiles.length > 0) {
+            await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay between files
+          }
           // This ensures files appear in UI as soon as they're parsed
           try {
             // Check if file already exists
@@ -1131,9 +1369,27 @@ REMEMBER:
             }
 
             // Create or update file using Prisma - IMMEDIATE creation
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:1009',message:'BEFORE database upsert',data:{projectId:id,normalizedPath,fileName,contentLength:fileContent.length,contentPreview:fileContent.substring(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-            // #endregion
+            
+            // DIAGNOSTIC: Check file quality before saving
+            const hasImports = /import\s+/.test(fileContent);
+            const hasExports = /export\s+/.test(fileContent);
+            const hasComponent = /(?:function|const|class)\s+[A-Z]/.test(fileContent);
+            const hasJSX = /<[A-Z]/.test(fileContent) || /<div/.test(fileContent);
+            const importCount = (fileContent.match(/import\s+/g) || []).length;
+            const exportCount = (fileContent.match(/export\s+/g) || []).length;
+            
+            console.log(`  📊 File quality check (${provider}):`, {
+              path: normalizedPath,
+              hasImports,
+              importCount,
+              hasExports,
+              exportCount,
+              hasComponent,
+              hasJSX,
+              contentLength: fileContent.length,
+              firstLine: fileContent.split('\n')[0]?.substring(0, 80)
+            });
+            
             await prisma.appFile.upsert({
               where: {
                 projectId_path: {
@@ -1156,51 +1412,137 @@ REMEMBER:
                 isMain: isMain,
               },
             });
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:1032',message:'AFTER database upsert - file saved',data:{projectId:id,normalizedPath,success:true},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-            // #endregion
 
             console.log(`  ✅ File saved to database IMMEDIATELY: ${normalizedPath}`);
             
+            // Trigger preview refresh after each file (incremental rendering)
+            // This allows the preview to update as each file is added
+            try {
+              // Dispatch event or trigger preview refresh mechanism here if needed
+              // The frontend should listen for file updates and refresh preview
+              console.log(`  🔄 Preview should refresh for: ${normalizedPath}`);
+            } catch (previewError) {
+              // Don't fail file creation if preview refresh fails
+              console.warn('  ⚠️ Preview refresh notification failed (non-critical):', previewError);
+            }
+            
+            // Mark file as successfully created FIRST (before validation)
+            const fileEntry: { path: string; success: boolean; validated?: boolean; validationError?: string; sandboxIssues?: string[] } = { 
+              path: normalizedPath, // Use normalized path, not original
+              success: true, 
+              validated: true // Will be updated by sandbox validation below
+            };
+            createdFiles.push(fileEntry);
+            // Small delay after each file creation to allow preview to update
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            // ============================================
+            // SANDBOX VALIDATION - Validate file one by one
+            // ============================================
+            // Validate each file immediately after creation to catch issues early
+            try {
+              const savedFile = await prisma.appFile.findUnique({
+                where: {
+                  projectId_path: {
+                    projectId: id,
+                    path: normalizedPath,
+                  },
+                },
+              });
+              
+              if (savedFile) {
+                // Run validation on this single file
+                const validation = validateProjectFiles([savedFile]);
+                
+                // Check for imports (will be removed in preview)
+                const hasImports = /import\s+/.test(savedFile.content);
+                const importCount = (savedFile.content.match(/import\s+/g) || []).length;
+                
+                // Check component structure
+                const hasComponent = /(?:function|const|class)\s+[A-Z]/.test(savedFile.content);
+                const hasReturn = savedFile.content.includes('return');
+                const hasJSX = /<[A-Z]/.test(savedFile.content) || /<div/.test(savedFile.content);
+                
+                // Check syntax errors
+                const openBraces = (savedFile.content.match(/{/g) || []).length;
+                const closeBraces = (savedFile.content.match(/}/g) || []).length;
+                const openParens = (savedFile.content.match(/\(/g) || []).length;
+                const closeParens = (savedFile.content.match(/\)/g) || []).length;
+                
+                const sandboxIssues: string[] = [];
+                if (hasImports) {
+                  sandboxIssues.push(`${importCount} import statement(s) - will be removed in preview`);
+                }
+                if (!validation.valid) {
+                  validation.errors.forEach(e => sandboxIssues.push(`Validation error: ${e.message}`));
+                }
+                if (validation.warnings.length > 0) {
+                  validation.warnings.forEach(w => sandboxIssues.push(`Warning: ${w.message}`));
+                }
+                if (hasComponent && !hasReturn && hasJSX) {
+                  sandboxIssues.push('Component defined but missing return statement');
+                }
+                if (Math.abs(openBraces - closeBraces) > 2) {
+                  sandboxIssues.push(`Unbalanced braces: ${openBraces} open, ${closeBraces} close`);
+                }
+                if (Math.abs(openParens - closeParens) > 2) {
+                  sandboxIssues.push(`Unbalanced parentheses: ${openParens} open, ${closeParens} close`);
+                }
+                
+                // Log sandbox validation results
+                if (sandboxIssues.length > 0) {
+                  console.log(`  ⚠️ Sandbox validation issues for ${normalizedPath}:`);
+                  sandboxIssues.forEach(issue => console.log(`    - ${issue}`));
+                } else {
+                  console.log(`  ✅ Sandbox validation passed for ${normalizedPath}`);
+                }
+                
+                // Update fileEntry with validation results
+                fileEntry.validated = validation.valid;
+                if (!validation.valid && validation.errors.length > 0) {
+                  fileEntry.validationError = validation.errors[0].message;
+                }
+                if (sandboxIssues.length > 0) {
+                  fileEntry.sandboxIssues = sandboxIssues;
+                }
+              }
+            } catch (validationError: unknown) {
+              const errorMessage = validationError instanceof Error ? validationError.message : String(validationError);
+              console.error(`  ⚠️ Error during sandbox validation for ${normalizedPath}:`, errorMessage);
+              // Don't fail file creation if validation fails
+            }
+            
             // Notify frontend immediately (would be better with streaming, but this works)
             // The frontend will refresh when it receives the response
-          } catch (dbError: any) {
+          } catch (dbError: unknown) {
             console.error(`  ❌ Database error creating file ${normalizedPath}:`, dbError);
-            createdFiles.push({ 
-              path: normalizedPath, 
-              success: false, 
-              error: `Database error: ${dbError.message}` 
+            const errorMessage = dbError instanceof Error ? dbError.message : 'Unknown database error';
+            createdFiles.push({
+              path: normalizedPath,
+              success: false,
+              error: `Database error: ${errorMessage}`
             });
             continue;
           }
-
-          // Mark file as successfully created (validation happens after all files)
-          createdFiles.push({ 
-            path: normalizedPath, // Use normalized path, not original
-            success: true, 
-            validated: true // Will be validated later
-          });
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:1047',message:'File added to createdFiles array',data:{normalizedPath,createdFilesLength:createdFiles.length,success:true},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-          // #endregion
           
           console.log(`  ✅ File creation complete: ${normalizedPath}`);
-        } catch (fileError: any) {
+        } catch (fileError: unknown) {
           console.error(`❌ Error creating file ${filePath}:`, fileError);
+          const errorMessage = fileError instanceof Error ? fileError.message : String(fileError) || 'Unknown error';
           createdFiles.push({ 
             path: filePath, 
             success: false, 
-            error: fileError.message || 'Unknown error' 
+            error: errorMessage
           });
         }
       }
       
       const summary = {
         totalFound: createdFiles.length,
-        successful: createdFiles.filter(f => f.success).length,
-        failed: createdFiles.filter(f => !f.success).length,
-        validated: createdFiles.filter(f => f.validated === true).length,
-        validationFailed: createdFiles.filter(f => f.validated === false).length,
+        successful: createdFiles.filter((f: FileCreationResult) => f.success).length,
+        failed: createdFiles.filter((f: FileCreationResult) => !f.success).length,
+        validated: createdFiles.filter((f: FileCreationResult) => f.validated === true).length,
+        validationFailed: createdFiles.filter((f: FileCreationResult) => f.validated === false).length,
         files: createdFiles.map(f => ({ 
           path: f.path, 
           success: f.success, 
@@ -1216,15 +1558,90 @@ REMEMBER:
       if (summary.validationFailed > 0) {
         console.warn(`⚠️ ${summary.validationFailed} file(s) created but failed validation:`);
         createdFiles
-          .filter(f => f.validated === false)
-          .forEach(f => {
+          .filter((f: FileCreationResult) => f.validated === false)
+          .forEach((f: FileCreationResult) => {
             console.warn(`   - ${f.path}: ${f.validationError || 'Unknown validation error'}`);
           });
       }
 
+      // VALIDATE FILES: Run validation on created files
+      if (createdFiles.length > 0) {
+        const successfulFiles = createdFiles.filter((f: FileCreationResult) => f.success);
+        console.log(`\n🔍 Validating ${successfulFiles.length} successfully created files...`);
+        
+        try {
+          // Fetch created files from database for validation
+          const filePaths = successfulFiles.map(f => f.path);
+          const dbFiles = await prisma.appFile.findMany({
+            where: {
+              projectId: id,
+              path: { in: filePaths }
+            }
+          });
+          
+          // Validate each file
+          const validationResults = await Promise.all(
+            dbFiles.map(async (file: { path: string; content: string }) => {
+              const validation = validateProjectFiles([file]);
+              const hasImports = /import\s+/.test(file.content);
+              const importCount = (file.content.match(/import\s+/g) || []).length;
+              
+              return {
+                path: file.path,
+                valid: validation.valid,
+                errors: validation.errors,
+                warnings: validation.warnings,
+                hasImports,
+                importCount,
+                contentLength: file.content.length,
+                provider: provider // Track which provider created this file
+              };
+            })
+          );
+          
+          // Log validation summary
+          const validFiles = validationResults.filter((r: { valid: boolean }) => r.valid);
+          const invalidFiles = validationResults.filter((r: { valid: boolean }) => !r.valid);
+          const filesWithImports = validationResults.filter((r: { hasImports: boolean }) => r.hasImports);
+          
+          console.log(`\n📊 File Validation Summary (${provider}):`);
+          console.log(`  ✅ Valid files: ${validFiles.length}/${validationResults.length}`);
+          console.log(`  ❌ Invalid files: ${invalidFiles.length}/${validationResults.length}`);
+          console.log(`  📦 Files with imports: ${filesWithImports.length}/${validationResults.length}`);
+          
+          if (invalidFiles.length > 0) {
+            console.log(`\n⚠️ Files with validation errors:`);
+            invalidFiles.forEach((f: { path: string; errors: Array<{ message: string }> }) => {
+              console.log(`  - ${f.path}:`);
+              f.errors.forEach((e) => console.log(`    ❌ ${e.message}`));
+            });
+          }
+          
+          if (filesWithImports.length > 0) {
+            console.log(`\n📦 Files containing import statements:`);
+            filesWithImports.forEach((f: { path: string; importCount: number }) => {
+              console.log(`  - ${f.path}: ${f.importCount} import(s)`);
+            });
+          }
+          
+          // Update createdFiles with validation results
+          createdFiles.forEach(cf => {
+            const validation = validationResults.find((v: { path: string }) => v.path === cf.path);
+            if (validation) {
+              cf.validated = validation.valid;
+              if (!validation.valid && validation.errors.length > 0) {
+                cf.validationError = validation.errors[0].message;
+              }
+            }
+          });
+        } catch (validationError: any) {
+          console.error('❌ Error during file validation:', validationError);
+        }
+      }
+      
       // CRITICAL: Verify files were actually saved to database
       if (createdFiles.length > 0) {
-        const successfulPaths = createdFiles.filter(f => f.success).map(f => f.path);
+        const successfulPaths = createdFiles.filter((f: FileCreationResult) => f.success).map((f: FileCreationResult) => f.path);
         console.log('🔍 Verifying files in database:', successfulPaths);
         
         try {
@@ -1239,7 +1656,7 @@ REMEMBER:
           console.log('✅ Verified files in database:', verifyFiles.length, 'of', successfulPaths.length);
           if (verifyFiles.length !== successfulPaths.length) {
             console.warn('⚠️ Mismatch: Some files may not have been saved');
-            const savedPaths = verifyFiles.map(f => f.path);
+            const savedPaths = verifyFiles.map((f: { path: string }) => f.path);
             const missingPaths = successfulPaths.filter(p => !savedPaths.includes(p));
             console.warn('Missing files:', missingPaths);
           }
@@ -1271,9 +1688,6 @@ REMEMBER:
       const codeBlocksMatch = responseText.match(/```[\s\S]*?```/g);
       const hasCodeBlocks = (codeBlocksMatch?.length || 0) > 0;
       const projectHasFiles = (project.files?.length || 0) > 0;
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:1145',message:'Fallback file check',data:{createdFilesLength:createdFiles.length,hasCodeBlocks,projectHasFiles,willCreateFallback:createdFiles.length===0&&!hasCodeBlocks&&!projectHasFiles},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       
       // Only create fallback if truly no files exist and no code was generated
       if (createdFiles.length === 0 && !hasCodeBlocks && !projectHasFiles) {
@@ -1290,8 +1704,8 @@ function App() {
   return (
     <div className="App">
       <header className="App-header">
-        <h1>${brandName}</h1>
-        <p>${tagline}</p>
+        <h1>${project.brandName || project.title || 'My App'}</h1>
+        <p>${project.tagline || 'Welcome to my app'}</p>
       </header>
     </div>
   );
@@ -1386,34 +1800,22 @@ root.render(
       // ============================================
       // FILE CREATION SUMMARY
       // ============================================
-      console.log('\n' + '='.repeat(60));
-      console.log('📊 FILE CREATION SUMMARY');
-      console.log('='.repeat(60));
-      console.log(`Total files attempted: ${createdFiles.length}`);
-      console.log(`Successful: ${createdFiles.filter(f => f.success).length}`);
-      console.log(`Failed: ${createdFiles.filter(f => !f.success).length}`);
-      console.log(`Validated: ${createdFiles.filter(f => f.validated === true).length}`);
-      console.log(`Validation warnings: ${createdFiles.filter(f => f.validated === false).length}`);
-      console.log('\nFiles created:');
-      createdFiles.forEach((f, i) => {
-        const status = f.success ? (f.validated ? '✅' : '⚠️') : '❌';
-        console.log(`  ${i + 1}. ${status} ${f.path}${f.error ? ` (${f.error})` : ''}${f.validationError ? ` (${f.validationError})` : ''}`);
-      });
-      console.log('='.repeat(60) + '\n');
+      if (process.env.NODE_ENV === 'development') {
+        const summary = {
+          total: createdFiles.length,
+          successful: createdFiles.filter((f: FileCreationResult) => f.success).length,
+          failed: createdFiles.filter((f: FileCreationResult) => !f.success).length,
+          validated: createdFiles.filter((f: FileCreationResult) => f.validated === true).length,
+        };
+        console.log(`[FILE] Summary: ${summary.successful}/${summary.total} successful, ${summary.validated} validated`);
+      }
       
       return createdFiles;
     };
 
-    // Call Azure DeepSeek API
+    // Call Groq API
     let response: string = '';
     let requestSuccess = false;
-    
-    // ============================================
-    // REQUEST LOGGING (Optimized - no file content included)
-    // ============================================
-    console.log('\n' + '='.repeat(80));
-    console.log('🚀 AZURE DEEPSEEK REQUEST');
-    console.log('='.repeat(80));
     
     // Calculate token usage (rough estimate: 1 token ≈ 4 characters)
     const systemTokens = Math.ceil(systemPrompt.length / 4);
@@ -1421,26 +1823,16 @@ root.render(
     const totalInputTokens = systemTokens + userTokens;
     const maxOutputTokens = 4000;
     
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:1366',message:'BEFORE AI request - message content',data:{systemPromptLength:systemPrompt.length,userMessageLength:message.length,userMessagePreview:message.substring(0,500),userMessageFull:message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
-    
-    console.log('\n📊 REQUEST SUMMARY:');
-    console.log(`  - System Prompt: ${systemPrompt.length} chars (~${systemTokens} tokens)`);
-    console.log(`  - User Message: ${message.length} chars (~${userTokens} tokens)`);
-    console.log(`  - Total Input: ~${totalInputTokens} tokens (max 16K)`);
-    console.log(`  - Max Output: ${maxOutputTokens} tokens`);
-    console.log(`  - Available Context: ${16000 - totalInputTokens} tokens`);
-    
-    if (totalInputTokens > 12000) {
-      console.warn('⚠️ Warning: Input tokens exceed 12K - may be truncated by model');
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[GROQ] Request: ~${totalInputTokens} input tokens, max ${maxOutputTokens} output tokens`);
+      if (totalInputTokens > 12000) {
+        console.warn('[GROQ] Warning: Input tokens exceed 12K - may be truncated');
+      }
     }
-    
-    console.log('='.repeat(80) + '\n');
     
     let timeoutId: NodeJS.Timeout | null = null;
     try {
-      // Add timeout for Azure DeepSeek requests (2 minutes)
+      // Add timeout for Groq requests (2 minutes)
       const controller = new AbortController();
       timeoutId = setTimeout(() => {
         controller.abort();
@@ -1453,7 +1845,7 @@ root.render(
           { role: 'user', content: message },
         ],
         temperature: 0.7,
-        max_tokens: 4000, // Model caps at 4000 new tokens (matches deepseek_api_optimized.py)
+        max_tokens: 8192, // Groq supports up to 8192
         stream: false, // Non-streaming for reliability
       });
       
@@ -1462,28 +1854,18 @@ root.render(
         timeoutId = null;
       }
       
-      console.log('\n' + '='.repeat(80));
-      console.log('✅ AZURE DEEPSEEK RESPONSE RECEIVED');
-      console.log('='.repeat(80));
-      console.log(`  - Provider: azure-deepseek`);
-      console.log(`  - Model: ${AZURE_DEEPSEEK_MODEL}`);
-      console.log(`  - Response Length: ${completion.choices[0]?.message?.content?.length || 0} characters`);
-      console.log('\n📄 RESPONSE PREVIEW (first 500 chars):');
-      console.log('-'.repeat(40));
-      console.log(completion.choices[0]?.message?.content?.substring(0, 500) || 'NO CONTENT');
-      console.log('-'.repeat(40));
-      console.log('='.repeat(80) + '\n');
+      if (process.env.NODE_ENV === 'development') {
+        const responseLength = completion.choices[0]?.message?.content?.length || 0;
+        console.log(`[GROQ] Response received: ${responseLength} chars from ${provider}/${model}`);
+      }
 
       response = completion.choices[0]?.message?.content || '';
       
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:1415',message:'AI response received',data:{responseLength:response.length,responsePreview:response.substring(0,500),hasCodeBlocks:/```/.test(response),codeBlockCount:(response.match(/```/g)||[]).length/2},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       
       // Validate response quality
       if (!response || response.trim().length < 50) {
         console.warn('⚠️ Response too short, might be incomplete');
-        throw new Error('Azure DeepSeek returned an empty or incomplete response');
+        throw new Error(`${provider.toUpperCase()} returned an empty or incomplete response`);
       }
       
       // Check if response contains code blocks
@@ -1491,51 +1873,70 @@ root.render(
       if (!hasCodeBlocks) {
         console.warn('⚠️ Response does not contain code blocks');
         console.warn('Response preview:', response.substring(0, 500));
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:1426',message:'No code blocks in response',data:{responseLength:response.length,fullResponse:response.substring(0,2000)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-        // #endregion
+
+        // Retry once with strict file-only instruction
+        const strictMessage = `${message}\n\nSTRICT OUTPUT FORMAT:\n- Return ONLY code blocks using \`\`\`file:path/to/file.ext\`\`\`\n- Do NOT include prose outside code blocks\n- Ensure every file has a valid path\n`;
+        console.warn('🔁 Retrying with strict file-only format...');
+        const retryCompletion = await client.chat.completions.create({
+          model: model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: strictMessage },
+          ],
+          temperature: 0.4,
+          max_tokens: 4000,
+          stream: false,
+        });
+        const retryResponse = retryCompletion.choices[0]?.message?.content || '';
+        if (retryResponse && /```/.test(retryResponse)) {
+          response = retryResponse;
+          console.log('✅ Retry returned code blocks');
+        }
       }
       
       requestSuccess = true;
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (timeoutId) {
         clearTimeout(timeoutId);
         timeoutId = null;
       }
       
+      const err = error as Error & { code?: string; status?: number; type?: string };
       console.log('\n' + '='.repeat(80));
-      console.log('❌ AZURE DEEPSEEK REQUEST FAILED');
+      console.log(`❌ ${provider.toUpperCase()} REQUEST FAILED`);
       console.log('='.repeat(80));
       
       // Enhanced error logging
-      const errorDetails: any = {
-        message: error?.message || 'Unknown error',
-        name: error?.name,
-        code: error?.code,
-        status: error?.status,
-        type: error?.type,
+      const errorDetails = {
+        message: err.message || 'Unknown error',
+        name: err.name,
+        code: err.code,
+        status: err.status,
+        type: err.type,
+        errorType: 'UNKNOWN' as string,
+        responseData: undefined as string | undefined,
       };
       
       // Check for timeout
-      if (error?.name === 'AbortError' || error?.message?.includes('timeout')) {
+      if (err.name === 'AbortError' || err.message?.includes('timeout')) {
         errorDetails.errorType = 'TIMEOUT';
         errorDetails.message = 'Request timed out after 2 minutes';
       }
-      
+
       // Check for network errors
-      if (error?.message?.includes('fetch') || error?.message?.includes('network') || error?.message?.includes('ECONNREFUSED')) {
+      if (err.message?.includes('fetch') || err.message?.includes('network') || err.message?.includes('ECONNREFUSED')) {
         errorDetails.errorType = 'NETWORK_ERROR';
-        errorDetails.message = `Cannot connect to Azure DeepSeek at ${AZURE_DEEPSEEK_URL}`;
+        errorDetails.message = `Cannot connect to Groq API`;
       }
       
       // Check for API errors
-      if (error?.status || error?.response) {
+      if (err.status || (err as any).response) {
         errorDetails.errorType = 'API_ERROR';
-        if (error?.response) {
+        if ((err as any).response) {
           try {
-            errorDetails.responseData = typeof error.response === 'string' 
-              ? error.response 
-              : JSON.stringify(error.response);
+            errorDetails.responseData = typeof (err as any).response === 'string'
+              ? (err as any).response
+              : JSON.stringify((err as any).response);
           } catch {
             errorDetails.responseData = 'Could not parse error response';
           }
@@ -1546,14 +1947,14 @@ root.render(
       console.log('='.repeat(80) + '\n');
       
       // Provide helpful error messages
-      let userFriendlyError = errorDetails.message || 'Azure DeepSeek request failed';
+      let userFriendlyError = errorDetails.message || 'Groq request failed';
       
       if (errorDetails.errorType === 'TIMEOUT') {
         userFriendlyError = 'Request timed out. The model might be processing a large request. Please try again with a simpler request.';
       } else if (errorDetails.errorType === 'NETWORK_ERROR') {
-        userFriendlyError = `Cannot connect to Azure DeepSeek server at ${AZURE_DEEPSEEK_URL}. Please check if the server is running.`;
+        userFriendlyError = `Cannot connect to Groq API. Please check your connection and GROQ_API_KEY.`;
       } else if (errorDetails.errorType === 'API_ERROR') {
-        userFriendlyError = `Azure DeepSeek API error: ${errorDetails.message}`;
+        userFriendlyError = `Groq API error: ${errorDetails.message}`;
       }
       
       throw new Error(userFriendlyError);
@@ -1561,8 +1962,8 @@ root.render(
 
     // Ensure response is not empty before parsing
     if (!response || response.trim().length === 0) {
-      console.error('❌ Empty response from Azure DeepSeek');
-      throw new Error('Azure DeepSeek returned an empty response. Please try again.');
+      console.error(`❌ Empty response from ${provider.toUpperCase()}`);
+      throw new Error(`${provider.toUpperCase()} returned an empty response. Please try again.`);
     }
     
     // Validate response contains code blocks
@@ -1578,43 +1979,33 @@ root.render(
     // Parse code blocks and create/update files INCREMENTALLY
     // This matches Cursor/Lovable behavior - files created as they're parsed
     // CRITICAL: Create files one by one and notify frontend immediately
-    let createdFiles: Array<{ path: string; success: boolean; error?: string; validated?: boolean; validationError?: string }> = [];
+    let createdFiles: FileCreationResult[] = [];
     
     try {
       // Call parseAndCreateFiles directly - it already creates files incrementally
       // and returns the createdFiles array
-      console.log('\n' + '='.repeat(80));
-      console.log('🚀 STARTING FILE PARSING AND CREATION');
-      console.log('='.repeat(80));
-      console.log('Response length:', response.length, 'characters');
-      console.log('Code blocks detected:', (response.match(/```/g) || []).length / 2);
+      if (process.env.NODE_ENV === 'development') {
+        const codeBlockCount = (response.match(/```/g) || []).length / 2;
+        console.log(`[FILE] Parsing ${response.length} chars, ${codeBlockCount} code blocks`);
+      }
       
       createdFiles = await parseAndCreateFiles(response);
       
-      console.log('\n' + '='.repeat(80));
-      console.log('✅ FILE PARSING COMPLETED');
-      console.log('='.repeat(80));
-      console.log('Total files processed:', createdFiles.length);
-      console.log('Successful:', createdFiles.filter(f => f.success).length);
-      console.log('Failed:', createdFiles.filter(f => !f.success).length);
-      
-      if (createdFiles.length > 0) {
-        console.log('\n📋 Files created:');
-        createdFiles.forEach((f, idx) => {
-          const status = f.success ? '✅' : '❌';
-          console.log(`  ${idx + 1}. ${status} ${f.path}${f.error ? ` (${f.error})` : ''}`);
-        });
-      } else {
-        console.warn('\n⚠️ NO FILES WERE CREATED!');
-        console.warn('This might mean:');
-        console.warn('  1. Response doesn\'t contain code blocks with file paths');
-        console.warn('  2. File paths are in incorrect format');
-        console.warn('  3. Parsing patterns didn\'t match');
+      if (createdFiles.length === 0 && codeBlockCount === 0) {
+        console.warn('⚠️ No files created and no code blocks detected after retry.');
       }
-      console.log('='.repeat(80) + '\n');
+      
+      if (process.env.NODE_ENV === 'development') {
+        const successful = createdFiles.filter((f: FileCreationResult) => f.success).length;
+        const failed = createdFiles.filter((f: FileCreationResult) => !f.success).length;
+        console.log(`[FILE] Parsing complete: ${successful} successful, ${failed} failed`);
+        if (createdFiles.length === 0) {
+          console.warn('[FILE] No files were created from response');
+        }
+      }
       
       // AUTO-FIX: If files were created but have validation errors, attempt to fix them
-      const filesWithErrors = createdFiles.filter(f => f.success && f.validated === false);
+      const filesWithErrors = createdFiles.filter((f: FileCreationResult) => f.success && f.validated === false);
       if (filesWithErrors.length > 0) {
         console.log(`🔧 Auto-fixing ${filesWithErrors.length} files with validation errors...`);
         // Note: Auto-fix can be implemented here if needed
@@ -1622,18 +2013,35 @@ root.render(
       }
       console.log('✅ File parsing completed:', {
         totalFiles: createdFiles.length,
-        successful: createdFiles.filter(f => f.success).length,
-        failed: createdFiles.filter(f => !f.success).length,
-        validated: createdFiles.filter(f => f.validated === true).length,
-        validationFailed: createdFiles.filter(f => f.validated === false).length
+        successful: createdFiles.filter((f: FileCreationResult) => f.success).length,
+        failed: createdFiles.filter((f: FileCreationResult) => !f.success).length,
+        validated: createdFiles.filter((f: FileCreationResult) => f.validated === true).length,
+        validationFailed: createdFiles.filter((f: FileCreationResult) => f.validated === false).length
       });
+
+      // Update project's updatedAt timestamp when files are created
+      // This ensures the project appears at the top of the project list
+      if (createdFiles.length > 0 && createdFiles.some((f: FileCreationResult) => f.success)) {
+        try {
+          await prisma.appProject.update({
+            where: { id },
+            data: { updatedAt: new Date() }
+          });
+          if (process.env.NODE_ENV === 'development') {
+            console.log('[PROJECT] Updated timestamp');
+          }
+        } catch (updateError) {
+          console.error('[PROJECT] Error updating timestamp:', updateError);
+          // Don't fail the request if timestamp update fails
+        }
+      }
       
       // ============================================
       // INTELLIGENT COMPONENT INTEGRATION
       // ============================================
       // Automatically identify components and integrate into App.jsx
-      if (createdFiles.length > 0 && createdFiles.some(f => f.success)) {
-        const successfulFiles = createdFiles.filter(f => f.success);
+      if (createdFiles.length > 0 && createdFiles.some((f: FileCreationResult) => f.success)) {
+        const successfulFiles = createdFiles.filter((f: FileCreationResult) => f.success);
         const componentFiles = successfulFiles.filter(f => 
           f.path.includes('components/') || 
           f.path.match(/src\/[A-Z][a-zA-Z0-9]*\.(jsx|js)$/) ||
@@ -1645,11 +2053,11 @@ root.render(
           console.log('🧠 INTELLIGENT COMPONENT INTEGRATION');
           console.log('='.repeat(80));
           console.log(`Found ${componentFiles.length} component file(s) to integrate:`);
-          componentFiles.forEach(f => console.log(`  - ${f.path}`));
+          componentFiles.forEach((f: FileCreationResult) => console.log(`  - ${f.path}`));
           
           try {
             // Get current App file (using correct extension based on project language)
-            const appFile = project.files?.find(f => 
+            const appFile = project.files?.find((f: { path: string; isMain?: boolean | null }) => 
               f.path === `src/App.${fileExtension}` || f.path === `src/App.${indexExtension}` ||
               f.path === 'src/App.jsx' || f.path === 'src/App.tsx' || f.path === 'src/App.js' || f.path === 'src/App.ts' ||
               (f.isMain && (f.path.includes('App.jsx') || f.path.includes('App.tsx') || f.path.includes('App.js') || f.path.includes('App.ts')))
@@ -1675,9 +2083,6 @@ root.render(
               
               console.log(`Identified components: ${componentNames.join(', ')}`);
               
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:1684',message:'Starting component integration',data:{componentNames,appFilePath:appFile.path},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'})}).catch(()=>{});
-              // #endregion
               
               // Read component files to verify they export correctly
               const componentFilesData = await prisma.appFile.findMany({
@@ -1690,7 +2095,7 @@ root.render(
               // REVIEW: Validate component files
               console.log(`\n🔍 REVIEWING COMPONENT FILES...`);
               const componentReviews: Array<{path: string; valid: boolean; issues: string[]}> = [];
-              componentFilesData.forEach(file => {
+              componentFilesData.forEach((file: { path: string; content: string }) => {
                 const issues: string[] = [];
                 const hasExport = file.content.includes('export') || file.content.includes('module.exports');
                 const hasComponent = !!file.content.match(/(?:function|const|class|var|let)\s+[A-Z]/);
@@ -1707,9 +2112,6 @@ root.render(
                 console.log(`  ${isValid ? '✅' : '⚠️'} ${file.path}: ${isValid ? 'valid' : issues.join(', ')}`);
               });
               
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:1708',message:'Component files reviewed',data:{componentReviews},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'})}).catch(()=>{});
-              // #endregion
               
               // Update App.jsx with imports and component usage
               let appContent = appFile.content;
@@ -1717,7 +2119,7 @@ root.render(
               
               // Add imports for new components
               componentNames.forEach(compName => {
-                const componentFile = componentFilesData.find(f => {
+                const componentFile = componentFilesData.find((f: { path: string }) => {
                   const fileName = f.path.split('/').pop() || '';
                   // Match both Header.jsx and Header.component.js → Header
                   let nameWithoutExt = fileName.replace(/\.(component\.)?(jsx|js|tsx|ts)$/i, '');
@@ -1810,19 +2212,13 @@ root.render(
                 console.log(`\n✅ App.jsx updated successfully with ${componentNames.length} component(s)`);
                 console.log(`   Components integrated: ${componentNames.join(', ')}`);
                 console.log(`   Preview will automatically refresh to show new components`);
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:1782',message:'App.jsx auto-integrated with components',data:{componentsIntegrated:componentNames,appUpdated:true,appContentPreview:appContent.substring(0,500)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'})}).catch(()=>{});
-                // #endregion
               } else {
                 console.log(`\nℹ️ App.jsx already contains all components or no updates needed`);
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:1787',message:'App.jsx already has components',data:{componentsIntegrated:componentNames,appUpdated:false},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'})}).catch(()=>{});
-                // #endregion
               }
             } else {
               console.log(`\n⚠️ App.jsx not found - skipping auto-integration`);
             }
-          } catch (integrationError: any) {
+          } catch (integrationError: unknown) {
             console.error('❌ Error during component integration:', integrationError);
             // Don't fail the request - files were created successfully
           }
@@ -1831,7 +2227,7 @@ root.render(
       }
 
       // Sandbox validation: After all files are created, validate preview can be generated
-      if (createdFiles.length > 0 && createdFiles.some(f => f.success)) {
+      if (createdFiles.length > 0 && createdFiles.some((f: FileCreationResult) => f.success)) {
         console.log('🔍 Sandbox validation: Validating preview generation after file creation...');
         
         try {
@@ -1843,11 +2239,11 @@ root.render(
 
           if (updatedProject && updatedProject.files.length > 0) {
             // Check if we can generate preview HTML
-            const jsFiles = updatedProject.files.filter(f => f.path.endsWith('.js') || f.path.endsWith('.jsx'));
+            const jsFiles = updatedProject.files.filter((f: ProjectFile) => f.path.endsWith('.js') || f.path.endsWith('.jsx'));
             
             if (jsFiles.length > 0) {
               // Check if App file exists and has valid structure
-              const appFile = jsFiles.find(f => 
+              const appFile = jsFiles.find((f: ProjectFile) => 
                 (f.path.includes('App') || f.name.includes('App')) && 
                 !f.path.includes('index')
               ) || jsFiles[0];
@@ -1873,23 +2269,22 @@ root.render(
               console.warn('⚠️ Sandbox validation warning: No JS files found for preview');
             }
           }
-        } catch (sandboxError: any) {
+        } catch (sandboxError: unknown) {
           console.error('⚠️ Sandbox validation error:', sandboxError);
           // Don't fail the request, just log the warning
         }
       }
-    } catch (parseError: any) {
+    } catch (parseError: unknown) {
+      const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
+      const errorStack = parseError instanceof Error ? parseError.stack : undefined;
       console.error('\n' + '='.repeat(80));
       console.error('❌ ERROR PARSING FILES FROM RESPONSE');
       console.error('='.repeat(80));
-      console.error('Error:', parseError?.message);
-      console.error('Stack:', parseError?.stack?.substring(0, 500));
+      console.error('Error:', errorMessage);
+      console.error('Stack:', errorStack?.substring(0, 500));
       console.error('Response length:', response?.length);
       console.error('='.repeat(80) + '\n');
       
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:1531',message:'Parse error occurred',data:{error:parseError?.message,responseLength:response?.length,responsePreview:response?.substring(0,1000)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       
       // CRITICAL: Even if parsing fails, ensure createdFiles is an empty array
       // This prevents undefined errors in frontend
@@ -1940,10 +2335,10 @@ root.render(
     const filesCreatedResult = Array.isArray(createdFiles) ? createdFiles : [];
     
     // Build response with helpful information
-    const successfulFiles = filesCreatedResult.filter(f => f.success);
-    const failedFiles = filesCreatedResult.filter(f => !f.success);
-    const validatedFiles = filesCreatedResult.filter(f => f.validated === true);
-    const filesWithWarnings = filesCreatedResult.filter(f => f.success && f.validated === false);
+    const successfulFiles = filesCreatedResult.filter((f: FileCreationResult) => f.success);
+    const failedFiles = filesCreatedResult.filter((f: FileCreationResult) => !f.success);
+    const validatedFiles = filesCreatedResult.filter((f: FileCreationResult) => f.validated === true);
+    const filesWithWarnings = filesCreatedResult.filter((f: FileCreationResult) => f.success && f.validated === false);
     
     // Generate suggestions based on results
     const suggestions: string[] = [];
@@ -1963,9 +2358,6 @@ root.render(
     // CRITICAL: Ensure filesCreated is always an array and properly formatted
     const finalFilesCreated = Array.isArray(filesCreatedResult) ? filesCreatedResult : [];
     
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:1616',message:'BEFORE sending response to frontend',data:{finalFilesCreatedLength:finalFilesCreated.length,successfulFilesCount:successfulFiles.length,filePaths:successfulFiles.map(f=>f.path)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
     
     console.log('\n' + '='.repeat(80));
     console.log('📤 SENDING RESPONSE TO FRONTEND');
@@ -1982,16 +2374,33 @@ root.render(
       response,
       suggestions,
       filesCreated: finalFilesCreated, // Always an array
-      provider: 'azure-deepseek',
-      model: AZURE_DEEPSEEK_MODEL,
+      provider: provider,
+      model: model,
       summary: {
         totalFiles: finalFilesCreated.length,
         successful: successfulFiles.length,
         validated: validatedFiles.length,
         warnings: filesWithWarnings.length,
-        failed: failedFiles.length
+        failed: failedFiles.length,
+        provider: provider, // Include provider in summary for tracking
+        filePaths: successfulFiles.map(f => f.path), // Include file paths for debugging
+        hasDefaultComponent: scaffoldCreated > 0 || hasScaffoldFiles // Indicate if default component was created
       }
     };
+    
+    // Log provider-specific file creation summary
+    console.log(`\n📊 ${provider.toUpperCase()} File Creation Summary:`);
+    console.log(`  Total files: ${finalFilesCreated.length}`);
+    console.log(`  Successful: ${successfulFiles.length}`);
+    console.log(`  Validated: ${validatedFiles.length}`);
+    console.log(`  With warnings: ${filesWithWarnings.length}`);
+    console.log(`  Failed: ${failedFiles.length}`);
+    if (scaffoldCreated > 0) {
+      console.log(`  🎨 Default component created - preview should render immediately`);
+    }
+    if (successfulFiles.length > 0) {
+      console.log(`  Files created: ${successfulFiles.map(f => f.path).join(', ')}`);
+    }
     
     // Log final response structure
     console.log('📦 Final response structure:', {
@@ -2002,33 +2411,42 @@ root.render(
     });
     
     return NextResponse.json(responseData);
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as Error & { code?: string; status?: number; type?: string };
     // Enhanced error logging with stack trace
     console.error('\n' + '='.repeat(80));
-    console.error('❌ AZURE DEEPSEEK CHAT API - UNHANDLED ERROR');
+    console.error(`❌ AI CHAT API - UNHANDLED ERROR (Provider: ${provider || 'unknown'})`);
     console.error('='.repeat(80));
     console.error('Error object:', {
-      name: error?.name,
-      message: error?.message,
-      stack: error?.stack,
-      status: error?.status,
-      code: error?.code,
-      type: error?.type,
-      url: AZURE_DEEPSEEK_URL,
-      model: AZURE_DEEPSEEK_MODEL,
+      name: err.name,
+      message: err.message,
+      stack: err.stack,
+      status: err.status,
+      code: err.code,
+      type: err.type,
+      provider: provider || 'unknown',
+      model: model || 'unknown',
     });
     console.error('='.repeat(80) + '\n');
     
     // Handle connection errors
-    if (error?.code === 'ECONNREFUSED' || error?.code === 'ENOTFOUND' || error?.message?.includes('fetch failed') || error?.message?.includes('network') || error?.message?.includes('connection')) {
+    if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.message?.includes('fetch failed') || err.message?.includes('network') || err.message?.includes('connection')) {
+      const errorProvider = provider || 'unknown';
+      const errorMessage = errorProvider === 'groq' 
+        ? 'Unable to connect to Groq API. Please check your internet connection and GROQ_API_KEY environment variable.'
+        : 'Unable to connect to Groq API. Please check your internet connection and GROQ_API_KEY environment variable.';
+      const suggestion = errorProvider === 'groq'
+        ? 'Verify that GROQ_API_KEY is set in your environment variables.'
+        : 'Verify that GROQ_API_KEY is set in your environment variables.';
+      
       return NextResponse.json(
         { 
           error: 'Connection error',
-          message: `Unable to connect to Azure DeepSeek at ${AZURE_DEEPSEEK_URL}. Please check if the server is running.`,
-          details: process.env.NODE_ENV === 'development' ? error?.message : undefined,
-          suggestion: 'Verify that your Azure DeepSeek API is running at ' + AZURE_DEEPSEEK_URL,
-          provider: 'azure-deepseek',
-          model: AZURE_DEEPSEEK_MODEL,
+          message: errorMessage,
+          details: process.env.NODE_ENV === 'development' ? err.message : undefined,
+          suggestion: suggestion,
+          provider: errorProvider,
+          model: model || 'unknown',
           filesCreated: []
         },
         { status: 503 }
@@ -2036,14 +2454,14 @@ root.render(
     }
 
     // Handle timeout errors
-    if (error?.name === 'AbortError' || error?.message?.includes('timeout')) {
+    if (err.name === 'AbortError' || err.message?.includes('timeout')) {
       return NextResponse.json(
         { 
           error: 'Timeout',
           message: 'Request timed out. The model might be processing a large request. Please try again with a simpler request.',
           suggestion: 'Try breaking your request into smaller parts or wait a moment and retry.',
-          provider: 'azure-deepseek',
-          model: AZURE_DEEPSEEK_MODEL,
+          provider: provider || 'unknown',
+          model: model || 'unknown',
           canRetry: true,
           filesCreated: []
         },
@@ -2052,14 +2470,22 @@ root.render(
     }
 
     // Handle server errors (500/503)
-    if (error?.status === 500 || error?.status === 503) {
+    if (err.status === 500 || err.status === 503) {
+      const errorProvider = provider || 'unknown';
+      const errorMessage = errorProvider === 'groq'
+        ? 'Groq API server error. The service might be temporarily unavailable.'
+        : 'Groq API server error. The service might be temporarily unavailable.';
+      const suggestion = errorProvider === 'groq'
+        ? 'Wait a moment and try again, or check Groq API status.'
+        : 'Wait a moment and try again, or check Groq API status.';
+      
       return NextResponse.json(
         { 
           error: 'Server Error',
-          message: `Azure DeepSeek server error. The model might be loading or overloaded.`,
-          suggestion: 'Wait a moment and try again, or check the Azure DeepSeek server logs.',
-          provider: 'azure-deepseek',
-          model: AZURE_DEEPSEEK_MODEL,
+          message: errorMessage,
+          suggestion: suggestion,
+          provider: errorProvider,
+          model: model || 'unknown',
           canRetry: true,
           filesCreated: []
         },
@@ -2068,7 +2494,7 @@ root.render(
     }
 
     // Handle authentication errors
-    if (error?.status === 401 || error?.message?.includes('Not authenticated')) {
+    if (err.status === 401 || err.message?.includes('Not authenticated')) {
       return NextResponse.json(
         { 
           error: 'Authentication Error',
@@ -2081,22 +2507,23 @@ root.render(
     }
 
     // Generic error handler - return proper error response
-    const errorMessage = error?.message || 'An unexpected error occurred';
-    const errorStatus = error?.status || 500;
+    const errorMessage = err.message || 'An unexpected error occurred';
+    const errorStatus = err.status || 500;
+    const errorProvider = provider || 'unknown';
     
     return NextResponse.json(
       { 
         error: 'Request Failed',
         message: errorMessage,
         details: process.env.NODE_ENV === 'development' ? {
-          name: error?.name,
-          stack: error?.stack?.substring(0, 500), // Limit stack trace length
-          code: error?.code,
-          url: AZURE_DEEPSEEK_URL,
+          name: err.name,
+          stack: err.stack?.substring(0, 500), // Limit stack trace length
+          code: err.code,
+          provider: errorProvider,
         } : undefined,
         suggestion: 'Please try again. If the problem persists, check server logs.',
-        provider: 'azure-deepseek',
-        model: AZURE_DEEPSEEK_MODEL,
+        provider: errorProvider,
+        model: model || 'unknown',
         canRetry: true,
         filesCreated: []
       },

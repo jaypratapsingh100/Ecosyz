@@ -160,14 +160,12 @@ export async function deployToVercel(
   // Map framework to Vercel's allowed values
   // For static sites (pre-built HTML/JS), we use null to disable build
   const vercelFramework = mapFrameworkToVercel(options.framework);
-  
-  // Check if this is a static site (has index.html with inline React/CDN scripts or vercel.json)
+  const hasIndexHtml = filesArray.some(f => f.file === 'index.html');
+  // Static: React with CDN in index.html, or vercel.json present, or framework is 'html', or plain index.html with no build framework
   const hasStaticHtml = filesArray.some(f => f.file === 'index.html' && f.data.includes('unpkg.com/react'));
   const hasVercelJson = filesArray.some(f => f.file === 'vercel.json');
-  
-  // For static sites, disable build and use null framework
-  // If vercel.json exists, it will override projectSettings
-  const finalFramework = (hasStaticHtml || hasVercelJson) ? null : vercelFramework;
+  const isHtmlOnly = options.framework === 'html' || (hasIndexHtml && !vercelFramework);
+  const finalFramework = (hasStaticHtml || hasVercelJson || isHtmlOnly) ? null : vercelFramework;
   
   const requestBody = {
     name: options.projectName,
@@ -184,7 +182,7 @@ export async function deployToVercel(
     target: 'production',
   };
   
-  console.log(`Framework mapping: "${options.framework}" -> "${vercelFramework}" -> "${finalFramework}" (static: ${hasStaticHtml}, has vercel.json: ${hasVercelJson})`);
+  console.log(`Framework mapping: "${options.framework}" -> "${vercelFramework}" -> "${finalFramework}" (static: ${hasStaticHtml}, vercel.json: ${hasVercelJson}, htmlOnly: ${isHtmlOnly})`);
 
   console.log(`Deploying to Vercel: ${options.projectName} with ${filesArray.length} files`);
 

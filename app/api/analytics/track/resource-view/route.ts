@@ -39,9 +39,10 @@ export async function POST(req: NextRequest) {
         },
       });
       return NextResponse.json({ success: true });
-    } catch (dbError: any) {
+    } catch (dbError: unknown) {
       // Handle P2021 error (table doesn't exist) gracefully
-      if (dbError?.code === 'P2021') {
+      const prismaError = dbError as { code?: string };
+      if (prismaError?.code === 'P2021') {
         console.warn('ResourceView table does not exist. Run migrations: npx prisma migrate deploy');
         return NextResponse.json({ 
           success: false, 
@@ -51,7 +52,7 @@ export async function POST(req: NextRequest) {
       console.error('Error tracking resource view:', dbError);
       return NextResponse.json({ success: false });
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Unexpected error in resource view tracking:', error);
     return NextResponse.json({ success: false });
   }

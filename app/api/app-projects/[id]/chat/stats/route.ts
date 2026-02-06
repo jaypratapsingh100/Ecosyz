@@ -59,10 +59,11 @@ export async function GET(
       totalRequests: stats.reduce((sum, s) => sum + s.requestsHandled, 0),
       totalFailures: stats.reduce((sum, s) => sum + s.requestsFailed, 0),
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Load balancer stats error:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error) || 'Failed to get load balancer stats';
     return NextResponse.json(
-      { error: error?.message || 'Failed to get load balancer stats' },
+      { error: errorMessage },
       { status: 500 }
     );
   }

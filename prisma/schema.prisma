@@ -108,6 +108,7 @@ model AppProject {
   description      String?
   type             String         @default("web") // web, fullstack, other
   framework        String? // react, nextjs, python, etc.
+  previewVersion   String         @default("v1") // v1 (legacy) | v2 (esbuild)
   ownerId          String
   owner            User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   workspaceId      String?

@@ -4,9 +4,10 @@ import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
 import JSZip from 'jszip';
 
 // Helper function to create project files for Firebase Hosting
-async function prepareFirebaseFiles(project: any): Promise<Record<string, string>> {
+async function prepareFirebaseFiles(project: { projectFiles?: Array<{ path: string; content: string; isMain?: boolean }>; title?: string }): Promise<Record<string, string>> {
   const files: Record<string, string> = {};
-  const { projectFiles } = project;
+  const { projectFiles = [] } = project;
+  const projectTitle = project.title || 'My App';
 
   // Add all project files
   for (const file of projectFiles) {
@@ -44,7 +45,7 @@ async function prepareFirebaseFiles(project: any): Promise<Record<string, string
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${project.title}</title>
+  <title>${projectTitle}</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -63,10 +64,10 @@ async function prepareFirebaseFiles(project: any): Promise<Record<string, string
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${project.title}</title>
+  <title>${projectTitle}</title>
 </head>
 <body>
-  <h1>${project.title}</h1>
+  <h1>${projectTitle}</h1>
   <p>Welcome to your deployed project!</p>
 </body>
 </html>`;
@@ -90,7 +91,7 @@ async function prepareFirebaseFiles(project: any): Promise<Record<string, string
   // Add .firebaserc (optional, for project ID)
   files['.firebaserc'] = JSON.stringify({
     projects: {
-      default: project.title.toLowerCase().replace(/\s+/g, '-'),
+      default: projectTitle.toLowerCase().replace(/\s+/g, '-'),
     },
   }, null, 2);
 
@@ -165,7 +166,7 @@ export async function POST(
     // Note: Firebase Hosting API requires Firebase CLI or Console upload
     // We'll provide the files and instructions for easy deployment
 
-    const firebaseProjectId = projectId || project.title.toLowerCase().replace(/\s+/g, '-');
+    const firebaseProjectId = projectId || (project.title || 'my-app').toLowerCase().replace(/\s+/g, '-');
 
     return NextResponse.json({
       success: true,
@@ -191,10 +192,11 @@ export async function POST(
       filesBase64: base64Zip, // Include files for potential direct upload
       fileCount: Object.keys(files).length,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Firebase deployment error:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error) || 'Failed to prepare Firebase deployment';
     return NextResponse.json(
-      { error: error?.message || 'Failed to prepare Firebase deployment' },
+      { error: errorMessage },
       { status: 500 }
     );
   }

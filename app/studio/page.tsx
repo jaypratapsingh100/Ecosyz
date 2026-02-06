@@ -1,503 +1,148 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 import Header from '../components/Header';
-import ProjectManager from '../components/app-builder/ProjectManager';
+import ProjectManager, { type ProjectListItem } from '../components/app-builder/ProjectManager';
 import CodeEditor from '../components/app-builder/CodeEditor';
 import AppChat from '../components/app-builder/AppChat';
 import PreviewPanel from '../components/app-builder/PreviewPanel';
 import DeploymentPanel from '../components/app-builder/DeploymentPanel';
 import GenerationLoader from '../components/app-builder/GenerationLoader';
 import WelcomeScreen from '../components/app-builder/WelcomeScreen';
-import AdvertisementPlaceholder from '../components/app-builder/AdvertisementPlaceholder';
 import { useAuthCheck } from '../hooks/useAuthCheck';
-import type { Project, ProjectFile } from '../types/app-builder';
-import { getScaffoldFiles } from '../lib/app-builder/scaffolds';
-import { DEFAULT_FRAMEWORK } from '../lib/app-builder/constants';
+import { SAMPLE_PORTFOLIO_PROJECT, SAMPLE_PORTFOLIO_FILES } from './samplePortfolioProject';
+import { SAMPLE_REACT_PROJECT, SAMPLE_REACT_FILES } from './sampleReactProject';
 
 function AppBuilderPageContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { isAuthenticated, isLoading } = useAuthCheck();
   
+  const [projects, setProjects] = useState<ProjectListItem[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
-  const [project, setProject] = useState<Project | null>(null);
-  const [files, setFiles] = useState<ProjectFile[]>([]);
-  const [selectedFile, setSelectedFile] = useState<ProjectFile | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [creatingSample, setCreatingSample] = useState(false);
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
   const [leftSidebarTab, setLeftSidebarTab] = useState<'projects' | 'code' | 'chat' | 'deploy'>('projects');
-  const [sidebarWidth, setSidebarWidth] = useState(320);
-  const [isResizing, setIsResizing] = useState(false);
+  const [sidebarWidth] = useState(320);
   const [showTabMenu, setShowTabMenu] = useState(false);
-  const [chatWizardMode, setChatWizardMode] = useState(false);
-  const [selectedFramework, setSelectedFramework] = useState<string | null>(DEFAULT_FRAMEWORK);
+  const [isCreatingSample, setIsCreatingSample] = useState(false);
+  const [isCreatingReactSample, setIsCreatingReactSample] = useState(false);
+  const [isCreatingNew, setIsCreatingNew] = useState(false);
+  const [projectFiles, setProjectFiles] = useState<{ id: string; path: string; name: string; content: string; language?: string }[]>([]);
+  const [selectedFile, setSelectedFile] = useState<{ id: string; path: string; name: string; content: string; language?: string } | null>(null);
 
-  // Auto-create project when description is provided (from home page)
-  useEffect(() => {
-    const descriptionParam = searchParams.get('description');
-    // If description is provided, start chat wizard mode
-    if (descriptionParam && isAuthenticated === true && !selectedProjectId) {
-      const description = decodeURIComponent(descriptionParam);
-      // Start chat wizard mode instead of auto-creating
-      setLeftSidebarOpen(true);
-      setLeftSidebarTab('chat');
-      setChatWizardMode(true);
-      // Clean URL by removing query params after processing
-      if (typeof window !== 'undefined' && window.location.search) {
-        router.replace('/studio', { scroll: false });
-      }
+  const fetchProjects = useCallback(async () => {
+    try {
+      const res = await fetch('/api/app-projects');
+      if (!res.ok) return;
+      const data = await res.json();
+      setProjects(
+        data.map(
+          (p: {
+            id: string;
+            title: string;
+            description?: string | null;
+            framework?: string | null;
+            createdAt?: string;
+          }) => ({
+            id: p.id,
+            title: p.title,
+            description: p.description ?? null,
+            framework: p.framework ?? null,
+            createdAt: p.createdAt,
+          }),
+        ),
+      );
+    } catch {
+      // ignore
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, router, isAuthenticated, selectedProjectId]);
-  
-  // Fetch files when authentication completes and project is selected
-  useEffect(() => {
-    if (isAuthenticated === true && selectedProjectId) {
-      fetchFiles();
-    }
-  }, [isAuthenticated, selectedProjectId]);
-
-  // Reset wizard mode when switching away from chat tab
-  useEffect(() => {
-    if (leftSidebarTab !== 'chat') {
-      setChatWizardMode(false);
-    }
-  }, [leftSidebarTab]);
-
-  // Listen for wizard completion to create project and scaffold files
-  useEffect(() => {
-    const handleWizardComplete = async (event: Event) => {
-      if (!(event instanceof CustomEvent)) {
-        return;
-      }
-      const { projectId, framework, questionnaireData } = event.detail || {};
-      const frameworkToUse = framework || selectedFramework || DEFAULT_FRAMEWORK;
-      
-      // If no project exists yet, create it now
-      if (!projectId && !selectedProjectId && chatWizardMode) {
-        try {
-          console.log('🎯 Wizard complete - creating project with framework:', frameworkToUse);
-          
-          // Create the project with framework from questionnaire
-          const projectResponse = await fetch('/api/app-projects', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({
-              title: questionnaireData?.brandName || 'New Project',
-              description: questionnaireData?.mainPurpose || '',
-              type: 'web',
-              framework: frameworkToUse,
-            }),
-          });
-
-          if (!projectResponse.ok) {
-            const errorData = await projectResponse.json().catch(() => ({ error: 'Failed to create project' }));
-            throw new Error(errorData.error || 'Failed to create project');
-          }
-
-          const newProject = await projectResponse.json();
-          const createdProjectId = newProject.id;
-
-          // Select the project
-          setSelectedProjectId(createdProjectId);
-          setProject(newProject);
-          setSelectedFramework(frameworkToUse);
-          
-          // Dispatch event that project is ready (for AppChat to send prompt)
-          if (typeof window !== 'undefined') {
-            (window as any).__pendingProjectId = createdProjectId;
-            window.dispatchEvent(new CustomEvent('project-created-for-wizard', {
-              detail: { projectId: createdProjectId }
-            }));
-          }
-          
-          // Create scaffold files for the selected framework
-          await createScaffoldFiles(createdProjectId, frameworkToUse);
-          // Refresh files and preview
-          await fetchFiles();
-          // Switch to preview mode (remove ads) after a short delay
-          setTimeout(() => {
-            setChatWizardMode(false);
-          }, 500);
-        } catch (error: any) {
-          console.error('Failed to create project after wizard:', error);
-          alert(`Failed to create project: ${error.message}`);
-        }
-      } else if (projectId && framework && selectedProjectId === projectId) {
-        // Project already exists, just create scaffold
-        console.log('🎯 Wizard complete - creating scaffold for framework:', framework);
-        await createScaffoldFiles(projectId, framework);
-        await fetchFiles();
-        setTimeout(() => {
-          setChatWizardMode(false);
-        }, 500);
-      }
-    };
-
-    window.addEventListener('wizard-complete', handleWizardComplete);
-    return () => {
-      window.removeEventListener('wizard-complete', handleWizardComplete);
-    };
-  }, [selectedProjectId, chatWizardMode, selectedFramework]);
-
-  // Handle sidebar resize
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizing) return;
-      
-      const newWidth = e.clientX;
-      // Constrain width between 200px and 800px
-      if (newWidth >= 200 && newWidth <= 800) {
-        setSidebarWidth(newWidth);
-      }
-    };
-
-    const handleMouseUp = () => {
-      setIsResizing(false);
-    };
-
-    if (isResizing) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = 'col-resize';
-      document.body.style.userSelect = 'none';
-    }
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-  }, [isResizing]);
-
-  // Listen for generation events
-  useEffect(() => {
-    const handleGenerationStarted = (event: CustomEvent) => {
-      setIsGenerating(true);
-    };
-
-    const handleGenerationComplete = (event: CustomEvent) => {
-      const { projectId, duration, filesCreated } = event.detail;
-      console.log(`✅ Generation complete in ${duration}s, ${filesCreated} files created`);
-      // Small delay before hiding loader to show completion
-      setTimeout(() => {
-        setIsGenerating(false);
-      }, 1000);
-    };
-
-    window.addEventListener('generation-started', handleGenerationStarted as EventListener);
-    window.addEventListener('generation-complete', handleGenerationComplete as EventListener);
-
-    return () => {
-      window.removeEventListener('generation-started', handleGenerationStarted as EventListener);
-      window.removeEventListener('generation-complete', handleGenerationComplete as EventListener);
-    };
-  }, [selectedProjectId]);
+  }, []);
 
   useEffect(() => {
-    if (selectedProjectId) {
-      fetchProject();
-      // Only fetch files if authenticated (or authentication check is complete)
-      if (isAuthenticated === true) {
-        fetchFiles();
-      } else if (isAuthenticated === false) {
-        console.warn('⚠️ Skipping file fetch: User is not authenticated');
-      }
-      // If isAuthenticated is null, wait for auth check to complete
-    } else {
-      setProject(null);
-      setFiles([]);
+    if (isAuthenticated === true) fetchProjects();
+  }, [isAuthenticated, fetchProjects]);
+
+  const fetchProjectFiles = useCallback(async (projectId: string) => {
+    try {
+      const res = await fetch(`/api/app-projects/${projectId}/files`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setProjectFiles(data);
+      setSelectedFile(null);
+    } catch {
+      setProjectFiles([]);
       setSelectedFile(null);
     }
-  }, [selectedProjectId, isAuthenticated]);
+  }, []);
 
-  const fetchProject = async () => {
-    if (!selectedProjectId) return;
-    
+  useEffect(() => {
+    if (selectedProjectId) fetchProjectFiles(selectedProjectId);
+    else {
+      setProjectFiles([]);
+      setSelectedFile(null);
+    }
+  }, [selectedProjectId, fetchProjectFiles]);
+
+  const handleCreateNewProject = useCallback(async () => {
+    setIsCreatingNew(true);
     try {
-      const res = await fetch(`/api/app-projects/${selectedProjectId}`);
-      if (res.ok) {
-        const data = await res.json();
-        const fetchedProject = {
-          id: data.id,
-          title: data.title,
-          type: data.type,
-          framework: data.framework,
-          createdAt: data.createdAt || new Date().toISOString(),
-          updatedAt: data.updatedAt || new Date().toISOString(),
-        };
-        setProject(fetchedProject);
-        // Sync selected framework with project framework
-        if (data.framework) {
-          setSelectedFramework(data.framework);
-        }
-      } else {
-        let errorData: any = {};
-        try {
-          const contentType = res.headers.get('content-type');
-          if (contentType && contentType.includes('application/json')) {
-            errorData = await res.json();
-          } else {
-            const textError = await res.text().catch(() => '');
-            errorData = { error: textError || `HTTP ${res.status}: ${res.statusText || 'Unknown error'}` };
-          }
-        } catch (parseError) {
-          errorData = { error: `HTTP ${res.status}: ${res.statusText || 'Unknown error'}` };
-        }
-        
-        // Ensure errorData has content
-        const errorMessage = errorData.error || errorData.message || `HTTP ${res.status}: ${res.statusText || 'Unknown error'}`;
-        
-        console.error('Failed to fetch project:', {
-          status: res.status,
-          statusText: res.statusText,
-          error: errorMessage,
-          errorData: Object.keys(errorData).length > 0 ? errorData : { error: errorMessage }
-        });
-        
-        // Don't show alert for 401/403 as user might not be logged in
-        if (res.status === 401) {
-          console.warn('⚠️ Authentication required - user may need to log in');
-        } else if (res.status === 403) {
-          console.warn('⚠️ Not authorized to access this project');
-        } else if (res.status !== 401 && res.status !== 403) {
-          console.warn('Project fetch error:', errorMessage);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch project (network error):', error);
-      // Network error - might be server down or CORS issue
-      if (error instanceof TypeError && error.message === 'Failed to fetch') {
-        console.error('Network error: Check if server is running and API endpoint exists');
-      }
-    }
-  };
-
-  const fetchFiles = async () => {
-    if (!selectedProjectId) return;
-    
-    // Don't fetch files if user is not authenticated
-    if (isAuthenticated === false) {
-      console.warn('⚠️ Cannot fetch files: User is not authenticated');
-      return;
-    }
-    
-    // Wait for authentication check to complete
-    if (isAuthenticated === null) {
-      console.log('⏳ Waiting for authentication check to complete...');
-      return;
-    }
-    
-    try {
-      const res = await fetch(`/api/app-projects/${selectedProjectId}/files`);
-      if (res.ok) {
-        const data = await res.json();
-        setFiles(data);
-        
-        // Auto-select first file or main file
-        const mainFile = data.find((f: ProjectFile) => f.isMain);
-        if (mainFile) {
-          setSelectedFile(mainFile);
-        } else if (data.length > 0) {
-          setSelectedFile(data[0]);
-        }
-      } else {
-        let errorData: any = {};
-        try {
-          const contentType = res.headers.get('content-type');
-          if (contentType && contentType.includes('application/json')) {
-            errorData = await res.json();
-          } else {
-            const textError = await res.text().catch(() => '');
-            errorData = { error: textError || `HTTP ${res.status}: ${res.statusText || 'Unknown error'}` };
-          }
-        } catch (parseError) {
-          errorData = { error: `HTTP ${res.status}: ${res.statusText || 'Unknown error'}` };
-        }
-        
-        console.error('Failed to fetch files:', {
-          status: res.status,
-          statusText: res.statusText,
-          error: errorData.error || errorData.message || 'Unknown error',
-          details: errorData.details,
-          errorData: Object.keys(errorData).length > 0 ? errorData : { error: errorData.error || 'Unknown error' }
-        });
-        
-        // Handle authentication errors
-        if (res.status === 401) {
-          console.warn('⚠️ Authentication required - user may need to log in');
-          console.warn('Suggestion:', errorData.details?.suggestion || errorData.message || 'Please sign in to continue');
-          // Optionally redirect to login or show a message
-          // router.push('/auth');
-        } else if (res.status === 403) {
-          console.warn('⚠️ Not authorized to access this project');
-        } else if (res.status !== 401 && res.status !== 403) {
-          console.warn('Files fetch error:', errorData.error || errorData.message || 'Unknown error');
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch files (network error):', error);
-      // Network error - might be server down or CORS issue
-      if (error instanceof TypeError && error.message === 'Failed to fetch') {
-        console.error('Network error: Check if server is running and API endpoint exists');
-      }
-    }
-  };
-
-  const handleFileSelect = (file: { id: string; path: string; name: string; language?: string; content?: string; isMain?: boolean }) => {
-    // Fetch full file content asynchronously
-    fetch(`/api/app-projects/${selectedProjectId}/files/${file.id}`)
-      .then((res) => {
-        if (res.ok) {
-          return res.json();
-        }
-        throw new Error('Failed to fetch file');
-      })
-      .then((data) => {
-        setSelectedFile(data);
-      })
-      .catch((error) => {
-        console.error('Failed to fetch file:', error);
-      });
-  };
-
-
-  // Create scaffold files for a project based on framework
-  const createScaffoldFiles = async (projectId: string, framework: string) => {
-    const files = getScaffoldFiles(framework);
-
-    try {
-      for (const file of files) {
-        await fetch(`/api/app-projects/${projectId}/files`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(file),
-        });
-      }
-      // Refresh files list
-      await fetchFiles();
-    } catch (error) {
-      console.error('Failed to create scaffold files:', error);
-    }
-  };
-
-  const handleEditorChange = (content: string) => {
-    if (selectedFile) {
-      setSelectedFile({ ...selectedFile, content });
-    }
-  };
-
-
-  // Start questionnaire without creating project - show advertisement placeholder
-  const handleCreateProjectWithWizard = () => {
-    if (isAuthenticated !== true) {
-      alert('Please sign in to create a project');
-      return;
-    }
-
-    // Don't create project yet - just start the questionnaire
-    // Open sidebar and switch to chat tab
-    setLeftSidebarOpen(true);
-    setLeftSidebarTab('chat');
-    
-    // Start wizard mode (questionnaire) - this will show advertisement placeholder
-    setChatWizardMode(true);
-    setSelectedFramework(DEFAULT_FRAMEWORK); // Set default framework (will be updated from questionnaire)
-  };
-
-
-  const handleCreateSampleProject = async () => {
-    // Check authentication first
-    if (isAuthenticated === false) {
-      alert('Please sign in to create a sample project.');
-      router.push('/auth');
-      return;
-    }
-
-    if (isAuthenticated === null || isLoading) {
-      alert('Please wait while we verify your authentication...');
-      return;
-    }
-
-    setCreatingSample(true);
-    try {
-      const response = await fetch('/api/app-projects/create-sample', {
+      const projectRes = await fetch('/api/app-projects', {
         method: 'POST',
-        credentials: 'include', // Include cookies for authentication
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: 'New Project',
+          description: 'Describe your app in the Chat tab to generate it',
+          type: 'web',
+          framework: 'react',
+          appType: 'react',
+          previewVersion: 'v2',
+        }),
       });
+      if (!projectRes.ok) throw new Error('Failed to create project');
+      const project = await projectRes.json();
+      setSelectedProjectId(project.id);
+      setLeftSidebarOpen(true);
+      setLeftSidebarTab('chat');
+      await fetchProjects();
+    } catch (error) {
+      console.error('Error creating new project:', error);
+      alert('Failed to create new project. Please try again.');
+    } finally {
+      setIsCreatingNew(false);
+    }
+  }, [fetchProjects]);
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        
-        // Handle authentication errors
-        if (response.status === 401) {
-          alert('Your session has expired. Please sign in again.');
-          router.push('/auth');
+  const handleDeleteProject = useCallback(
+    async (projectId: string) => {
+      const confirmed = window.confirm('Delete this project? This cannot be undone.');
+      if (!confirmed) return;
+
+      try {
+        const res = await fetch(`/api/app-projects?id=${encodeURIComponent(projectId)}`, {
+          method: 'DELETE',
+        });
+
+        if (!res.ok) {
+          console.error('Failed to delete project', await res.text());
+          alert('Failed to delete project. Please try again.');
           return;
         }
-        
-        throw new Error(errorData.error || `Failed to create sample project (${response.status})`);
-      }
 
-      const data = await response.json();
-      const projectId = data.project?.id || '';
-      
-      if (!projectId) {
-        throw new Error('Project ID not returned from server');
-      }
-      
-      // Set project ID first
-      setSelectedProjectId(projectId);
-      
-      // Trigger projects list refresh immediately
-      setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('projects-updated'));
-      }, 300);
-      
-      // Fetch files after project is created
-      // Wait a bit for files to be saved to database
-      setTimeout(async () => {
-        try {
-          await fetchFiles();
-          
-          // Trigger preview refresh events after files are loaded
-          setTimeout(() => {
-            console.log('🔄 Triggering preview refresh for sample project:', projectId);
-            window.dispatchEvent(new CustomEvent('files-updated', { 
-              detail: { projectId } 
-            }));
-            window.dispatchEvent(new CustomEvent('preview-updated', { 
-              detail: { projectId } 
-            }));
-            window.dispatchEvent(new CustomEvent('auto-refresh-preview', {
-              detail: { projectId }
-            }));
-          }, 800);
-          
-          // Preview automatically shows after sample creation
-        } catch (error) {
-          console.error('Error fetching files after sample creation:', error);
+        if (selectedProjectId === projectId) {
+          setSelectedProjectId('');
+          setProjectFiles([]);
+          setSelectedFile(null);
         }
-          }, 500);
-    } catch (error: any) {
-      console.error('Failed to create sample project:', error);
-      alert(`Failed to create sample project: ${error.message}`);
-    } finally {
-      setCreatingSample(false);
-    }
-  };
 
+        await fetchProjects();
+      } catch (error) {
+        console.error('Error deleting project:', error);
+        alert('Failed to delete project. Please try again.');
+      }
+    },
+    [fetchProjects, selectedProjectId],
+  );
 
   // Show loading state while checking auth
   if (isLoading || isAuthenticated === null) {
@@ -579,7 +224,7 @@ function AppBuilderPageContent() {
     >
       <Header />
       <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-      {selectedProjectId || chatWizardMode ? (
+      {selectedProjectId ? (
         <div style={{ display: 'flex', height: '100%', overflow: 'hidden', position: 'relative' }}>
           {/* Left Sidebar - Collapsible */}
           <div 
@@ -587,16 +232,17 @@ function AppBuilderPageContent() {
             style={{ 
               width: leftSidebarOpen ? `${sidebarWidth}px` : '0px',
               flexShrink: 0,
-              transition: leftSidebarOpen ? 'none' : 'width 300ms ease-in-out'
+              transition: leftSidebarOpen ? 'none' : 'width 300ms ease-in-out',
+              zIndex: 10
             }}
           >
             {leftSidebarOpen && (
-              <div className="h-full flex flex-col">
+              <div className="h-full flex flex-col" style={{ position: 'relative', zIndex: 10 }}>
                 {/* Sidebar Tabs */}
-                <div className="flex border-b border-white/10 bg-[#0d0d0d] flex-shrink-0 overflow-x-auto">
+                <div className="flex border-b border-white/10 bg-[#0d0d0d] flex-shrink-0 overflow-x-auto" style={{ position: 'relative', zIndex: 10 }}>
                   <button
                     onClick={() => setLeftSidebarTab('projects')}
-                    className={`px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap ${
+                    className={`px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
                       leftSidebarTab === 'projects'
                         ? 'text-emerald-400 border-b-2 border-emerald-400 bg-[#0a0a0a]'
                         : 'text-gray-400 hover:text-gray-300'
@@ -606,7 +252,7 @@ function AppBuilderPageContent() {
                   </button>
                   <button
                     onClick={() => setLeftSidebarTab('code')}
-                    className={`px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap ${
+                    className={`px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
                       leftSidebarTab === 'code'
                         ? 'text-emerald-400 border-b-2 border-emerald-400 bg-[#0a0a0a]'
                         : 'text-gray-400 hover:text-gray-300'
@@ -616,7 +262,7 @@ function AppBuilderPageContent() {
                   </button>
                   <button
                     onClick={() => setLeftSidebarTab('chat')}
-                    className={`px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap ${
+                    className={`px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
                       leftSidebarTab === 'chat'
                         ? 'text-emerald-400 border-b-2 border-emerald-400 bg-[#0a0a0a]'
                         : 'text-gray-400 hover:text-gray-300'
@@ -626,7 +272,7 @@ function AppBuilderPageContent() {
                   </button>
                   <button
                     onClick={() => setLeftSidebarTab('deploy')}
-                    className={`px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap ${
+                    className={`px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
                       leftSidebarTab === 'deploy'
                         ? 'text-emerald-400 border-b-2 border-emerald-400 bg-[#0a0a0a]'
                         : 'text-gray-400 hover:text-gray-300'
@@ -642,33 +288,35 @@ function AppBuilderPageContent() {
                     <ProjectManager
                       onSelectProject={setSelectedProjectId}
                       selectedProjectId={selectedProjectId}
-                      onOpenWizard={handleCreateProjectWithWizard}
+                      projects={projects}
+                      onDeleteProject={handleDeleteProject}
+                      onCreateNewProject={handleCreateNewProject}
+                      isCreatingNewProject={isCreatingNew}
                     />
                   )}
                   {leftSidebarTab === 'code' && (
                     <CodeEditor
                       file={selectedFile}
                       projectId={selectedProjectId}
-                      onChange={handleEditorChange}
-                      files={files}
-                      onFileSelect={handleFileSelect}
+                      onChange={() => {}}
+                      files={projectFiles}
+                      onFileSelect={setSelectedFile}
                     />
                   )}
                   {leftSidebarTab === 'chat' && (
                     <AppChat
                       projectId={selectedProjectId || ''}
-                      currentFile={selectedFile ? { id: selectedFile.id, path: selectedFile.path, name: selectedFile.name } : undefined}
-                      projectFiles={files.map(f => ({ path: f.path, name: f.name }))}
-                      onFilesCreated={fetchFiles}
-                      startWizardMode={chatWizardMode}
-                      projectTitle={project?.title || 'New Project'}
-                      projectFramework={selectedFramework || project?.framework || DEFAULT_FRAMEWORK}
+                      currentFile={undefined}
+                      projectFiles={projectFiles}
+                      onFilesCreated={() => selectedProjectId && fetchProjectFiles(selectedProjectId)}
+                      projectTitle="New Project"
+                      projectFramework="react"
                     />
                   )}
                   {leftSidebarTab === 'deploy' && (
                     <DeploymentPanel
                       projectId={selectedProjectId}
-                      projectName={project?.title || 'Untitled Project'}
+                      projectName="Untitled Project"
                     />
                   )}
                 </div>
@@ -677,13 +325,7 @@ function AppBuilderPageContent() {
             
             {/* Resize Handle */}
             {leftSidebarOpen && (
-              <div
-                className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-400/50 transition-colors group"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  setIsResizing(true);
-                }}
-              >
+              <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-400/50 transition-colors group">
                 <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-12 bg-emerald-400/30 group-hover:bg-emerald-400 transition-all rounded-full" />
               </div>
             )}
@@ -691,16 +333,14 @@ function AppBuilderPageContent() {
 
           {/* Main Content Area - Full Width Preview */}
           <div className="flex-1 overflow-hidden relative">
-            {/* Sidebar Toggle with Icon Menu */}
+            {/* Sidebar Toggle */}
             <div 
               className="absolute left-0 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2 group/menu"
               onMouseEnter={() => setShowTabMenu(true)}
               onMouseLeave={() => setShowTabMenu(false)}
             >
-              {/* Show tab icons only when sidebar is closed AND hovering */}
               {!leftSidebarOpen && showTabMenu && (
                 <>
-                  {/* Top Icons - 2 above */}
                   <div className="flex flex-col gap-1 animate-in fade-in slide-in-from-left-2 duration-200">
                     {[
                       { id: 'projects', label: 'Projects', icon: '📁' },
@@ -714,13 +354,9 @@ function AppBuilderPageContent() {
                             setShowTabMenu(false);
                           }}
                           className="bg-[#0d0d0d] border border-white/10 rounded-r-lg p-2.5 text-xl transition-all hover:bg-emerald-500/20 hover:scale-110 shadow-lg"
-                          style={{
-                            animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
-                          }}
                         >
                           {tab.icon}
                         </button>
-                        {/* Tooltip */}
                         <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none">
                           <div className="bg-[#0d0d0d] border border-white/10 rounded-lg px-3 py-1.5 shadow-xl whitespace-nowrap">
                             <span className="text-sm font-medium text-gray-200">{tab.label}</span>
@@ -732,22 +368,17 @@ function AppBuilderPageContent() {
                 </>
               )}
 
-              {/* Main Toggle Button - Always visible */}
               <div className="relative group/tooltip">
                 <button
                   onClick={() => setLeftSidebarOpen(!leftSidebarOpen)}
                   className="bg-[#0d0d0d] border border-white/10 rounded-r-lg p-2.5 hover:bg-[#1a1a1a] transition-all shadow-lg"
-                  style={{ 
-                    animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
-                  }}
                 >
                   <img 
                     src="/icon.svg" 
                     alt="OpenIdea" 
-                    className={`w-6 h-6 transition-transform duration-300 ${leftSidebarOpen ? 'rotate-90' : ''} group-hover/tooltip:scale-110`}
+                    className={`w-6 h-6 transition-transform duration-300 ${leftSidebarOpen ? 'rotate-90' : ''}`}
                   />
                 </button>
-                {/* Tooltip */}
                 <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none">
                   <div className="bg-[#0d0d0d] border border-white/10 rounded-lg px-3 py-1.5 shadow-xl whitespace-nowrap">
                     <span className="text-sm font-medium text-gray-200">
@@ -757,10 +388,8 @@ function AppBuilderPageContent() {
                 </div>
               </div>
 
-              {/* Show tab icons only when sidebar is closed AND hovering */}
               {!leftSidebarOpen && showTabMenu && (
                 <>
-                  {/* Bottom Icons - 2 below */}
                   <div className="flex flex-col gap-1 animate-in fade-in slide-in-from-left-2 duration-200">
                     {[
                       { id: 'chat', label: 'Chat', icon: '💬' },
@@ -774,13 +403,9 @@ function AppBuilderPageContent() {
                             setShowTabMenu(false);
                           }}
                           className="bg-[#0d0d0d] border border-white/10 rounded-r-lg p-2.5 text-xl transition-all hover:bg-emerald-500/20 hover:scale-110 shadow-lg"
-                          style={{
-                            animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
-                          }}
                         >
                           {tab.icon}
                         </button>
-                        {/* Tooltip */}
                         <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none">
                           <div className="bg-[#0d0d0d] border border-white/10 rounded-lg px-3 py-1.5 shadow-xl whitespace-nowrap">
                             <span className="text-sm font-medium text-gray-200">{tab.label}</span>
@@ -795,14 +420,11 @@ function AppBuilderPageContent() {
 
             {/* Preview - Full Width */}
             <div className="h-full overflow-hidden">
-              {/* Show advertisement placeholder during questionnaire */}
-              {chatWizardMode ? (
-                <AdvertisementPlaceholder />
-              ) : selectedProjectId ? (
+              {selectedProjectId ? (
                 <PreviewPanel
                   projectId={selectedProjectId}
-                  projectType={project?.type || 'web'}
-                  onRefresh={fetchFiles}
+                  projectType="web"
+                  onRefresh={() => {}}
                 />
               ) : (
                 <div className="h-full flex items-center justify-center bg-[#0a0a0a] text-gray-400">
@@ -816,36 +438,124 @@ function AppBuilderPageContent() {
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: '256px 1fr', height: '100%', overflow: 'hidden' }}>
-          {/* Column 1: Projects */}
           <div style={{ height: '100%', overflow: 'hidden' }}>
             <ProjectManager
               onSelectProject={setSelectedProjectId}
               selectedProjectId={selectedProjectId}
-              onOpenWizard={handleCreateProjectWithWizard}
               showActionButtons={false}
+              projects={projects}
+              onDeleteProject={handleDeleteProject}
             />
           </div>
-
-          {/* Column 2: Welcome Screen */}
           <WelcomeScreen
-            onCreateProject={handleCreateProjectWithWizard}
-            onCreateSample={handleCreateSampleProject}
-            isCreatingSample={creatingSample}
+            onCreateSample={async () => {
+              setIsCreatingSample(true);
+              try {
+                const projectRes = await fetch('/api/app-projects', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(SAMPLE_PORTFOLIO_PROJECT),
+                });
+
+                if (!projectRes.ok) {
+                  throw new Error('Failed to create project');
+                }
+
+                const project = await projectRes.json();
+                const projectId = project.id;
+
+                for (const file of SAMPLE_PORTFOLIO_FILES) {
+                  await fetch(`/api/app-projects/${projectId}/files`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(file),
+                  });
+                }
+
+                setSelectedProjectId(projectId);
+                await fetchProjects();
+              } catch (error) {
+                console.error('Error creating sample project:', error);
+                alert('Failed to create sample project. Please try again.');
+              } finally {
+                setIsCreatingSample(false);
+              }
+            }}
+            onCreateReactSample={async () => {
+              setIsCreatingReactSample(true);
+              try {
+                const projectRes = await fetch('/api/app-projects', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(SAMPLE_REACT_PROJECT),
+                });
+
+                if (!projectRes.ok) {
+                  throw new Error('Failed to create project');
+                }
+
+                const project = await projectRes.json();
+                const projectId = project.id;
+
+                for (const file of SAMPLE_REACT_FILES) {
+                  await fetch(`/api/app-projects/${projectId}/files`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(file),
+                  });
+                }
+
+                setSelectedProjectId(projectId);
+                await fetchProjects();
+              } catch (error) {
+                console.error('Error creating React sample project:', error);
+                alert('Failed to create React sample project. Please try again.');
+              } finally {
+                setIsCreatingReactSample(false);
+              }
+            }}
+            onCreateNew={async () => {
+              setIsCreatingNew(true);
+              try {
+                const projectRes = await fetch('/api/app-projects', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    title: 'New Project',
+                    description: 'Describe your app in the Chat tab to generate it',
+                    type: 'web',
+                    framework: 'react',
+                    appType: 'react',
+                    previewVersion: 'v2',
+                  }),
+                });
+                if (!projectRes.ok) throw new Error('Failed to create project');
+                const project = await projectRes.json();
+                setSelectedProjectId(project.id);
+                setLeftSidebarOpen(true);
+                setLeftSidebarTab('chat');
+                await fetchProjects();
+              } catch (error) {
+                console.error('Error creating new project:', error);
+                alert('Failed to create new project. Please try again.');
+              } finally {
+                setIsCreatingNew(false);
+              }
+            }}
+            isCreatingSample={isCreatingSample}
+            isCreatingReactSample={isCreatingReactSample}
+            isCreatingNew={isCreatingNew}
             isAuthenticated={isAuthenticated === true}
           />
         </div>
       )}
       </div>
 
-      {/* Generation Loader Overlay */}
       <GenerationLoader
-        isActive={isGenerating}
-        message={`Generating ${project?.title || 'your app'}...`}
-        onComplete={() => {
-          console.log('Generation complete!');
-        }}
+        isActive={false}
+        message=""
+        onComplete={() => {}}
       />
-
     </div>
   );
 }
@@ -867,4 +577,3 @@ export default function AppBuilderPage() {
     </Suspense>
   );
 }
-

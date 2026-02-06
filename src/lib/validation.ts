@@ -38,6 +38,7 @@ export const CreateAppProject = z.object({
   description: z.string().optional(),
   type: z.enum(["web", "fullstack", "other"]).default("web"),
   framework: z.string().optional(),
+  previewVersion: z.enum(["v1", "v2"]).optional(),
   workspaceId: z.string().optional(),
   config: z.any().optional(),
   // Questionnaire fields

@@ -1,175 +1,191 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 
-interface Project {
+export interface ProjectListItem {
   id: string;
   title: string;
-  description?: string;
-  type: string;
-  framework?: string;
-  workspaceId?: string;
-  createdAt: string;
-  updatedAt: string;
-  _count?: {
-    files: number;
-  };
+  description?: string | null;
+  framework?: string | null;
+  createdAt?: string;
 }
 
 interface ProjectManagerProps {
   onSelectProject: (projectId: string) => void;
   selectedProjectId?: string;
-  onOpenWizard?: () => void;
   showActionButtons?: boolean;
+  projects?: ProjectListItem[];
+  onDeleteProject?: (projectId: string) => void;
+  onCreateNewProject?: () => void;
+  isCreatingNewProject?: boolean;
 }
 
-export default function ProjectManager({ onSelectProject, selectedProjectId, onOpenWizard, showActionButtons = true }: ProjectManagerProps) {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [creatingSample, setCreatingSample] = useState(false);
+export default function ProjectManager({
+  onSelectProject,
+  selectedProjectId,
+  showActionButtons = true,
+  projects = [],
+  onDeleteProject,
+  onCreateNewProject,
+  isCreatingNewProject = false,
+}: ProjectManagerProps) {
+  const hasProjects = projects.length > 0;
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchProjects();
-  }, []);
+  const sortedProjects = useMemo(
+    () => [...projects],
+    [projects],
+  );
 
-  // Listen for projects-updated event to refresh projects list
-  useEffect(() => {
-    const handleProjectsUpdated = () => {
-      console.log('🔄 ProjectManager: Refreshing projects list');
-      fetchProjects();
-    };
-
-    window.addEventListener('projects-updated', handleProjectsUpdated);
-    return () => {
-      window.removeEventListener('projects-updated', handleProjectsUpdated);
-    };
-  }, []);
-
-  const fetchProjects = async () => {
-    try {
-      const res = await fetch('/api/app-projects');
-      if (res.ok) {
-        const data = await res.json();
-        setProjects(data);
-      }
-    } catch (error) {
-      console.error('Failed to fetch projects:', error);
-    } finally {
-      setLoading(false);
-    }
+  const formatCreatedAt = (iso?: string) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
   };
-
-  const handleCreateSampleProject = async () => {
-    if (!confirm('Create a sample portfolio project?')) return;
-    
-    setCreatingSample(true);
-    try {
-      const res = await fetch('/api/app-projects/create-sample', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(errorData.error || 'Failed to create sample project');
-      }
-
-      const data = await res.json();
-      console.log('Sample project created:', data);
-
-      // Refresh projects list
-      await fetchProjects();
-      
-      // Select the new project
-      onSelectProject(data.id);
-      
-      console.log('✅ Sample project created and selected');
-    } catch (error: any) {
-      console.error('Failed to create sample project:', error);
-      alert(error?.message || 'Failed to create sample project. Please try again.');
-    } finally {
-      setCreatingSample(false);
-    }
-  };
-
-  const handleDeleteProject = async (projectId: string) => {
-    if (!confirm('Are you sure you want to delete this project?')) return;
-
-    try {
-      const res = await fetch(`/api/app-projects/${projectId}`, {
-        method: 'DELETE',
-      });
-
-      if (res.ok) {
-        await fetchProjects();
-        if (selectedProjectId === projectId) {
-          onSelectProject('');
-        }
-      }
-    } catch (error) {
-      console.error('Failed to delete project:', error);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="p-4 text-gray-400">Loading projects...</div>
-    );
-  }
 
   return (
-    <div className="h-full flex flex-col bg-gradient-to-b from-[#0a0a0a] via-[#0d0d0d] to-[#0a0a0a] border-r border-white/5 overflow-hidden">
-      <div className="p-5 border-b border-white/5 flex-shrink-0 bg-gradient-to-r from-[#0a0a0a]/50 to-[#0d0d0d]/50 backdrop-blur-sm">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-white font-bold text-xl mb-1 bg-gradient-to-r from-white via-emerald-100 to-cyan-100 bg-clip-text text-transparent">
-              Projects
-            </h2>
-            <p className="text-gray-400 text-xs font-medium">
-              {projects.length} {projects.length === 1 ? 'project' : 'projects'}
-            </p>
-          </div>
-        </div>
-        
-        {/* Quick Actions - Only show when showActionButtons is true */}
+    <div className="h-full flex flex-col bg-[#0a0a0a]">
+      <div className="p-4 border-b border-white/10 flex-shrink-0">
         {showActionButtons && (
-          <div className="flex gap-2">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-white font-semibold text-sm">Projects</h2>
             <button
-              onClick={onOpenWizard}
-              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-emerald-500/10 to-cyan-500/10 hover:from-emerald-500/20 hover:to-cyan-500/20 border border-emerald-500/30 rounded-lg text-emerald-400 text-xs font-medium transition-all"
+              type="button"
+              onClick={() => onCreateNewProject && onCreateNewProject()}
+              disabled={isCreatingNewProject || !onCreateNewProject}
+              className="px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 rounded-lg text-white text-xs font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
-              New
-            </button>
-            <button
-              onClick={handleCreateSampleProject}
-              disabled={creatingSample}
-              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-purple-500/10 to-pink-500/10 hover:from-purple-500/20 hover:to-pink-500/20 border border-purple-500/30 rounded-lg text-purple-400 text-xs font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {creatingSample ? (
-                <>
-                  <div className="w-3 h-3 border-2 border-purple-400 border-t-transparent rounded-full animate-spin"></div>
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                  Sample
-                </>
-              )}
+              Create
             </button>
           </div>
         )}
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto p-4">
-        {projects.length === 0 ? (
+        {hasProjects ? (
+          <ul className="space-y-2">
+            {sortedProjects.map((project) => {
+              const isSelected = selectedProjectId === project.id;
+              const isExpanded = expandedProjectId === project.id;
+
+              return (
+                <li key={project.id}>
+                  <div
+                    className={`w-full rounded-lg border transition-colors ${
+                      isSelected
+                        ? 'bg-emerald-500/10 border-emerald-400/60'
+                        : 'bg-[#050505] border-white/5 hover:border-white/15'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onSelectProject(project.id);
+                        setExpandedProjectId((prev) => (prev === project.id ? null : project.id));
+                      }}
+                      className="w-full px-3 py-2.5 flex items-center justify-between gap-2 text-left"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-100 truncate">
+                          {project.title || 'Untitled project'}
+                        </p>
+                        {(project.framework || project.createdAt) && (
+                          <p className="text-[11px] text-gray-500 mt-0.5 truncate">
+                            {project.framework && <span className="uppercase">{project.framework}</span>}
+                            {project.framework && project.createdAt && <span className="mx-1">•</span>}
+                            {project.createdAt && <span>{formatCreatedAt(project.createdAt)}</span>}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 ml-2">
+                        {/* GitHub button (future save/push) */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // TODO: Wire up GitHub save/push flow
+                            console.log('GitHub clicked for project', project.id);
+                          }}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/15 text-gray-300 hover:bg-white/10 hover:text-white transition-colors"
+                          title="GitHub (coming soon)"
+                        >
+                          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.38 7.86 10.9.58.1.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.7-3.88-1.55-3.88-1.55-.53-1.34-1.3-1.7-1.3-1.7-1.06-.73.08-.72.08-.72 1.17.08 1.79 1.2 1.79 1.2 1.04 1.79 2.73 1.27 3.4.97.1-.76.4-1.27.73-1.56-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.3 1.2-3.11-.12-.29-.52-1.46.11-3.04 0 0 .97-.31 3.18 1.19a11.1 11.1 0 0 1 2.9-.39c.99 0 2 .13 2.94.39C17.6 4.2 18.57 4.5 18.57 4.5c.63 1.58.23 2.75.11 3.04.75.81 1.2 1.85 1.2 3.11 0 4.44-2.7 5.4-5.27 5.68.41.35.78 1.04.78 2.1 0 1.52-.01 2.74-.01 3.11 0 .31.21.67.8.56A10.52 10.52 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5Z" />
+                          </svg>
+                        </button>
+
+                        {/* Delete button (compact bin icon) */}
+                        {onDeleteProject && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDeleteProject(project.id);
+                            }}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-red-500/40 text-red-300 hover:bg-red-500/20 transition-colors"
+                            title="Delete project"
+                          >
+                            <svg
+                              className="h-3.5 w-3.5"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M3 6h18" />
+                              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                              <path d="M10 11v6" />
+                              <path d="M14 11v6" />
+                            </svg>
+                          </button>
+                        )}
+
+                        {/* Existing chevron / player toggle */}
+                        <span
+                          className={`inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/15 text-[10px] text-gray-400 transition-transform ${
+                            isExpanded ? 'rotate-90' : ''
+                          }`}
+                          aria-hidden="true"
+                        >
+                          ▸
+                        </span>
+                      </div>
+                    </button>
+
+                    {isExpanded && (
+                      <div className="px-3 pb-3 pt-1 border-t border-white/10 text-xs text-gray-300 space-y-2">
+                        {project.description && (
+                          <p className="text-[11px] text-gray-400 leading-snug line-clamp-3">
+                            {project.description}
+                          </p>
+                        )}
+                        <div className="text-[11px] text-gray-500">
+                          <p>
+                            <span className="text-gray-400">ID:&nbsp;</span>
+                            <span className="font-mono text-[10px] break-all opacity-80">
+                              {project.id}
+                            </span>
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
           <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-center px-4">
             <div className="relative mb-6">
               <div className="absolute inset-0 bg-gradient-to-r from-emerald-400/20 to-cyan-400/20 rounded-full blur-2xl"></div>
@@ -183,113 +199,11 @@ export default function ProjectManager({ onSelectProject, selectedProjectId, onO
               No projects yet
             </h3>
             <p className="text-gray-400 text-sm mb-6 max-w-sm">
-              Get started by creating your first project using the Create Project button in the center
+              Get started by creating your first project
             </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {projects.map((project) => {
-              const isExpanded = expandedProjectId === project.id;
-              return (
-                <div
-                  key={project.id}
-                  className={`group relative rounded-xl cursor-pointer transition-all duration-300 ${
-                    selectedProjectId === project.id
-                      ? 'bg-gradient-to-br from-emerald-500/20 via-emerald-500/10 to-cyan-500/10 border-2 border-emerald-500/50 shadow-lg shadow-emerald-500/10'
-                      : 'bg-gradient-to-br from-[#1a1a1a]/80 to-[#0d0d0d]/80 border border-white/5 hover:border-emerald-500/30 hover:shadow-lg hover:shadow-emerald-500/5'
-                  }`}
-                >
-                  {/* Project Header - Always Visible */}
-                  <div 
-                    className="flex items-center justify-between gap-2 p-3"
-                    onClick={() => onSelectProject(project.id)}
-                  >
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                        selectedProjectId === project.id 
-                          ? 'bg-emerald-400' 
-                          : 'bg-gray-500 group-hover:bg-emerald-400'
-                      } transition-colors`}></div>
-                      <h3 className={`font-semibold text-sm truncate ${
-                        selectedProjectId === project.id 
-                          ? 'text-white' 
-                          : 'text-gray-200 group-hover:text-white'
-                      } transition-colors`}>
-                        {project.title}
-                      </h3>
-                    </div>
-                    
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      {/* Expand/Collapse Button */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setExpandedProjectId(isExpanded ? null : project.id);
-                        }}
-                        className="p-1 text-gray-400 hover:text-emerald-400 rounded transition-colors"
-                        title={isExpanded ? 'Collapse' : 'Expand'}
-                      >
-                        <svg 
-                          className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} 
-                          fill="none" 
-                          stroke="currentColor" 
-                          viewBox="0 0 24 24"
-                        >
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </button>
-                      
-                      {/* Delete Button */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteProject(project.id);
-                        }}
-                        className="p-1 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded transition-all duration-200 opacity-0 group-hover:opacity-100"
-                        title="Delete project"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Expanded Details */}
-                  {isExpanded && (
-                    <div className="px-3 pb-3 pt-0 border-t border-white/5 animate-in fade-in slide-in-from-top-2 duration-200">
-                      {project.description && (
-                        <p className="text-gray-400 text-xs mt-2 mb-3">
-                          {project.description}
-                        </p>
-                      )}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="px-2 py-0.5 bg-white/5 text-gray-400 text-xs rounded-md border border-white/5">
-                          {project.type}
-                        </span>
-                        {project.framework && (
-                          <span className="px-2 py-0.5 bg-white/5 text-gray-400 text-xs rounded-md border border-white/5">
-                            {project.framework}
-                          </span>
-                        )}
-                        {project._count && (
-                          <span className="px-2 py-0.5 bg-white/5 text-gray-400 text-xs rounded-md border border-white/5">
-                            {project._count.files} {project._count.files === 1 ? 'file' : 'files'}
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-2 text-xs text-gray-500">
-                        Created: {new Date(project.createdAt).toLocaleDateString()}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
           </div>
         )}
       </div>
     </div>
   );
 }
-

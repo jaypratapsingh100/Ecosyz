@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, ComponentType } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { 
@@ -14,7 +14,6 @@ import {
   TrendingUp,
   Activity,
   Globe,
-  Code,
   BarChart3,
   RefreshCw,
   AlertCircle,
@@ -232,7 +231,7 @@ export default function AdminAnalyticsPage() {
       
       if (!response.ok) {
         let errorMessage = 'Failed to fetch analytics';
-        let errorDetails: any = null;
+        let errorDetails: { message?: string; code?: string; name?: string; details?: string } | null = null;
         
         try {
           const errorData = await response.json();
@@ -245,13 +244,13 @@ export default function AdminAnalyticsPage() {
             console.error('Error code:', errorDetails.code);
             console.error('Error name:', errorDetails.name);
           }
-        } catch (parseError) {
+        } catch (_parseError) {
           // If response is not JSON, try to get text
           try {
             const text = await response.text();
             console.error('Non-JSON error response:', text);
             errorMessage = text || response.statusText || errorMessage;
-          } catch (textError) {
+          } catch (_textError) {
             errorMessage = response.statusText || errorMessage;
           }
         }
@@ -465,7 +464,7 @@ export default function AdminAnalyticsPage() {
   }: { 
     title: string; 
     value: number | string; 
-    icon: any; 
+    icon: ComponentType<{ className?: string }>; 
     trend?: number;
     trendLabel?: string;
   }) => (
@@ -1338,11 +1337,14 @@ export default function AdminAnalyticsPage() {
                         <div className="space-y-1">
                           <p className="text-2xl font-bold text-white">{kpi.value.length}</p>
                           <div className="text-xs text-slate-400 max-h-20 overflow-y-auto">
-                            {kpi.value.slice(0, 3).map((item: any, idx: number) => (
-                              <div key={idx} className="truncate">
-                                {item.query || item.provider || JSON.stringify(item)}
-                              </div>
-                            ))}
+                            {kpi.value.slice(0, 3).map((item: unknown, idx: number) => {
+                              const itemObj = item as { query?: string; provider?: string };
+                              return (
+                                <div key={idx} className="truncate">
+                                  {itemObj.query || itemObj.provider || JSON.stringify(item)}
+                                </div>
+                              );
+                            })}
                             {kpi.value.length > 3 && (
                               <div className="text-slate-500">+{kpi.value.length - 3} more</div>
                             )}

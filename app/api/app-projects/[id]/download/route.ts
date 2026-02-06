@@ -1,24 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
+import JSZip from 'jszip';
 import { prisma } from '@/lib/db';
 import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
-import JSZip from 'jszip';
 
+/**
+ * GET /api/app-projects/[id]/download
+ * Export project files as a Vercel-ready ZIP (same structure as in DB).
+ */
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = await getCurrentUser();
-
     if (!user) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
-
     await ensureUserInDb(user);
     const prismaUser = await prisma.user.findUnique({
       where: { supabaseId: user.id },
     });
-
     if (!prismaUser) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
@@ -27,84 +28,39 @@ export async function GET(
     const project = await prisma.appProject.findUnique({
       where: { id },
       include: {
-        files: {
-          orderBy: { path: 'asc' },
-        },
+        files: { orderBy: { path: 'asc' } },
       },
     });
 
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
-
     if (project.ownerId !== prismaUser.id) {
-      return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    // Create zip file
     const zip = new JSZip();
-    
-    // Add all project files
     for (const file of project.files) {
       zip.file(file.path, file.content);
     }
 
-    // Add package.json if it's a React/Next.js project
-    if (project.framework === 'react' || project.framework === 'nextjs') {
-      const packageJson = {
-        name: project.title.toLowerCase().replace(/\s+/g, '-'),
-        version: '1.0.0',
-        private: true,
-        scripts: {
-          dev: project.framework === 'nextjs' ? 'next dev' : 'react-scripts start',
-          build: project.framework === 'nextjs' ? 'next build' : 'react-scripts build',
-          start: project.framework === 'nextjs' ? 'next start' : 'react-scripts start',
-        },
-        dependencies: project.framework === 'nextjs' 
-          ? {
-              react: '^18.0.0',
-              'react-dom': '^18.0.0',
-              next: '^14.0.0',
-            }
-          : {
-              react: '^18.0.0',
-              'react-dom': '^18.0.0',
-              'react-scripts': '5.0.1',
-            },
-      };
-      zip.file('package.json', JSON.stringify(packageJson, null, 2));
-    }
+    // Generate as ArrayBuffer so it can be used directly as a Response body
+    const blob = await zip.generateAsync({ type: 'arraybuffer' });
+    const slug = (project.title || 'project').replace(/[^a-z0-9-]/gi, '-').replace(/-+/g, '-').toLowerCase() || 'project';
+    const filename = `${slug}.zip`;
 
-    // Add .gitignore
-    const gitignore = `node_modules/
-.next/
-out/
-build/
-.DS_Store
-*.log
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-`;
-    zip.file('.gitignore', gitignore);
-
-    // Generate zip buffer
-    const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
-
-    // Return zip file
-    return new NextResponse(new Uint8Array(zipBuffer), {
+    return new NextResponse(blob, {
+      status: 200,
       headers: {
         'Content-Type': 'application/zip',
-        'Content-Disposition': `attachment; filename="${project.title.replace(/\s+/g, '-')}.zip"`,
+        'Content-Disposition': `attachment; filename="${filename}"`,
       },
     });
-  } catch (error: any) {
-    console.error('Download error:', error);
+  } catch (error) {
+    console.error('Error exporting project:', error);
     return NextResponse.json(
-      { error: error?.message || 'Failed to download project' },
+      { error: 'Failed to export project' },
       { status: 500 }
     );
   }
 }
-

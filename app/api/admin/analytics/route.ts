@@ -8,9 +8,10 @@ export async function GET(req: NextRequest) {
     let user;
     try {
       user = await getCurrentUser();
-    } catch (authError: any) {
+    } catch (authError: unknown) {
       // Handle Supabase connection errors
-      if (authError?.cause?.code === 'ENOTFOUND' || authError?.message?.includes('fetch failed') || authError?.message?.includes('getaddrinfo')) {
+      const error = authError as { cause?: { code?: string }; message?: string };
+      if (error?.cause?.code === 'ENOTFOUND' || error?.message?.includes('fetch failed') || error?.message?.includes('getaddrinfo')) {
         console.error('Supabase connection error in analytics route:', authError);
         return NextResponse.json(
           { 
@@ -36,9 +37,10 @@ export async function GET(req: NextRequest) {
     let isUserAdmin = false;
     try {
       isUserAdmin = await isAdmin();
-    } catch (adminError: any) {
+    } catch (adminError: unknown) {
       // Handle Supabase connection errors in admin check
-      if (adminError?.cause?.code === 'ENOTFOUND' || adminError?.message?.includes('fetch failed') || adminError?.message?.includes('getaddrinfo')) {
+      const error = adminError as { cause?: { code?: string }; message?: string };
+      if (error?.cause?.code === 'ENOTFOUND' || error?.message?.includes('fetch failed') || error?.message?.includes('getaddrinfo')) {
         console.error('Supabase connection error in admin check:', adminError);
         return NextResponse.json(
           { 
@@ -215,9 +217,10 @@ export async function GET(req: NextRequest) {
       }),
 
       ]);
-    } catch (coreError: any) {
+    } catch (coreError: unknown) {
       console.error('Error fetching core analytics data:', coreError);
-      throw new Error(`Failed to fetch core analytics: ${coreError?.message || String(coreError)}`);
+      const errorMessage = coreError instanceof Error ? coreError.message : String(coreError);
+      throw new Error(`Failed to fetch core analytics: ${errorMessage}`);
     }
 
     // Fetch tracking data separately with error handling (tables might not exist yet)
@@ -228,12 +231,12 @@ export async function GET(req: NextRequest) {
     let dailySearches = 0;
     let totalResourceViews = 0;
     let dailyResourceViews = 0;
-    let searchStats: any[] = [];
-    let popularSearches: any[] = [];
-    let searchProviders: any[] = [];
-    let uniqueVisitorsToday: any[] = [];
-    let uniqueVisitorsLast7Days: any[] = [];
-    let uniqueVisitorsLast30Days: any[] = [];
+    let searchStats: unknown[] = [];
+    let popularSearches: unknown[] = [];
+    let searchProviders: unknown[] = [];
+    let uniqueVisitorsToday: unknown[] = [];
+    let uniqueVisitorsLast7Days: unknown[] = [];
+    let uniqueVisitorsLast30Days: unknown[] = [];
 
     // Check if tracking models exist in Prisma client (they might not if migration hasn't been run)
     let hasTrackingModels = false;
@@ -373,8 +376,8 @@ export async function GET(req: NextRequest) {
 
     // Process search statistics
     const searchStatsFormatted = Array.isArray(searchStats) 
-      ? searchStats.reduce((acc, item) => {
-          acc[item.clicked ? 'clicked' : 'not_clicked'] = item._count;
+      ? (searchStats as Array<{ clicked?: boolean; _count?: number }>).reduce((acc: Record<string, number>, item) => {
+          acc[item.clicked ? 'clicked' : 'not_clicked'] = item._count || 0;
           return acc;
         }, {} as Record<string, number>)
       : {};
@@ -386,9 +389,10 @@ export async function GET(req: NextRequest) {
     // Process popular searches - group and sort manually
     const searchQueryMap = new Map<string, number>();
     if (Array.isArray(popularSearches)) {
-      popularSearches.forEach((log: any) => {
-        if (log && log.query) {
-          const normalizedQuery = log.query.toLowerCase().trim();
+      popularSearches.forEach((log: unknown) => {
+        const logObj = log as { query?: string };
+        if (logObj && logObj.query) {
+          const normalizedQuery = logObj.query.toLowerCase().trim();
           searchQueryMap.set(normalizedQuery, (searchQueryMap.get(normalizedQuery) || 0) + 1);
         }
       });
@@ -401,9 +405,10 @@ export async function GET(req: NextRequest) {
     // Process provider usage
     const providerUsageMap = new Map<string, number>();
     if (Array.isArray(searchProviders)) {
-      searchProviders.forEach((log: any) => {
-        if (log && log.providers && Array.isArray(log.providers)) {
-          log.providers.forEach((provider: string) => {
+      searchProviders.forEach((log: unknown) => {
+        const logObj = log as { providers?: string[] };
+        if (logObj && logObj.providers && Array.isArray(logObj.providers)) {
+          logObj.providers.forEach((provider: string) => {
             providerUsageMap.set(provider, (providerUsageMap.get(provider) || 0) + 1);
           });
         }
@@ -926,25 +931,26 @@ export async function GET(req: NextRequest) {
         })),
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching admin analytics:', error);
     console.error('Error type:', typeof error);
     console.error('Error stringified:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
     
     // Extract error information safely
-    const errorMessage = error?.message || error?.toString() || 'Failed to fetch analytics data';
-    const errorName = error?.name || 'Error';
-    const errorCode = error?.code || error?.statusCode || 'UNKNOWN';
+    const errorMessage = error instanceof Error ? error.message : (typeof error === 'string' ? error : String(error)) || 'Failed to fetch analytics data';
+    const errorName = error instanceof Error ? error.name : 'Error';
+    const errorObj = error as { code?: string | number; statusCode?: string | number };
+    const errorCode = errorObj?.code || errorObj?.statusCode || 'UNKNOWN';
     
-    const errorDetails: any = {
+    const errorDetails: Record<string, unknown> = {
       message: errorMessage,
       name: errorName,
       code: String(errorCode),
     };
     
     if (process.env.NODE_ENV === 'development') {
-      if (error?.stack) errorDetails.stack = error.stack;
-      if (error?.cause) errorDetails.cause = String(error.cause);
+      if (error instanceof Error && error.stack) errorDetails.stack = error.stack;
+      if (error instanceof Error && error.cause) errorDetails.cause = String(error.cause);
       errorDetails.fullError = String(error);
     }
     
