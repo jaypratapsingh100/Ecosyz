@@ -11,6 +11,9 @@ import AppChat from '../components/app-builder/AppChat';
 import PreviewPanel from '../components/app-builder/PreviewPanel';
 import DeploymentPanel from '../components/app-builder/DeploymentPanel';
 import GenerationLoader from '../components/app-builder/GenerationLoader';
+import ProjectLoadingOverlay from '../components/app-builder/ProjectLoadingOverlay';
+import DeleteConfirmModal from '../components/app-builder/DeleteConfirmModal';
+import CreateProjectModal from '../components/app-builder/CreateProjectModal';
 import WelcomeScreen from '../components/app-builder/WelcomeScreen';
 import { useAuthCheck } from '../hooks/useAuthCheck';
 import { SAMPLE_PORTFOLIO_PROJECT, SAMPLE_PORTFOLIO_FILES } from './samplePortfolioProject';
@@ -29,6 +32,11 @@ function AppBuilderPageContent() {
   const [isCreatingSample, setIsCreatingSample] = useState(false);
   const [isCreatingReactSample, setIsCreatingReactSample] = useState(false);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
+  const [isLoadingProject, setIsLoadingProject] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<{ id: string; title: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [projectFiles, setProjectFiles] = useState<{ id: string; path: string; name: string; content: string; language?: string }[]>([]);
   const [selectedFile, setSelectedFile] = useState<{ id: string; path: string; name: string; content: string; language?: string } | null>(null);
 
@@ -64,84 +72,117 @@ function AppBuilderPageContent() {
   }, [isAuthenticated, fetchProjects]);
 
   const fetchProjectFiles = useCallback(async (projectId: string) => {
+    setIsLoadingProject(true);
     try {
       const res = await fetch(`/api/app-projects/${projectId}/files`);
-      if (!res.ok) return;
+      if (!res.ok) {
+        setProjectFiles([]);
+        setSelectedFile(null);
+        return;
+      }
       const data = await res.json();
       setProjectFiles(data);
       setSelectedFile(null);
     } catch {
       setProjectFiles([]);
       setSelectedFile(null);
+    } finally {
+      setIsLoadingProject(false);
     }
   }, []);
 
   useEffect(() => {
-    if (selectedProjectId) fetchProjectFiles(selectedProjectId);
-    else {
+    if (selectedProjectId) {
+      fetchProjectFiles(selectedProjectId);
+    } else {
       setProjectFiles([]);
       setSelectedFile(null);
+      setIsLoadingProject(false);
     }
   }, [selectedProjectId, fetchProjectFiles]);
 
-  const handleCreateNewProject = useCallback(async () => {
-    setIsCreatingNew(true);
-    try {
-      const projectRes = await fetch('/api/app-projects', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: 'New Project',
-          description: 'Describe your app in the Chat tab to generate it',
-          type: 'web',
-          framework: 'react',
-          appType: 'react',
-          previewVersion: 'v2',
-        }),
-      });
-      if (!projectRes.ok) throw new Error('Failed to create project');
-      const project = await projectRes.json();
-      setSelectedProjectId(project.id);
-      setLeftSidebarOpen(true);
-      setLeftSidebarTab('chat');
-      await fetchProjects();
-    } catch (error) {
-      console.error('Error creating new project:', error);
-      alert('Failed to create new project. Please try again.');
-    } finally {
-      setIsCreatingNew(false);
-    }
-  }, [fetchProjects]);
+  const handleCreateNewProject = useCallback(() => {
+    setCreateModalOpen(true);
+  }, []);
+
+  const confirmCreateProject = useCallback(
+    async (projectName: string) => {
+      setIsCreatingNew(true);
+      try {
+        const projectRes = await fetch('/api/app-projects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: projectName || 'New Project',
+            description: 'Describe your app in the Chat tab to generate it',
+            type: 'web',
+            framework: 'react',
+            appType: 'react',
+            previewVersion: 'v2',
+          }),
+        });
+        if (!projectRes.ok) throw new Error('Failed to create project');
+        const project = await projectRes.json();
+        setCreateModalOpen(false);
+        setSelectedProjectId(project.id);
+        setLeftSidebarOpen(true);
+        setLeftSidebarTab('chat');
+        await fetchProjects();
+      } catch (error) {
+        console.error('Error creating new project:', error);
+        alert('Failed to create new project. Please try again.');
+      } finally {
+        setIsCreatingNew(false);
+      }
+    },
+    [fetchProjects],
+  );
 
   const handleDeleteProject = useCallback(
-    async (projectId: string) => {
-      const confirmed = window.confirm('Delete this project? This cannot be undone.');
-      if (!confirmed) return;
+    (projectId: string) => {
+      const project = projects.find((p) => p.id === projectId);
+      if (project) {
+        setProjectToDelete({ id: projectId, title: project.title || 'Untitled project' });
+        setDeleteModalOpen(true);
+      }
+    },
+    [projects],
+  );
 
+  const confirmDeleteProject = useCallback(
+    async () => {
+      if (!projectToDelete) return;
+
+      setIsDeleting(true);
       try {
-        const res = await fetch(`/api/app-projects?id=${encodeURIComponent(projectId)}`, {
+        const res = await fetch(`/api/app-projects?id=${encodeURIComponent(projectToDelete.id)}`, {
           method: 'DELETE',
         });
 
         if (!res.ok) {
           console.error('Failed to delete project', await res.text());
           alert('Failed to delete project. Please try again.');
+          setIsDeleting(false);
           return;
         }
 
-        if (selectedProjectId === projectId) {
+        if (selectedProjectId === projectToDelete.id) {
           setSelectedProjectId('');
           setProjectFiles([]);
           setSelectedFile(null);
         }
 
+        setDeleteModalOpen(false);
+        setProjectToDelete(null);
         await fetchProjects();
       } catch (error) {
         console.error('Error deleting project:', error);
         alert('Failed to delete project. Please try again.');
+      } finally {
+        setIsDeleting(false);
       }
     },
-    [fetchProjects, selectedProjectId],
+    [projectToDelete, fetchProjects, selectedProjectId],
   );
 
   // Show loading state while checking auth
@@ -514,34 +555,7 @@ function AppBuilderPageContent() {
                 setIsCreatingReactSample(false);
               }
             }}
-            onCreateNew={async () => {
-              setIsCreatingNew(true);
-              try {
-                const projectRes = await fetch('/api/app-projects', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    title: 'New Project',
-                    description: 'Describe your app in the Chat tab to generate it',
-                    type: 'web',
-                    framework: 'react',
-                    appType: 'react',
-                    previewVersion: 'v2',
-                  }),
-                });
-                if (!projectRes.ok) throw new Error('Failed to create project');
-                const project = await projectRes.json();
-                setSelectedProjectId(project.id);
-                setLeftSidebarOpen(true);
-                setLeftSidebarTab('chat');
-                await fetchProjects();
-              } catch (error) {
-                console.error('Error creating new project:', error);
-                alert('Failed to create new project. Please try again.');
-              } finally {
-                setIsCreatingNew(false);
-              }
-            }}
+            onCreateNew={handleCreateNewProject}
             isCreatingSample={isCreatingSample}
             isCreatingReactSample={isCreatingReactSample}
             isCreatingNew={isCreatingNew}
@@ -555,6 +569,35 @@ function AppBuilderPageContent() {
         isActive={false}
         message=""
         onComplete={() => {}}
+      />
+      
+      <ProjectLoadingOverlay
+        isVisible={isLoadingProject}
+        message="Loading project..."
+      />
+      
+      <DeleteConfirmModal
+        isOpen={deleteModalOpen}
+        onClose={() => {
+          if (!isDeleting) {
+            setDeleteModalOpen(false);
+            setProjectToDelete(null);
+          }
+        }}
+        onConfirm={confirmDeleteProject}
+        projectTitle={projectToDelete?.title}
+        isLoading={isDeleting}
+      />
+      
+      <CreateProjectModal
+        isOpen={createModalOpen}
+        onClose={() => {
+          if (!isCreatingNew) {
+            setCreateModalOpen(false);
+          }
+        }}
+        onCreate={confirmCreateProject}
+        isLoading={isCreatingNew}
       />
     </div>
   );

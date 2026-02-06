@@ -107,30 +107,47 @@ export default function ProjectManager({
                       </div>
                       <div className="flex items-center gap-2 ml-2">
                         {/* GitHub button (future save/push) */}
-                        <button
-                          type="button"
+                        <div
+                          role="button"
+                          tabIndex={0}
                           onClick={(e) => {
                             e.stopPropagation();
                             // TODO: Wire up GitHub save/push flow
                             console.log('GitHub clicked for project', project.id);
                           }}
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/15 text-gray-300 hover:bg-white/10 hover:text-white transition-colors"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.stopPropagation();
+                              e.preventDefault();
+                              // TODO: Wire up GitHub save/push flow
+                              console.log('GitHub clicked for project', project.id);
+                            }
+                          }}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/15 text-gray-300 hover:bg-white/10 hover:text-white transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-400/50"
                           title="GitHub (coming soon)"
                         >
                           <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.38 7.86 10.9.58.1.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.7-3.88-1.55-3.88-1.55-.53-1.34-1.3-1.7-1.3-1.7-1.06-.73.08-.72.08-.72 1.17.08 1.79 1.2 1.79 1.2 1.04 1.79 2.73 1.27 3.4.97.1-.76.4-1.27.73-1.56-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.3 1.2-3.11-.12-.29-.52-1.46.11-3.04 0 0 .97-.31 3.18 1.19a11.1 11.1 0 0 1 2.9-.39c.99 0 2 .13 2.94.39C17.6 4.2 18.57 4.5 18.57 4.5c.63 1.58.23 2.75.11 3.04.75.81 1.2 1.85 1.2 3.11 0 4.44-2.7 5.4-5.27 5.68.41.35.78 1.04.78 2.1 0 1.52-.01 2.74-.01 3.11 0 .31.21.67.8.56A10.52 10.52 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5Z" />
                           </svg>
-                        </button>
+                        </div>
 
                         {/* Delete button (compact bin icon) */}
                         {onDeleteProject && (
-                          <button
-                            type="button"
+                          <div
+                            role="button"
+                            tabIndex={0}
                             onClick={(e) => {
                               e.stopPropagation();
                               onDeleteProject(project.id);
                             }}
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-red-500/40 text-red-300 hover:bg-red-500/20 transition-colors"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                onDeleteProject(project.id);
+                              }
+                            }}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-red-500/40 text-red-300 hover:bg-red-500/20 transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-red-400/50"
                             title="Delete project"
                           >
                             <svg
@@ -148,7 +165,7 @@ export default function ProjectManager({
                               <path d="M10 11v6" />
                               <path d="M14 11v6" />
                             </svg>
-                          </button>
+                          </div>
                         )}
 
                         {/* Existing chevron / player toggle */}
