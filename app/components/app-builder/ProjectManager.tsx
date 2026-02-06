@@ -221,21 +221,26 @@ export default function ProjectManager({
                           <div className="flex items-center gap-1">
                             <div
                               role="button"
-                              tabIndex={0}
+                              tabIndex={isUpdating ? -1 : 0}
                               onClick={(e) => {
+                                if (isUpdating) return;
                                 e.stopPropagation();
                                 handleSaveEdit(project.id);
                               }}
                               onKeyDown={(e) => {
+                                if (isUpdating) return;
                                 if (e.key === 'Enter' || e.key === ' ') {
                                   e.stopPropagation();
                                   e.preventDefault();
                                   handleSaveEdit(project.id);
                                 }
                               }}
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/20 transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-400/50"
+                              className={`inline-flex h-7 w-7 items-center justify-center rounded-full border border-emerald-500/50 text-emerald-400 transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-400/50 ${
+                                isUpdating 
+                                  ? 'opacity-50 cursor-not-allowed' 
+                                  : 'hover:bg-emerald-500/20 cursor-pointer'
+                              }`}
                               title="Save"
-                              disabled={isUpdating}
                             >
                               {isUpdating ? (
                                 <div className="w-3 h-3 border-2 border-emerald-400/30 border-t-emerald-400 rounded-full animate-spin"></div>
