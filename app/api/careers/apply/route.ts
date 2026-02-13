@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const COMPANY_EMAIL = process.env.NEXT_PUBLIC_COMPANY_EMAIL || 'info@openidea.world';
+const CAREERS_RECIPIENT = 'info@openidea.world';
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 
 export async function POST(req: NextRequest) {
@@ -78,7 +78,7 @@ ${attachments.length > 0 ? `\nResume attached: ${attachments[0].filename}` : '\n
 
     const resendBody: Record<string, unknown> = {
       from: 'Open Idea Careers <noreply@openidea.world>',
-      to: [COMPANY_EMAIL],
+      to: [CAREERS_RECIPIENT],
       subject: `Application: ${jobTitle || 'Open Position'} - ${name || email}`,
       html,
       text,
