@@ -1,19 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
 import { prisma } from '@/lib/db';
 import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
-import { getScaffoldFiles } from '@/app/lib/app-builder/scaffolds';
+import { getScaffoldFiles, DEFAULT_APP_CONTENT } from '@/app/lib/app-builder/scaffolds';
+import { createAIClient, hasAIClient } from '@/src/lib/ai/provider';
+import { extractAgentResponse } from '@/src/lib/app-builder/agentSchema';
+import { buildSystemPrompt, buildUserPrompt, buildFixPrompt } from '@/src/lib/app-builder/promptBuilder';
 import { validateProjectFiles } from '../../../../../src/lib/utils/validateJSX';
 import type { ChatMessage, ChatRequestBody, DatabaseError, QuestionnaireData, ProjectFile } from '@/app/types/app-builder';
 
 type FileCreationResult = { path: string; success: boolean; error?: string; validated?: boolean; validationError?: string; sandboxIssues?: string[] };
-
-// ============================================
-// AI PROVIDER CONFIGURATION (Groq Only)
-// ============================================
-
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const GROQ_MODEL = 'llama-3.3-70b-versatile'; // Best for code generation
 
 function buildScaffoldContext(framework: string) {
   const scaffoldFiles = getScaffoldFiles(framework);
@@ -27,27 +22,6 @@ function buildScaffoldContext(framework: string) {
   scaffoldContext += `- Files: ${fileList}\n`;
 
   return scaffoldContext;
-}
-
-// Create AI client - Groq only
-function createAIClient(): { client: OpenAI; model: string; provider: string } {
-  if (!GROQ_API_KEY) {
-    throw new Error('GROQ_API_KEY is not configured.');
-  }
-
-  console.log('🔧 Creating Groq client:', {
-    baseURL: 'https://api.groq.com/openai/v1',
-    model: GROQ_MODEL,
-  });
-
-  return {
-    client: new OpenAI({
-      baseURL: 'https://api.groq.com/openai/v1',
-      apiKey: GROQ_API_KEY,
-    }),
-    model: GROQ_MODEL,
-    provider: 'groq',
-  };
 }
 
 // GET endpoint to fetch chat history
@@ -97,12 +71,15 @@ export async function GET(
       (rawMessages as unknown as ChatMessage[]) : [];
 
     return NextResponse.json({
-      messages: messages.map((msg: ChatMessage, idx: number) => ({
+      messages: messages.map((msg: ChatMessage & { provider?: string; model?: string }, idx: number) => ({
         id: `msg-${idx}`,
         role: msg.role,
         content: msg.content,
         timestamp: msg.timestamp ? new Date(msg.timestamp as string) : new Date(),
+        provider: msg.provider,
+        model: msg.model,
       })),
+      questionnaireData: project.questionnaireData ?? null,
     });
   } catch (error: unknown) {
     console.error('Error fetching chat history:', error);
@@ -353,55 +330,7 @@ export async function POST(
         let scaffoldSkipped = 0;
         
         // Create a visible default App component
-        
-        const defaultAppContent = `function App() {
-  return (
-    <div className="App" style={{
-      minHeight: '100vh',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      color: '#fff',
-      padding: '2rem',
-      textAlign: 'center'
-    }}>
-      <div style={{
-        background: 'rgba(255, 255, 255, 0.1)',
-        padding: '3rem',
-        borderRadius: '20px',
-        backdropFilter: 'blur(10px)',
-        maxWidth: '600px',
-        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)'
-      }}>
-        <h1 style={{ fontSize: '2.5rem', marginBottom: '1rem', textShadow: '2px 2px 4px rgba(0,0,0,0.2)' }}>
-          🚀 Welcome to Your App
-        </h1>
-        <p style={{ fontSize: '1.2rem', marginBottom: '2rem', opacity: 0.95 }}>
-          Start building by asking the AI to create components!
-        </p>
-        <div style={{
-          display: 'flex',
-          gap: '1rem',
-          justifyContent: 'center',
-          flexWrap: 'wrap'
-        }}>
-          <div style={{
-            padding: '1rem 2rem',
-            background: 'rgba(255, 255, 255, 0.2)',
-            borderRadius: '10px',
-            fontSize: '0.9rem'
-          }}>
-            ✨ Ready to Build
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export default App;`;
+        const defaultAppContent = DEFAULT_APP_CONTENT;
         
         for (const scaffoldFile of scaffoldFiles) {
           // Adjust file extensions based on project language
@@ -489,10 +418,9 @@ export default App;`;
                                  message.toLowerCase().trim() === 'create default app' ||
                                  message.toLowerCase().includes('create default react app');
     
-    // If Groq is disabled OR this is a default app request, return early with scaffold files created
-    // Users can see the preview immediately without AI code generation
-    if (!GROQ_API_KEY || isDefaultAppRequest) {
-      const reason = isDefaultAppRequest ? 'Default app request - skipping AI generation' : 'Groq API is disabled';
+    // If no AI provider OR this is a default app request, return early with scaffold files created
+    if (!hasAIClient() || isDefaultAppRequest) {
+      const reason = isDefaultAppRequest ? 'Default app request - skipping AI generation' : 'No AI provider configured (set GROQ_API_KEY or OPENROUTER_API_KEY)';
       console.log(`⚠️ ${reason} - returning early with scaffold files`);
       
       // Get list of created scaffold files for response
@@ -578,154 +506,20 @@ export default App;`;
       maxNewTokens: provider === 'groq' ? '8192' : '4000'
     });
     
-    const scaffoldContext = buildScaffoldContext(frameworkForScaffold);
+    const existingFilePaths = project.files?.map((f: { path: string }) => f.path) || [];
     
-    // SYSTEM PROMPT - Optimized for Groq
-    // Strategy: Extend existing React app, don't recreate
-    // DECLARE FIRST to avoid "Cannot access before initialization" error
-    const existingFilesList = project.files?.map((f: { path: string }) => `- ${f.path}`).join('\n') || 'No existing files';
-    const existingFileCount = project.files?.length || 0;
+    // Token-optimized system prompt (Lovable/Replit style, DeepSeek V3 0324)
+    const systemPrompt = buildSystemPrompt({
+      framework: frameworkForScaffold,
+      language: useTypeScript ? 'typescript' : 'javascript',
+      fileCount: existingFilePaths.length,
+      filePaths: existingFilePaths,
+    });
     
-    const systemPrompt = `You are a Senior Full-Stack Engineer extending an existing React application.
-
-CORE PRINCIPLES:
-1. NEVER delete or rewrite existing files unless explicitly requested
-2. Extend components, hooks, and utilities - build ON TOP of existing structure
-3. Reuse existing patterns, naming conventions, and styling
-4. Maintain backward compatibility at all times
-5. All changes must be incremental and additive
-
-EXISTING PROJECT STRUCTURE:
-Framework: ${frameworkForScaffold}
-Language: ${useTypeScript ? 'TypeScript' : 'JavaScript'}
-Existing files (${existingFileCount}):
-${existingFilesList}
-
-${scaffoldContext}
-
-OUTPUT FORMAT:
-Use code blocks with file paths:
-\`\`\`file:path/to/file.ext
-[code]
-\`\`\`
-
-EXECUTION RULES:
-1) For NEW files: Create in appropriate location (src/components/, src/hooks/, etc.)
-2) For EXISTING files: EXTEND them - add imports, functions, components
-3) Preserve existing code structure and patterns
-4) Follow existing naming conventions (camelCase, PascalCase, etc.)
-5) Use existing styling approach (CSS modules, Tailwind, inline styles)
-6) Integrate new features seamlessly with existing code
-7) Do NOT recreate App.jsx or index.js - EXTEND them if needed
-8) Generate ALL required files/components in one response
-9) Clean, professional, responsive UI that matches existing style`;
-    
-    // Build user message with existing project context
-    // Include existing files structure to ensure Groq extends, not recreates
-    let userMessage = message;
-    
-    // Add existing project context for generation requests
-    if (message.toLowerCase().includes('create') || message.toLowerCase().includes('build') || message.toLowerCase().includes('generate')) {
-      
-      // Add existing files context FIRST - critical for extension approach
-      if (hasScaffoldFiles && project.files && project.files.length > 0) {
-        userMessage += `\n\nEXISTING PROJECT FILES (${project.files.length} files already exist - EXTEND these, don't recreate):\n`;
-        project.files.forEach((file: { path: string; language?: string | null }) => {
-          userMessage += `- ${file.path} (${file.language || 'unknown'})\n`;
-        });
-        userMessage += `\nCRITICAL: These files already exist. EXTEND them by adding imports and components. Do NOT recreate App.jsx or index.js - UPDATE them to include new components.\n`;
-      }
-      
-      // Add questionnaire requirements
-      if (questionnaireData) {
-        // INTELLIGENT COMPONENT IDENTIFICATION FROM QUESTIONNAIRE
-        // requiredSections is stored in questionnaireData but not strongly typed here,
-        // so we treat it as a string array for flexibility.
-        const requiredSections = ((questionnaireData as any).requiredSections as string[] | undefined) || [];
-        const componentMap: Record<string, string> = {
-          'portfolio': 'Portfolio',
-          'header': 'Header',
-          'footer': 'Footer',
-          'navigation': 'Navigation',
-          'hero': 'Hero',
-          'about': 'About',
-          'contact': 'Contact',
-          'services': 'Services',
-          'testimonials': 'Testimonials',
-          'features': 'Features',
-          'pricing': 'Pricing',
-          'blog': 'Blog',
-          'newsletter': 'Newsletter'
-        };
-        
-        const identifiedComponents = requiredSections
-          .map((section: string) => componentMap[section.toLowerCase()] || section.charAt(0).toUpperCase() + section.slice(1))
-          .filter((comp: string, index: number, self: string[]) => self.indexOf(comp) === index); // Remove duplicates
-        
-        userMessage = `${message}\n\n`;
-        
-        // ✅ Add ALL questionnaire features to ensure Groq generates complete app
-        if (questionnaireData.appType) userMessage += `App type: ${questionnaireData.appType}\n`;
-        
-        // Add design requirements
-        if (questionnaireData.designStyle) {
-          userMessage += `Design style: ${questionnaireData.designStyle}\n`;
-        }
-        if (questionnaireData.colorScheme) {
-          userMessage += `Color scheme: ${questionnaireData.colorScheme}\n`;
-        }
-        if (questionnaireData.layoutStyle) {
-          userMessage += `Layout style: ${questionnaireData.layoutStyle}\n`;
-        }
-        
-        // Add special features (contact form, newsletter, gallery, etc.)
-        if (questionnaireData.specialFeatures && Array.isArray(questionnaireData.specialFeatures) && questionnaireData.specialFeatures.length > 0) {
-          userMessage += `\nSPECIAL FEATURES TO IMPLEMENT:\n`;
-          questionnaireData.specialFeatures.forEach((feature: string) => {
-            userMessage += `- ${feature}\n`;
-          });
-          userMessage += `\nCRITICAL: Implement ALL special features listed above. Each feature should be functional and integrated into the app.\n`;
-        }
-        
-        // Add required sections/components
-        if (identifiedComponents.length > 0) {
-          userMessage += `\nCOMPONENTS TO CREATE (${useTypeScript ? 'TypeScript' : 'JavaScript'}):\n`;
-          identifiedComponents.forEach((comp: string) => {
-            userMessage += `- ${comp} component (create as src/components/${comp}.${fileExtension})\n`;
-          });
-          userMessage += `\nCRITICAL: Create ALL components listed above in ONE response. Each component must be in a separate file.\n`;
-        }
-        
-        // Add brand information
-        if (questionnaireData.brandName) {
-          userMessage += `\nBrand name: ${questionnaireData.brandName}\n`;
-        }
-        if (questionnaireData.tagline) {
-          userMessage += `Tagline: ${questionnaireData.tagline}\n`;
-        }
-        if (questionnaireData.keyPoints) {
-          userMessage += `Key points: ${questionnaireData.keyPoints}\n`;
-        }
-        if (questionnaireData.targetAudience) {
-          userMessage += `Target audience: ${questionnaireData.targetAudience}\n`;
-        }
-        
-        userMessage += `\nLANGUAGE: Use ${useTypeScript ? 'TypeScript' : 'JavaScript'} ONLY. File extensions: .${fileExtension} for components, .${indexExtension} for index.\n`;
-        userMessage += `\nNO DUPLICATES: Do NOT create both .jsx and .tsx files. Use .${fileExtension} only.\n`;
-        
-        if (hasScaffoldFiles) {
-          userMessage += `\nEXTENSION STRATEGY:\n`;
-          userMessage += `- For NEW components: Create in src/components/ directory\n`;
-          userMessage += `- For App.jsx: ADD imports and render new components - DO NOT recreate the entire file\n`;
-          userMessage += `- For index.js: Keep existing code - only update if needed for new features\n`;
-          userMessage += `- Follow existing code patterns, naming conventions, and styling approach\n`;
-          userMessage += `- Maintain backward compatibility - existing functionality must continue working\n`;
-        }
-        userMessage += buildScaffoldContext(frameworkForScaffold);
-        
-      } else {
-        userMessage += buildScaffoldContext(frameworkForScaffold);
-      }
+    // Token-optimized user prompt (questionnaire + message + existing paths)
+    let userMessage = buildUserPrompt(message, questionnaireData, existingFilePaths);
+    if (hasScaffoldFiles && existingFilePaths.length > 0) {
+      userMessage += `\n\nEXTEND existing files. Add imports and render new components in App.${fileExtension}.`;
     }
     
     // CURSOR-LIKE: Include current file context for editing
@@ -883,77 +677,212 @@ EXECUTION RULES:
       console.log(responseText.substring(0, 500));
       console.log('-'.repeat(40));
 
-      // SIMPLIFIED: Use the working pattern from OpenRouter implementation
-      // More flexible regex that handles various file: formats and spacing
-      const codeBlockRegex = /```(?:file:)?\s*([^\n`]+?)(?:\n|$)([\s\S]*?)```/g;
+      // ============================================
+      // TWO-PASS PARSING: explicit paths first, then infer from content
+      // ============================================
+      const KNOWN_LANG_TAGS = new Set([
+        'jsx', 'javascript', 'typescript', 'tsx', 'js', 'ts', 'css', 'html',
+        'json', 'markdown', 'python', 'java', 'cpp', 'c', 'bash', 'sh',
+        'sql', 'yaml', 'yml', 'xml', 'text', 'plaintext', 'diff', 'md',
+      ]);
+      const VALID_FILE_EXTENSIONS = ['.js', '.jsx', '.ts', '.tsx', '.css', '.html', '.json', '.md'];
+
       const allMatches: Array<{ path: string; content: string }> = [];
-      let match;
 
       console.log('📝 Parsing response for file creation...');
       console.log('Response length:', responseText.length);
-      console.log('Response preview (first 1000 chars):', responseText.substring(0, 1000));
+
+      // Extract ALL code blocks with a simple, reliable regex
+      const codeBlockRegex = /```([^\n`]*)\n([\s\S]*?)```/g;
+      let match;
+      const rawBlocks: Array<{ header: string; content: string }> = [];
 
       while ((match = codeBlockRegex.exec(responseText)) !== null) {
-        let filePath = match[1].trim();
-        const fileContent = match[2].trim();
-        
-        // Remove "file:" prefix if present
-        if (filePath.startsWith('file:')) {
-          filePath = filePath.substring(5).trim();
-        }
-        
-        // Skip if it's not a file path (e.g., just language identifier like "javascript")
-        // Check if it looks like a file path (has extension or contains path separators)
-        const hasExtension = filePath.includes('.');
-        const hasPathSeparator = filePath.includes('/') || filePath.includes('\\');
-        
-        // Log what we found
-        console.log('🔍 Found code block:', {
-          filePath,
-          hasExtension,
-          hasPathSeparator,
-          contentLength: fileContent.length
-        });
-        
-        if (!hasExtension && !hasPathSeparator) {
-          console.log('⏭️ Skipping - not a file path:', filePath);
-          continue;
-        }
-
-        // Normalize path: remove spaces, fix extensions, clean up
-        const normalizedPath = filePath
-          .replace(/\s+/g, '') // Remove ALL spaces (fixes "src/ App. jsx")
-          .replace(/\\/g, '/') // Normalize path separators
-          .replace(/\/+/g, '/') // Remove double slashes
-          .replace(/\.jxs$/i, '.jsx') // Fix .jxs → .jsx
-          .replace(/\.tsxs$/i, '.tsx') // Fix .tsxs → .tsx
-          .replace(/^\.\//, '') // Remove leading ./
-          .trim();
-
-        // Skip invalid paths (just a word without extension and no path)
-        const validExtensions = ['.js', '.jsx', '.ts', '.tsx', '.css', '.html', '.json', '.md'];
-        const hasValidExtension = validExtensions.some(ext => normalizedPath.toLowerCase().endsWith(ext));
-        if (!hasValidExtension && !normalizedPath.includes('/')) {
-          console.log(`⏭️ Skipping invalid path: ${filePath} → ${normalizedPath}`);
-          continue;
-        }
-
-        // Check for duplicates
-        if (!allMatches.some(m => m.path === normalizedPath)) {
-          allMatches.push({ path: normalizedPath, content: fileContent });
-          console.log(`✅ Added file: ${normalizedPath}`);
-        } else {
-          console.log(`⏭️ Skipping duplicate: ${normalizedPath}`);
-          // Keep the one with more content
-          const existingIndex = allMatches.findIndex(m => m.path === normalizedPath);
-          if (existingIndex >= 0 && fileContent.length > allMatches[existingIndex].content.length) {
-            allMatches[existingIndex] = { path: normalizedPath, content: fileContent };
-            console.log(`   ↳ Replaced with longer content`);
-          }
+        const header = (match[1] || '').trim();
+        const content = (match[2] || '').trim();
+        if (content.length > 0) {
+          rawBlocks.push({ header, content });
         }
       }
-      
-      
+
+      console.log(`📊 Extracted ${rawBlocks.length} non-empty code blocks`);
+
+      // Helper: clean and normalize a file path
+      const normalizePath = (p: string): string => {
+        return p
+          .replace(/\s+/g, '')       // Remove spaces
+          .replace(/\\/g, '/')       // Backslash → forward slash
+          .replace(/\/+/g, '/')      // Collapse double slashes
+          .replace(/\.jxs$/i, '.jsx') // Fix typos
+          .replace(/\.tsxs$/i, '.tsx')
+          .replace(/^\.\//, '')      // Remove leading ./
+          .trim();
+      };
+
+      // Helper: check if a string looks like a file path
+      const isFilePath = (s: string): boolean => {
+        if (!s) return false;
+        const cleaned = normalizePath(s);
+        const hasExt = cleaned.includes('.');
+        const hasSep = cleaned.includes('/');
+        // Must have a valid extension
+        const hasValidExt = VALID_FILE_EXTENSIONS.some(ext => cleaned.toLowerCase().endsWith(ext));
+        return hasValidExt || (hasExt && hasSep);
+      };
+
+      // Helper: infer file path from code content
+      const inferPathFromContent = (content: string, langTag: string): string | null => {
+        // Determine extension
+        let ext = '.jsx';
+        if (langTag === 'tsx' || langTag === 'typescript') ext = '.tsx';
+        else if (langTag === 'ts') ext = '.ts';
+        else if (langTag === 'css') ext = '.css';
+        else if (langTag === 'html') ext = '.html';
+        else if (langTag === 'json') ext = '.json';
+        else if (content.includes('interface ') || content.match(/:\s*(string|number|boolean|React)/)) ext = '.tsx';
+
+        // For CSS files
+        if (ext === '.css') {
+          if (content.includes('.App')) return 'src/App.css';
+          return 'src/styles.css';
+        }
+
+        // For HTML files
+        if (ext === '.html') return 'index.html';
+
+        // For JSON files
+        if (content.includes('"name"') && content.includes('"version"')) return 'package.json';
+
+        // Find the FIRST component/function name defined in the file
+        // Order matters: check specific patterns first
+        const patterns = [
+          // export default function ComponentName
+          /export\s+default\s+function\s+([A-Z][a-zA-Z0-9]*)/,
+          // function ComponentName
+          /(?:^|\n)\s*function\s+([A-Z][a-zA-Z0-9]*)/,
+          // const ComponentName = 
+          /(?:^|\n)\s*(?:export\s+)?const\s+([A-Z][a-zA-Z0-9]*)\s*=/,
+          // class ComponentName
+          /(?:^|\n)\s*(?:export\s+)?class\s+([A-Z][a-zA-Z0-9]*)/,
+          // export default ComponentName (at end of file)
+          /export\s+default\s+([A-Z][a-zA-Z0-9]*)\s*;?\s*$/,
+        ];
+
+        let componentName: string | null = null;
+        for (const pattern of patterns) {
+          const m = content.match(pattern);
+          if (m) {
+            componentName = m[1];
+            break;
+          }
+        }
+
+        if (!componentName) return null;
+
+        // Map component name to path
+        if (componentName === 'App') {
+          return `src/App${ext}`;
+        }
+        // Everything else goes into components/
+        return `src/components/${componentName}${ext}`;
+      };
+
+      // ---- PASS 1: Extract blocks with explicit file paths ----
+      const inferredBlocks: Array<{ header: string; content: string }> = [];
+
+      for (const block of rawBlocks) {
+        let { header, content } = block;
+        let filePath: string | null = null;
+
+        // Format 1: ```file:src/components/Todo.jsx
+        if (header.startsWith('file:')) {
+          filePath = header.substring(5).trim();
+        }
+        // Format 2: ```jsx:src/components/Todo.jsx  or ```javascript:src/App.jsx
+        else if (header.includes(':') && !KNOWN_LANG_TAGS.has(header.split(':')[0].toLowerCase())) {
+          filePath = header; // entire header is path-like
+        }
+        else if (header.includes(':')) {
+          // e.g. "jsx:src/components/Todo.jsx"
+          const afterColon = header.split(':').slice(1).join(':').trim();
+          if (isFilePath(afterColon)) {
+            filePath = afterColon;
+          }
+        }
+
+        // Format 3: ```jsx src/components/Todo.jsx  (language + space + path)
+        if (!filePath && header.includes(' ')) {
+          const parts = header.split(/\s+/);
+          if (parts.length >= 2) {
+            const possiblePath = parts.slice(1).join(' ').trim();
+            if (isFilePath(possiblePath)) {
+              filePath = possiblePath;
+            }
+          }
+        }
+
+        // Format 4: header IS the file path directly  (e.g. ```src/App.jsx)
+        if (!filePath && isFilePath(header)) {
+          filePath = header;
+        }
+
+        if (filePath) {
+          const normalized = normalizePath(filePath);
+          console.log(`✅ [PASS1] Explicit path: ${normalized} (header: "${header}")`);
+          // Deduplicate: keep longer content
+          const existing = allMatches.findIndex(m => m.path === normalized);
+          if (existing >= 0) {
+            if (content.length > allMatches[existing].content.length) {
+              allMatches[existing].content = content;
+            }
+          } else {
+            allMatches.push({ path: normalized, content });
+          }
+        } else {
+          // No explicit path found — queue for inference
+          inferredBlocks.push(block);
+        }
+      }
+
+      console.log(`📁 PASS 1 result: ${allMatches.length} files with explicit paths, ${inferredBlocks.length} blocks need inference`);
+
+      // ---- PASS 2: Infer paths from code content ----
+      for (const block of inferredBlocks) {
+        const { header, content } = block;
+
+        // Determine language tag
+        const langTag = KNOWN_LANG_TAGS.has(header.toLowerCase()) ? header.toLowerCase() : '';
+
+        // Skip non-code blocks (plain text explanations, etc.)
+        const looksLikeCode = content.includes('import ') || content.includes('export ') ||
+          content.includes('function ') || content.includes('const ') || content.includes('class ') ||
+          content.includes('return ') || content.includes('{') || content.includes('<');
+
+        if (!looksLikeCode) {
+          console.log(`⏭️ [PASS2] Skipping non-code block (header: "${header}", preview: "${content.substring(0, 60)}")`);
+          continue;
+        }
+
+        const inferredPath = inferPathFromContent(content, langTag);
+
+        if (inferredPath) {
+          const normalized = normalizePath(inferredPath);
+          console.log(`✅ [PASS2] Inferred path: ${normalized} (header: "${header}")`);
+          const existing = allMatches.findIndex(m => m.path === normalized);
+          if (existing >= 0) {
+            if (content.length > allMatches[existing].content.length) {
+              allMatches[existing].content = content;
+              console.log(`   ↳ Replaced with longer content (${content.length} > ${allMatches[existing].content.length})`);
+            }
+          } else {
+            allMatches.push({ path: normalized, content });
+          }
+        } else {
+          console.log(`⚠️ [PASS2] Could not infer path (header: "${header}", preview: "${content.substring(0, 80)}")`);
+        }
+      }
+
+      // ---- Final results ----
       console.log('\n' + '='.repeat(60));
       console.log(`📁 FILE PARSING RESULTS`);
       console.log('='.repeat(60));
@@ -966,75 +895,23 @@ EXECUTION RULES:
         });
       } else {
         console.warn('\n⚠️ NO FILES FOUND IN RESPONSE!');
-        const allCodeBlocks = responseText.match(/```[\s\S]*?```/g);
-        if (allCodeBlocks) {
-          console.log(`Found ${allCodeBlocks.length} code blocks but no file paths`);
-          allCodeBlocks.slice(0, 3).forEach((block, idx) => {
-            console.log(`\nCode block ${idx + 1} (first 200 chars):`);
-            console.log(block.substring(0, 200));
-          });
-        }
+        console.warn('Raw blocks extracted:', rawBlocks.length);
+        rawBlocks.slice(0, 3).forEach((b, idx) => {
+          console.warn(`  Block ${idx + 1}: header="${b.header}", content preview: "${b.content.substring(0, 150)}"`);
+        });
       }
       console.log('='.repeat(60));
 
-      // Process each match (simplified - direct creation like OpenRouter)
+      // Process each match — paths are already normalized from PASS 1/PASS 2
       for (const fileMatch of allMatches) {
-        let filePath = fileMatch.path;
-        let fileContent = fileMatch.content; // Changed to 'let' to allow reassignment after auto-fix
+        let filePath = fileMatch.path; // Already normalized
+        let fileContent = fileMatch.content;
         
-        // Remove "file:" prefix if present
-        if (filePath.startsWith('file:')) {
-          filePath = filePath.substring(5).trim();
-        }
-        
-        // Remove language prefixes (jsx:, javascript:, typescript:, etc.)
-        // Pattern: language:path/to/file.ext
-        filePath = filePath.replace(/^(jsx|javascript|typescript|tsx|js|ts|css|html|json|markdown|python|java|cpp|c):\s*/i, '');
-        
-        // Remove leading "./" or "../" but keep the rest
-        filePath = filePath.replace(/^\.\//, '').replace(/^\.\.\//, '');
-        
-        // Remove any leading/trailing quotes
-        filePath = filePath.replace(/^["']|["']$/g, '').trim();
-        
-        // CRITICAL FIX: Remove ALL spaces from path (fixes "src/ App. jsx" → "src/App.jsx")
-        filePath = filePath.replace(/\s+/g, '');
-        
-        // CRITICAL FIX: Normalize file extensions (fixes .jxs, .jXs → .jsx)
-        filePath = filePath.replace(/\.jxs$/i, '.jsx');
-        filePath = filePath.replace(/\.jsx$/i, '.jsx'); // Ensure lowercase
-        filePath = filePath.replace(/\.tsxs$/i, '.tsx');
-        filePath = filePath.replace(/\.tsx$/i, '.tsx'); // Ensure lowercase
-        
-        // Ensure path uses forward slashes (normalize)
-        filePath = filePath.replace(/\\/g, '/');
-        
-        // CRITICAL FIX: Remove double slashes (fixes "src//Header.jsx" → "src/Header.jsx")
-        filePath = filePath.replace(/\/+/g, '/');
-        
-        // Skip if it's not a file path (e.g., just language identifier like "javascript")
-        // Check if it looks like a file path (has extension or contains path separators)
-        const hasExtension = filePath.includes('.');
-        const hasPathSeparator = filePath.includes('/') || filePath.includes('\\');
-        
-        // Log what we found
-        console.log('🔍 Processing code block:', {
+        console.log('🔍 Processing file:', {
           filePath,
-          hasExtension,
-          hasPathSeparator,
           contentLength: fileContent.length,
           contentPreview: fileContent.substring(0, 100)
         });
-        
-        // More lenient check - allow files with extensions even without path separators
-        if (!hasExtension && !hasPathSeparator) {
-          // Check if it might be a valid filename (e.g., "App.jsx")
-          const looksLikeFile = /^[a-zA-Z0-9_-]+\.[a-zA-Z0-9]+$/.test(filePath);
-          if (!looksLikeFile) {
-            console.log('⏭️ Skipping - not a file path:', filePath);
-            continue;
-          }
-        }
 
         // Basic syntax validation before creating file
         // Check for common syntax errors that would break preview
@@ -1390,7 +1267,9 @@ EXECUTION RULES:
               firstLine: fileContent.split('\n')[0]?.substring(0, 80)
             });
             
-            await prisma.appFile.upsert({
+            // CRITICAL: Use upsert to update scaffold files or create new ones
+            // This ensures AI-generated files replace scaffold files when paths match
+            const upsertResult = await prisma.appFile.upsert({
               where: {
                 projectId_path: {
                   projectId: id,
@@ -1402,6 +1281,7 @@ EXECUTION RULES:
                 language: language,
                 isMain: isMain,
                 name: fileName,
+                updatedAt: new Date(), // Ensure updatedAt is refreshed
               },
               create: {
                 projectId: id,
@@ -1413,7 +1293,9 @@ EXECUTION RULES:
               },
             });
 
-            console.log(`  ✅ File saved to database IMMEDIATELY: ${normalizedPath}`);
+            const wasUpdate = upsertResult.updatedAt && upsertResult.createdAt && 
+                              upsertResult.updatedAt.getTime() > upsertResult.createdAt.getTime();
+            console.log(`  ${wasUpdate ? '🔄 Updated' : '✅ Created'} file in database: ${normalizedPath}`);
             
             // Trigger preview refresh after each file (incremental rendering)
             // This allows the preview to update as each file is added
@@ -1824,9 +1706,9 @@ root.render(
     const maxOutputTokens = 4000;
     
     if (process.env.NODE_ENV === 'development') {
-      console.log(`[GROQ] Request: ~${totalInputTokens} input tokens, max ${maxOutputTokens} output tokens`);
+      console.log(`[${provider.toUpperCase()}] Request: ~${totalInputTokens} input tokens, max ${maxOutputTokens} output tokens`);
       if (totalInputTokens > 12000) {
-        console.warn('[GROQ] Warning: Input tokens exceed 12K - may be truncated');
+        console.warn(`[${provider.toUpperCase()}] Warning: Input tokens exceed 12K - may be truncated`);
       }
     }
     
@@ -1856,7 +1738,7 @@ root.render(
       
       if (process.env.NODE_ENV === 'development') {
         const responseLength = completion.choices[0]?.message?.content?.length || 0;
-        console.log(`[GROQ] Response received: ${responseLength} chars from ${provider}/${model}`);
+        console.log(`[${provider.toUpperCase()}] Response received: ${responseLength} chars from ${provider}/${model}`);
       }
 
       response = completion.choices[0]?.message?.content || '';
@@ -1926,7 +1808,7 @@ root.render(
       // Check for network errors
       if (err.message?.includes('fetch') || err.message?.includes('network') || err.message?.includes('ECONNREFUSED')) {
         errorDetails.errorType = 'NETWORK_ERROR';
-        errorDetails.message = `Cannot connect to Groq API`;
+        errorDetails.message = `Cannot connect to ${provider} API`;
       }
       
       // Check for API errors
@@ -1947,14 +1829,15 @@ root.render(
       console.log('='.repeat(80) + '\n');
       
       // Provide helpful error messages
-      let userFriendlyError = errorDetails.message || 'Groq request failed';
+      let userFriendlyError = errorDetails.message || `${provider} request failed`;
       
       if (errorDetails.errorType === 'TIMEOUT') {
         userFriendlyError = 'Request timed out. The model might be processing a large request. Please try again with a simpler request.';
       } else if (errorDetails.errorType === 'NETWORK_ERROR') {
-        userFriendlyError = `Cannot connect to Groq API. Please check your connection and GROQ_API_KEY.`;
+        const keyHint = provider === 'openrouter' ? 'OPENROUTER_API_KEY' : 'GROQ_API_KEY';
+        userFriendlyError = `Cannot connect to ${provider} API. Please check your connection and ${keyHint}.`;
       } else if (errorDetails.errorType === 'API_ERROR') {
-        userFriendlyError = `Groq API error: ${errorDetails.message}`;
+        userFriendlyError = `${provider} API error: ${errorDetails.message}`;
       }
       
       throw new Error(userFriendlyError);
@@ -1976,20 +1859,44 @@ root.render(
       console.log(`✅ Response contains ${codeBlockCount} code blocks`);
     }
     
-    // Parse code blocks and create/update files INCREMENTALLY
-    // This matches Cursor/Lovable behavior - files created as they're parsed
-    // CRITICAL: Create files one by one and notify frontend immediately
+    // Parse response: JSON-first (agent schema), then regex fallback
     let createdFiles: FileCreationResult[] = [];
-    
+    let agentProvidedApp = false;
+
     try {
-      // Call parseAndCreateFiles directly - it already creates files incrementally
-      // and returns the createdFiles array
-      if (process.env.NODE_ENV === 'development') {
-        const codeBlockCount = (response.match(/```/g) || []).length / 2;
-        console.log(`[FILE] Parsing ${response.length} chars, ${codeBlockCount} code blocks`);
+      // Agent path: try structured JSON (Lovable/Replit style)
+      const agentResponse = extractAgentResponse(response);
+      if (agentResponse && agentResponse.files.length > 0) {
+        agentProvidedApp = agentResponse.files.some(f =>
+          f.path === 'src/App.jsx' || f.path === 'src/App.tsx'
+        );
+        console.log(`[AGENT] Parsed ${agentResponse.files.length} files from JSON response${agentProvidedApp ? ' (App provided - skip auto-integration)' : ''}`);
+        for (const f of agentResponse.files) {
+          try {
+            const fileName = f.name || f.path.split('/').pop() || f.path;
+            const language = f.language || (f.path.endsWith('.tsx') ? 'typescript' : f.path.endsWith('.jsx') ? 'javascript' : 'css');
+            await prisma.appFile.upsert({
+              where: { projectId_path: { projectId: id, path: f.path } },
+              update: { content: f.content, language, isMain: f.isMain, name: fileName },
+              create: { projectId: id, path: f.path, name: fileName, content: f.content, language, isMain: f.isMain },
+            });
+            createdFiles.push({ path: f.path, success: true, validated: true });
+            console.log(`  ✅ [AGENT] Created: ${f.path}`);
+          } catch (err) {
+            console.error(`  ❌ [AGENT] Failed ${f.path}:`, err);
+            createdFiles.push({ path: f.path, success: false, error: err instanceof Error ? err.message : 'Unknown error' });
+          }
+        }
       }
-      
-      createdFiles = await parseAndCreateFiles(response);
+
+      // Fallback: regex-based parsing (legacy)
+      if (createdFiles.length === 0) {
+        if (process.env.NODE_ENV === 'development') {
+          const codeBlockCount = (response.match(/```/g) || []).length / 2;
+          console.log(`[FILE] No JSON files - parsing ${response.length} chars, ${codeBlockCount} code blocks`);
+        }
+        createdFiles = await parseAndCreateFiles(response);
+      }
       
       if (createdFiles.length === 0 && codeBlockCount === 0) {
         console.warn('⚠️ No files created and no code blocks detected after retry.');
@@ -2039,8 +1946,9 @@ root.render(
       // ============================================
       // INTELLIGENT COMPONENT INTEGRATION
       // ============================================
+      // Skip when agent already provided complete App.jsx (avoids overwriting with stale project.files)
       // Automatically identify components and integrate into App.jsx
-      if (createdFiles.length > 0 && createdFiles.some((f: FileCreationResult) => f.success)) {
+      if (!agentProvidedApp && createdFiles.length > 0 && createdFiles.some((f: FileCreationResult) => f.success)) {
         const successfulFiles = createdFiles.filter((f: FileCreationResult) => f.success);
         const componentFiles = successfulFiles.filter(f => 
           f.path.includes('components/') || 
@@ -2056,11 +1964,16 @@ root.render(
           componentFiles.forEach((f: FileCreationResult) => console.log(`  - ${f.path}`));
           
           try {
-            // Get current App file (using correct extension based on project language)
-            const appFile = project.files?.find((f: { path: string; isMain?: boolean | null }) => 
-              f.path === `src/App.${fileExtension}` || f.path === `src/App.${indexExtension}` ||
-              f.path === 'src/App.jsx' || f.path === 'src/App.tsx' || f.path === 'src/App.js' || f.path === 'src/App.ts' ||
-              (f.isMain && (f.path.includes('App.jsx') || f.path.includes('App.tsx') || f.path.includes('App.js') || f.path.includes('App.ts')))
+            // CRITICAL: Fetch FRESH App from DB (project.files is stale - from before our upserts)
+            const appFileFromDb = await prisma.appFile.findFirst({
+              where: {
+                projectId: id,
+                path: { in: ['src/App.jsx', 'src/App.tsx', 'src/App.js', 'src/App.ts'] },
+              },
+            });
+            const appFile = appFileFromDb ?? project.files?.find((f: { path: string; isMain?: boolean | null }) =>
+              f.path === `src/App.${fileExtension}` || f.path === 'src/App.jsx' || f.path === 'src/App.tsx' ||
+              (f.isMain && f.path.includes('App.'))
             );
             
             if (appFile) {
@@ -2226,52 +2139,59 @@ root.render(
         }
       }
 
-      // Sandbox validation: After all files are created, validate preview can be generated
+      // Sandbox validation + auto-fix loop (Lovable/Replit: validate, fix render errors, retry)
       if (createdFiles.length > 0 && createdFiles.some((f: FileCreationResult) => f.success)) {
-        console.log('🔍 Sandbox validation: Validating preview generation after file creation...');
-        
-        try {
-          // Reload project with new files
+        let validated = false;
+        for (let fixAttempt = 0; fixAttempt < 2 && !validated; fixAttempt++) {
           const updatedProject = await prisma.appProject.findUnique({
             where: { id },
             include: { files: { orderBy: { path: 'asc' } } },
           });
+          if (!updatedProject?.files?.length) break;
 
-          if (updatedProject && updatedProject.files.length > 0) {
-            // Check if we can generate preview HTML
-            const jsFiles = updatedProject.files.filter((f: ProjectFile) => f.path.endsWith('.js') || f.path.endsWith('.jsx'));
-            
-            if (jsFiles.length > 0) {
-              // Check if App file exists and has valid structure
-              const appFile = jsFiles.find((f: ProjectFile) => 
-                (f.path.includes('App') || f.name.includes('App')) && 
-                !f.path.includes('index')
-              ) || jsFiles[0];
+          const validation = validateProjectFiles(updatedProject.files);
+          if (validation.valid) {
+            validated = true;
+            console.log('✅ Sandbox validation passed');
+            break;
+          }
 
-              if (appFile && appFile.content) {
-                // Basic validation: check if App component structure exists
-                const hasComponent = appFile.content.includes('function') || 
-                                    appFile.content.includes('const') || 
-                                    appFile.content.includes('class');
-                const hasReturn = appFile.content.includes('return');
-                const hasExport = appFile.content.includes('export') || appFile.content.includes('module.exports');
+          const errMsg = validation.errors.map((e: { message: string }) => e.message).join('; ');
+          const failedPaths = validation.errors
+            .map((e: { message: string }) => e.message.split(':')[0]?.trim())
+            .filter(Boolean) as string[];
+          console.warn(`⚠️ Render/compile errors (attempt ${fixAttempt + 1}):`, errMsg);
 
-                if (hasComponent && hasReturn && hasExport) {
-                  console.log('✅ Sandbox validation passed: Preview can be generated');
-                } else {
-                  console.warn('⚠️ Sandbox validation warning: App component may be incomplete');
-                  console.warn(`   Component: ${hasComponent}, Return: ${hasReturn}, Export: ${hasExport}`);
+          if (fixAttempt < 1 && client) {
+            try {
+              const fixPrompt = buildFixPrompt(errMsg, failedPaths.length > 0 ? failedPaths : createdFiles.map((f: FileCreationResult) => f.path).slice(0, 5), fixAttempt + 1);
+              const fixRes = await client.chat.completions.create({
+                model,
+                messages: [
+                  { role: 'system', content: 'You fix React/JSX syntax and render errors. Return JSON only: {"files":[{"path":"...","name":"...","content":"...","language":"jsx","isMain":false}],"summary":"Fixed: ..."}' },
+                  { role: 'user', content: fixPrompt },
+                ],
+                temperature: 0.2,
+                max_tokens: 4000,
+                stream: false,
+              });
+              const fixContent = fixRes.choices[0]?.message?.content || '';
+              const fixAgent = extractAgentResponse(fixContent);
+              if (fixAgent?.files?.length) {
+                for (const f of fixAgent.files) {
+                  await prisma.appFile.upsert({
+                    where: { projectId_path: { projectId: id, path: f.path } },
+                    update: { content: f.content },
+                    create: { projectId: id, path: f.path, name: f.name || f.path.split('/').pop() || '', content: f.content, language: f.language || 'javascript', isMain: f.isMain ?? false },
+                  });
                 }
-              } else {
-                console.warn('⚠️ Sandbox validation warning: App file not found or empty');
+                console.log(`🔧 Applied fix: ${fixAgent.files.length} file(s)`);
               }
-            } else {
-              console.warn('⚠️ Sandbox validation warning: No JS files found for preview');
+            } catch (fixErr) {
+              console.error('Fix request failed:', fixErr);
+              break;
             }
           }
-        } catch (sandboxError: unknown) {
-          console.error('⚠️ Sandbox validation error:', sandboxError);
-          // Don't fail the request, just log the warning
         }
       }
     } catch (parseError: unknown) {
@@ -2313,6 +2233,8 @@ root.render(
         role: 'assistant',
         content: response,
         timestamp: new Date().toISOString(),
+        provider: provider || undefined,
+        model: model || undefined,
       });
 
       await prisma.appChat.upsert({
@@ -2432,12 +2354,9 @@ root.render(
     // Handle connection errors
     if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.message?.includes('fetch failed') || err.message?.includes('network') || err.message?.includes('connection')) {
       const errorProvider = provider || 'unknown';
-      const errorMessage = errorProvider === 'groq' 
-        ? 'Unable to connect to Groq API. Please check your internet connection and GROQ_API_KEY environment variable.'
-        : 'Unable to connect to Groq API. Please check your internet connection and GROQ_API_KEY environment variable.';
-      const suggestion = errorProvider === 'groq'
-        ? 'Verify that GROQ_API_KEY is set in your environment variables.'
-        : 'Verify that GROQ_API_KEY is set in your environment variables.';
+      const keyName = errorProvider === 'openrouter' ? 'OPENROUTER_API_KEY' : 'GROQ_API_KEY';
+      const errorMessage = `Unable to connect to ${errorProvider} API. Please check your internet connection and ${keyName} environment variable.`;
+      const suggestion = `Verify that ${keyName} is set in your environment variables.`;
       
       return NextResponse.json(
         { 
@@ -2472,12 +2391,8 @@ root.render(
     // Handle server errors (500/503)
     if (err.status === 500 || err.status === 503) {
       const errorProvider = provider || 'unknown';
-      const errorMessage = errorProvider === 'groq'
-        ? 'Groq API server error. The service might be temporarily unavailable.'
-        : 'Groq API server error. The service might be temporarily unavailable.';
-      const suggestion = errorProvider === 'groq'
-        ? 'Wait a moment and try again, or check Groq API status.'
-        : 'Wait a moment and try again, or check Groq API status.';
+      const errorMessage = `${errorProvider} API server error. The service might be temporarily unavailable.`;
+      const suggestion = 'Wait a moment and try again, or check API status.';
       
       return NextResponse.json(
         { 
