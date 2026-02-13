@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
 import { getScaffoldFiles, DEFAULT_APP_CONTENT } from '@/app/lib/app-builder/scaffolds';
-import { createAIClient, hasAIClient } from '@/src/lib/ai/provider';
-import { extractAgentResponse } from '@/src/lib/app-builder/agentSchema';
-import { buildSystemPrompt, buildUserPrompt, buildFixPrompt } from '@/src/lib/app-builder/promptBuilder';
+import { createAIClient, hasAIClient } from '@/lib/ai/provider';
+import { extractAgentResponse } from '@/lib/app-builder/agentSchema';
+import { buildSystemPrompt, buildUserPrompt, buildFixPrompt } from '@/lib/app-builder/promptBuilder';
 import { validateProjectFiles } from '../../../../../src/lib/utils/validateJSX';
 import type { ChatMessage, ChatRequestBody, DatabaseError, QuestionnaireData, ProjectFile } from '@/app/types/app-builder';
 
@@ -326,7 +326,10 @@ export async function POST(
       console.log('='.repeat(60));
       
       try {
-        const scaffoldFiles = getScaffoldFiles(frameworkForScaffold);
+        const scaffoldFiles = getScaffoldFiles(frameworkForScaffold, {
+          projectTitle: project.title ?? 'My App',
+          useTypeScript,
+        });
         let scaffoldSkipped = 0;
         
         // Create a visible default App component
@@ -1866,6 +1869,9 @@ root.render(
     try {
       // Agent path: try structured JSON (Lovable/Replit style)
       const agentResponse = extractAgentResponse(response);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:extractAgentResponse',message:'chat agentResponse result',data:{hasAgentResponse:!!agentResponse,fileCount:agentResponse?.files?.length??0,responseLen:response?.length,firstChars:response?.substring(0,150)},timestamp:Date.now(),hypothesisId:'H1,H3'})}).catch(()=>{});
+      // #endregion
       if (agentResponse && agentResponse.files.length > 0) {
         agentProvidedApp = agentResponse.files.some(f =>
           f.path === 'src/App.jsx' || f.path === 'src/App.tsx'
@@ -1887,6 +1893,9 @@ root.render(
             createdFiles.push({ path: f.path, success: false, error: err instanceof Error ? err.message : 'Unknown error' });
           }
         }
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:agentFiles',message:'agent files created',data:{paths:agentResponse.files.map(x=>x.path),successCount:agentResponse.files.length},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+        // #endregion
       }
 
       // Fallback: regex-based parsing (legacy)
@@ -1895,7 +1904,13 @@ root.render(
           const codeBlockCount = (response.match(/```/g) || []).length / 2;
           console.log(`[FILE] No JSON files - parsing ${response.length} chars, ${codeBlockCount} code blocks`);
         }
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:parseAndCreateFiles',message:'fallback parseAndCreateFiles called',data:{responseLen:response?.length,codeBlockCount:(response.match(/```/g)||[]).length/2},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
+        // #endregion
         createdFiles = await parseAndCreateFiles(response);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:parseAndCreateFiles',message:'parseAndCreateFiles result',data:{createdCount:createdFiles.length,paths:createdFiles.map(f=>f.path),successCount:createdFiles.filter(f=>f.success).length},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
+        // #endregion
       }
       
       if (createdFiles.length === 0 && codeBlockCount === 0) {

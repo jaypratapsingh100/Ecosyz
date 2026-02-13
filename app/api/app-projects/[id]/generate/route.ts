@@ -1,16 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
 import { prisma } from '@/lib/db';
 import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
+import { createAIClient, hasAIClient } from '@/lib/ai/provider';
 import {
   REACT_PROJECT_PATHS,
   REACT_MAIN_JSX,
   REACT_FILE_CONTRACTS,
   type CanonicalReactFile,
 } from '@/lib/app-builder/canonicalReact';
-
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
 
 const STRUCTURE_PROMPT = `You are generating a single-page, professional marketing / dashboard React app.
 
@@ -135,20 +132,17 @@ export async function POST(
       );
     }
 
-    if (!GROQ_API_KEY) {
+    if (!hasAIClient()) {
       return NextResponse.json(
-        { error: 'GROQ_API_KEY is not configured. Set it in environment to generate apps.' },
+        { error: 'No AI provider configured. Set GROQ_API_KEY or OPENROUTER_API_KEY in environment.' },
         { status: 503 }
       );
     }
 
-    const client = new OpenAI({
-      baseURL: 'https://api.groq.com/openai/v1',
-      apiKey: GROQ_API_KEY,
-    });
+    const { client, model } = createAIClient();
 
     const completion = await client.chat.completions.create({
-      model: GROQ_MODEL,
+      model,
       messages: [
         {
           role: 'system',

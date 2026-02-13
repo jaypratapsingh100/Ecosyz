@@ -2,12 +2,18 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
+import { useFileExtraction } from './chat/hooks/useFileExtraction';
+import ChatQuestionnaire from './ChatQuestionnaire';
+import { SUGGESTED_PROMPTS } from '@/lib/app-builder/businessWebsitePrompts';
+import type { QuestionnaireData } from '@/app/types/app-builder';
 
 interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  provider?: string;
+  model?: string;
 }
 
 interface AppChatProps {
@@ -25,7 +31,11 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [questionnaireData, setQuestionnaireData] = useState<QuestionnaireData | null>(null);
+  const [questionnaireDismissed, setQuestionnaireDismissed] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { handleExtractFiles } = useFileExtraction({ projectId, onFilesCreated });
 
   const hasNoFiles = projectFiles.length === 0;
   const canGenerate = projectId && message.trim() && !loading;
@@ -53,9 +63,12 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
               role: msg.role || 'assistant',
               content: msg.content || '',
               timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
+              provider: msg.provider,
+              model: msg.model,
             }));
             setMessages(formattedMessages);
           }
+          if (data.questionnaireData) setQuestionnaireData(data.questionnaireData as QuestionnaireData);
         }
       } catch (err) {
         console.error('Error loading chat history:', err);
@@ -134,19 +147,30 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
         return;
       }
 
-      // Add assistant response
+      const filesCreated = data.filesCreated ?? [];
+      const successfulPaths = Array.isArray(filesCreated)
+        ? filesCreated.filter((f: { success?: boolean; path?: string }) => f?.success).map((f: { path?: string }) => f?.path)
+        : [];
+      let responseContent = data.response || data.message || 'Response received';
+      if (successfulPaths.length > 0) {
+        responseContent += `\n\n**Added ${successfulPaths.length} file(s):** ${successfulPaths.join(', ')}`;
+      }
+
       const assistantMessage: ChatMessage = {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
-        content: data.response || data.message || 'Response received',
+        content: responseContent,
         timestamp: new Date(),
+        provider: data.provider,
+        model: data.model,
       };
-      
+
       setMessages((prev) => [...prev, assistantMessage]);
       onFilesCreated?.();
-      
+
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('files-updated', { detail: { projectId } }));
+        window.dispatchEvent(new CustomEvent('auto-refresh-preview', { detail: { projectId } }));
       }
     } catch (err) {
       const errorMessage = err instanceof Error 
@@ -164,8 +188,30 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
     }
   };
 
+  const onExtractFromMessage = async (content: string) => {
+    if (!content?.trim()) return;
+    setExtracting(true);
+    try {
+      const result = await handleExtractFiles(content);
+      if (result.ok && result.createdCount > 0) {
+        toast.success('Files extracted', { description: result.message });
+      } else if (!result.ok) {
+        toast.error('Extract failed', { description: result.message });
+      } else {
+        toast.info(result.message);
+      }
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const hasExtractableContent = (content: string) =>
+    (content.includes('```') || content.includes('"files"')) &&
+    (content.includes('.jsx') || content.includes('.tsx') || content.includes('.css') || content.includes('App'));
+
   const renderMessage = (msg: ChatMessage) => {
     const isUser = msg.role === 'user';
+    const showExtract = !isUser && hasExtractableContent(msg.content);
     return (
       <div key={msg.id} className={`flex gap-3 items-start ${isUser ? 'flex-row-reverse' : ''}`}>
         <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1 ${
@@ -184,8 +230,19 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
           )}
         </div>
         <div className={`flex-1 ${isUser ? 'text-right' : ''}`}>
-          <div className={`text-sm font-semibold mb-1 ${isUser ? 'text-blue-400' : 'text-white'}`}>
+          <div className={`text-sm font-semibold mb-1 flex items-center gap-2 ${isUser ? 'text-blue-400' : 'text-white'}`}>
             {isUser ? 'You' : 'Assistant'}
+            {showExtract && (
+              <button
+                type="button"
+                onClick={() => onExtractFromMessage(msg.content)}
+                disabled={extracting || !projectId}
+                className="ml-1 px-2 py-0.5 text-xs font-medium rounded-md bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title="Extract files from this response and add to project"
+              >
+                {extracting ? 'Extracting…' : 'Extract files'}
+              </button>
+            )}
           </div>
           <div className={`rounded-2xl px-4 py-3 shadow-lg ${
             isUser
@@ -195,18 +252,53 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
             <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap break-words">
               {msg.content}
             </p>
-            <p className="text-xs text-gray-500 mt-2">
-              {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </p>
+            <div className="flex items-center gap-2 mt-2 flex-wrap">
+              <p className="text-xs text-gray-500">
+                {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </p>
+              {!isUser && (msg.provider || msg.model) && (
+                <span
+                  className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-medium"
+                  title={`Provider: ${msg.provider || '—'}, Model: ${msg.model || '—'}`}
+                >
+                  {msg.provider === 'groq'
+                    ? 'Groq'
+                    : msg.provider === 'openrouter'
+                      ? 'OpenRouter'
+                      : String(msg.provider || '').toUpperCase()}
+                  {msg.model
+                    ? ` · ${msg.model.includes('llama') ? 'Llama 3.3' : msg.model.includes('deepseek') ? 'DeepSeek' : msg.model.split('/').pop() || msg.model}`
+                    : ''}
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </div>
     );
   };
 
+  const showQuestionnaire =
+    projectId &&
+    projectFiles.length <= 2 &&
+    !questionnaireDismissed &&
+    (questionnaireData === null || Object.keys(questionnaireData || {}).length < 2);
+
   return (
     <div className="h-full flex flex-col bg-[#0a0a0a]">
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {showQuestionnaire && (
+          <ChatQuestionnaire
+            projectId={projectId}
+            initialData={questionnaireData}
+            onComplete={(data, generatedPrompt) => {
+              setQuestionnaireData(data);
+              setQuestionnaireDismissed(true);
+              if (generatedPrompt) setMessage(generatedPrompt);
+            }}
+            onSkip={() => setQuestionnaireDismissed(true)}
+          />
+        )}
         {isLoadingHistory ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
@@ -224,11 +316,24 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
             <div className="flex-1">
               <div className="text-white font-semibold text-sm mb-1">Assistant</div>
               <div className="bg-[#1a1a1a] border border-white/10 rounded-2xl px-4 py-3 shadow-lg">
-                <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap break-words">
+                <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap break-words mb-3">
                   {hasNoFiles
-                    ? '👋 **Welcome!** Describe the app you want (e.g. "A todo app with dark mode") and click Send. I\'ll generate the React app.'
-                    : '👋 **Welcome!** How would you like to get started?'}
+                    ? "👋 Welcome! Describe the app you want or pick a prompt below. I'll generate the React app."
+                    : "👋 How would you like to get started? Pick a prompt or describe your changes."}
                 </p>
+                <div className="flex flex-wrap gap-2">
+                  {SUGGESTED_PROMPTS.map(({ label, prompt, shortLabel }) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => setMessage(prompt)}
+                      className="text-left px-3 py-2 rounded-lg text-xs bg-white/5 hover:bg-emerald-500/20 border border-white/10 hover:border-emerald-500/40 text-gray-300 hover:text-emerald-300 transition-colors max-w-full line-clamp-2"
+                      title={prompt.length > 80 ? prompt.slice(0, 120) + '…' : prompt}
+                    >
+                      {shortLabel || label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
@@ -279,7 +384,7 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
                 type="text"
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                placeholder={hasNoFiles ? 'e.g. A todo app with filters and dark mode' : 'Ask me to generate code...'}
+                placeholder={hasNoFiles ? 'e.g. Professional business website with Hero, Services, Contact' : 'Ask me to generate code...'}
                 disabled={loading}
                 className="flex-1 bg-transparent text-white placeholder-gray-400 focus:outline-none text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               />
