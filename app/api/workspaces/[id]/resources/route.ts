@@ -15,12 +15,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     });
     return NextResponse.json(resources);
   } catch (error: any) {
+    if (error.message === 'Not authenticated') {
+      return NextResponse.json({ error: error.message }, { status: 401 });
+    }
     if (error.message === 'Workspace not found') {
       return NextResponse.json({ error: error.message }, { status: 404 });
     }
     if (error.message.includes('Forbidden')) {
       return NextResponse.json({ error: error.message }, { status: 403 });
     }
+    console.error('Resources error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -50,12 +54,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     });
     return NextResponse.json(resource, { status: 201 });
   } catch (error: any) {
+    if (error.message === 'Not authenticated') {
+      return NextResponse.json({ error: error.message }, { status: 401 });
+    }
     if (error.message === 'Workspace not found') {
       return NextResponse.json({ error: error.message }, { status: 404 });
     }
     if (error.message.includes('Forbidden')) {
       return NextResponse.json({ error: error.message }, { status: 403 });
     }
+    console.error('Resources error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

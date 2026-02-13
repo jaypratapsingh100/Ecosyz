@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import GroupCard from './GroupCard';
+import CreateGroupForm from './CreateGroupForm';
 
 interface Group {
   id: string;
@@ -26,6 +27,7 @@ export default function CommunityGroups() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [topicFilter, setTopicFilter] = useState('');
+  const [showCreateForm, setShowCreateForm] = useState(false);
 
   useEffect(() => {
     fetchGroups();
@@ -55,8 +57,32 @@ export default function CommunityGroups() {
     fetchGroups();
   };
 
+  const handleGroupCreated = () => {
+    setShowCreateForm(false);
+    fetchGroups(); // Refresh the groups list
+  };
+
   return (
     <div className="space-y-6">
+      {/* Create Group Button */}
+      <div className="flex justify-end">
+        <button
+          onClick={() => setShowCreateForm(!showCreateForm)}
+          className="px-6 py-2 bg-gradient-to-r from-cyan-400 to-emerald-400 text-gray-900 font-semibold rounded-lg hover:scale-105 transition shadow-lg shadow-cyan-400/20"
+        >
+          {showCreateForm ? 'Cancel' : '+ Create Group'}
+        </button>
+      </div>
+
+      {/* Create Group Form */}
+      {showCreateForm && (
+        <CreateGroupForm
+          onSuccess={handleGroupCreated}
+          onCancel={() => setShowCreateForm(false)}
+        />
+      )}
+
+      {/* Search and Filter */}
       <div className="flex flex-col sm:flex-row gap-4">
         <form onSubmit={handleSearch} className="flex-1">
           <input

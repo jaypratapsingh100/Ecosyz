@@ -1,6 +1,10 @@
 import { prisma } from '../../../src/lib/db'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
+import { getCurrentUser } from '../../../src/lib/auth'
+import { ensureUserInDb } from '../../../src/lib/auth/core/user'
 import WorkspacePageClient from '../../components/workspace/WorkspacePageClient'
+import Header from '../../components/Header'
+import Footer from '../../components/Footer'
 
 interface Resource {
   id: string
@@ -17,7 +21,7 @@ interface Workspace {
   id: string
   title: string
   resources: Resource[]
-  shareLinks: { id: string; token: string; createdAt: string; expiresAt?: string }[]
+  shareLink: { id: string; token: string; createdAt: string; expiresAt?: string } | null
 }
 
 export async function generateStaticParams() {
@@ -30,6 +34,46 @@ export default async function WorkspacePage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
+
+  // Check authentication and ownership
+  const supabaseUser = await getCurrentUser()
+  if (supabaseUser) {
+    await ensureUserInDb(supabaseUser)
+    const prismaUser = await prisma.user.findUnique({
+      where: { supabaseId: supabaseUser.id },
+    })
+    
+    if (prismaUser) {
+      // Ensure user has exactly one workspace (consolidate if multiple exist)
+      // This is handled by ensureUserInDb, but we'll verify here too
+      const userWorkspaces = await prisma.workspace.findMany({
+        where: { ownerId: prismaUser.id },
+        orderBy: { createdAt: 'asc' },
+      })
+      
+      let userWorkspace;
+      if (userWorkspaces.length === 0) {
+        // Should not happen if ensureUserInDb worked, but handle it
+        userWorkspace = await prisma.workspace.create({
+          data: {
+            title: 'My Workspace',
+            ownerId: prismaUser.id,
+          },
+        })
+      } else if (userWorkspaces.length > 1) {
+        // Multiple workspaces - consolidation will happen via ensureUserInDb on next call
+        // For now, use the oldest one
+        userWorkspace = userWorkspaces[0]
+      } else {
+        userWorkspace = userWorkspaces[0]
+      }
+      
+      // If user tries to access a workspace that isn't theirs, redirect to their own workspace
+      if (userWorkspace && userWorkspace.id !== id) {
+        redirect(`/workspaces/${userWorkspace.id}`)
+      }
+    }
+  }
 
   const workspace = await prisma.workspace.findUnique({
     where: { id },
@@ -48,6 +92,27 @@ export default async function WorkspacePage({
 
   if (!workspace) {
     notFound()
+  }
+  
+  // Additional ownership check for authenticated users
+  if (supabaseUser) {
+    const prismaUser = await prisma.user.findUnique({
+      where: { supabaseId: supabaseUser.id },
+    })
+    if (prismaUser && workspace.ownerId !== prismaUser.id) {
+      // User is authenticated but doesn't own this workspace
+      // Get their own workspace (should be exactly one after consolidation)
+      const userWorkspaces = await prisma.workspace.findMany({
+        where: { ownerId: prismaUser.id },
+        orderBy: { createdAt: 'asc' },
+      })
+      
+      if (userWorkspaces.length > 0) {
+        // Redirect to their primary workspace (oldest one)
+        redirect(`/workspaces/${userWorkspaces[0].id}`)
+      }
+      notFound()
+    }
   }
 
   interface ResourceData {
@@ -76,13 +141,21 @@ export default async function WorkspacePage({
     id: workspace.id,
     title: workspace.title,
     resources: resourcesWithCount,
-    shareLinks: workspace.shares.map((share) => ({
-      id: share.id,
-      token: share.token,
-      createdAt: share.createdAt.toISOString(),
-      expiresAt: share.expiresAt?.toISOString(),
-    })),
+    shareLink: workspace.shares.length > 0 ? {
+      id: workspace.shares[0].id,
+      token: workspace.shares[0].token,
+      createdAt: workspace.shares[0].createdAt.toISOString(),
+      expiresAt: workspace.shares[0].expiresAt?.toISOString(),
+    } : null,
   }
 
-  return <WorkspacePageClient workspaceData={workspaceData} />
+  return (
+    <div className="min-h-screen flex flex-col">
+      <Header />
+      <main className="flex-grow">
+        <WorkspacePageClient workspaceData={workspaceData} />
+      </main>
+      <Footer />
+    </div>
+  )
 }

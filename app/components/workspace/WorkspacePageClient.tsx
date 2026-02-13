@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { motion } from 'framer-motion'
+import Image from 'next/image'
 import WorkspaceHeader from './WorkspaceHeader'
 import ResourceCard from './ResourceCard'
 import AddResourceForm from './AddResourceForm'
@@ -24,7 +25,7 @@ interface Workspace {
   id: string
   title: string
   resources: Resource[]
-  shareLinks: { id: string; token: string; createdAt: string; expiresAt?: string }[]
+  shareLink: { id: string; token: string; createdAt: string; expiresAt?: string } | null
 }
 
 interface WorkspacePageClientProps {
@@ -35,44 +36,56 @@ export default function WorkspacePageClient({ workspaceData }: WorkspacePageClie
   const [activeTab, setActiveTab] = useState<'resources' | 'discussions'>('resources')
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950">
+    <div className="relative bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 min-h-screen">
       <ToastProvider />
+
+      {/* Globe background image */}
+      <div className="pointer-events-none absolute inset-0 z-0">
+        <Image
+          src="/hero-globe.png"
+          alt="Digital Globe Background"
+          fill
+          className="object-cover object-right opacity-30"
+          quality={100}
+          priority
+        />
+        <div className="absolute left-1/2 top-1/3 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] bg-gradient-radial from-cyan-400/20 to-transparent opacity-80 blur-3xl"></div>
+      </div>
 
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5 }}
-        className="container mx-auto px-4 py-8 max-w-7xl"
+        className="relative z-10 container mx-auto px-4 py-8 max-w-7xl"
       >
-        <WorkspaceHeader id={workspaceData.id} title={workspaceData.title} />
-
-        {/* Tabs */}
-        <div className="flex gap-4 mt-8 border-b border-zinc-800">
-          <button
-            onClick={() => setActiveTab('resources')}
-            className={`px-6 py-3 font-semibold transition ${
-              activeTab === 'resources'
-                ? 'text-cyan-400 border-b-2 border-cyan-400'
-                : 'text-zinc-400 hover:text-zinc-300'
-            }`}
-          >
-            Resources
-          </button>
-          <button
-            onClick={() => setActiveTab('discussions')}
-            className={`px-6 py-3 font-semibold transition ${
-              activeTab === 'discussions'
-                ? 'text-cyan-400 border-b-2 border-cyan-400'
-                : 'text-zinc-400 hover:text-zinc-300'
-            }`}
-          >
-            Discussions
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main Content Section */}
           <div className="lg:col-span-2 space-y-6">
+            <WorkspaceHeader id={workspaceData.id} title={workspaceData.title} />
+
+            {/* Tabs */}
+            <div className="flex gap-4 mt-8 border-b border-zinc-800">
+              <button
+                onClick={() => setActiveTab('resources')}
+                className={`px-6 py-3 font-semibold transition ${
+                  activeTab === 'resources'
+                    ? 'text-cyan-400 border-b-2 border-cyan-400'
+                    : 'text-zinc-400 hover:text-zinc-300'
+                }`}
+              >
+                Resources
+              </button>
+              <button
+                onClick={() => setActiveTab('discussions')}
+                className={`px-6 py-3 font-semibold transition ${
+                  activeTab === 'discussions'
+                    ? 'text-cyan-400 border-b-2 border-cyan-400'
+                    : 'text-zinc-400 hover:text-zinc-300'
+                }`}
+              >
+                Discussions
+              </button>
+            </div>
             {activeTab === 'resources' ? (
               <>
             <motion.div
@@ -152,15 +165,18 @@ export default function WorkspacePageClient({ workspaceData }: WorkspacePageClie
             )}
           </div>
 
-          {/* Share Links Panel */}
+          {/* Right Sidebar - Share Link Panel at Top */}
           <div className="lg:col-span-1">
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.3 }}
-            >
-              <ShareLinksPanel workspaceId={workspaceData.id} />
-            </motion.div>
+            <div className="sticky top-8 space-y-6">
+              {/* Share Links Panel - Positioned at top */}
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.1 }}
+              >
+                <ShareLinksPanel workspaceId={workspaceData.id} />
+              </motion.div>
+            </div>
           </div>
         </div>
       </motion.div>

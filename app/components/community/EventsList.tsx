@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import EventCard from './EventCard';
+import CreateEventForm from './CreateEventForm';
 
 interface Event {
   id: string;
@@ -23,6 +24,7 @@ export default function EventsList() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('upcoming');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [showCreateForm, setShowCreateForm] = useState(false);
 
   useEffect(() => {
     fetchEvents();
@@ -47,29 +49,49 @@ export default function EventsList() {
     }
   };
 
+  const handleCreateSuccess = () => {
+    setShowCreateForm(false);
+    fetchEvents();
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row gap-4">
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-4 py-2 bg-[#172421]/90 border border-teal-400/20 rounded-lg text-white focus:outline-none focus:border-cyan-400"
+      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+        <div className="flex flex-col sm:flex-row gap-4 flex-1">
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-4 py-2 bg-[#172421]/90 border border-teal-400/20 rounded-lg text-white focus:outline-none focus:border-cyan-400"
+          >
+            <option value="upcoming">Upcoming</option>
+            <option value="past">Past</option>
+          </select>
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="px-4 py-2 bg-[#172421]/90 border border-teal-400/20 rounded-lg text-white focus:outline-none focus:border-cyan-400"
+          >
+            <option value="">All Categories</option>
+            <option value="workshop">Workshop</option>
+            <option value="webinar">Webinar</option>
+            <option value="hackathon">Hackathon</option>
+            <option value="meetup">Meetup</option>
+          </select>
+        </div>
+        <button
+          onClick={() => setShowCreateForm(!showCreateForm)}
+          className="px-6 py-2 bg-gradient-to-r from-cyan-400 to-emerald-400 text-gray-900 font-semibold rounded-lg hover:scale-105 transition whitespace-nowrap"
         >
-          <option value="upcoming">Upcoming</option>
-          <option value="past">Past</option>
-        </select>
-        <select
-          value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
-          className="px-4 py-2 bg-[#172421]/90 border border-teal-400/20 rounded-lg text-white focus:outline-none focus:border-cyan-400"
-        >
-          <option value="">All Categories</option>
-          <option value="workshop">Workshop</option>
-          <option value="webinar">Webinar</option>
-          <option value="hackathon">Hackathon</option>
-          <option value="meetup">Meetup</option>
-        </select>
+          {showCreateForm ? 'Cancel' : '+ Create Event'}
+        </button>
       </div>
+
+      {showCreateForm && (
+        <CreateEventForm
+          onSuccess={handleCreateSuccess}
+          onCancel={() => setShowCreateForm(false)}
+        />
+      )}
 
       {loading ? (
         <div className="text-center py-12 text-teal-100/80">Loading events...</div>

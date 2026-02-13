@@ -7,6 +7,63 @@ import { User as SupabaseUser } from '@supabase/supabase-js';
 import { prisma } from '@/src/lib/db';
 
 /**
+ * Ensure user has exactly one workspace (create if doesn't exist, consolidate if multiple exist)
+ * Each user should have exactly one workspace
+ */
+async function ensureUserWorkspace(userId: string): Promise<void> {
+  const workspaces = await prisma.workspace.findMany({
+    where: { ownerId: userId },
+    orderBy: { createdAt: 'asc' }, // Oldest first
+    include: {
+      resources: true,
+      shares: true,
+    },
+  });
+
+  if (workspaces.length === 0) {
+    // No workspace exists, create one
+    await prisma.workspace.create({
+      data: {
+        title: 'My Workspace',
+        ownerId: userId,
+      },
+    });
+  } else if (workspaces.length > 1) {
+    // Multiple workspaces exist - consolidate into the oldest one
+    const primaryWorkspace = workspaces[0];
+    const extraWorkspaces = workspaces.slice(1);
+
+    console.log(`User ${userId} has ${workspaces.length} workspaces. Consolidating into workspace ${primaryWorkspace.id}`);
+
+    // Move all resources from extra workspaces to the primary workspace
+    for (const extraWorkspace of extraWorkspaces) {
+      if (extraWorkspace.resources.length > 0) {
+        await prisma.resource.updateMany({
+          where: { workspaceId: extraWorkspace.id },
+          data: { workspaceId: primaryWorkspace.id },
+        });
+      }
+
+      // Move share links (but keep only one active share link)
+      if (extraWorkspace.shares.length > 0) {
+        // Delete extra share links (keep only the primary workspace's share link)
+        await prisma.shareLink.deleteMany({
+          where: { workspaceId: extraWorkspace.id },
+        });
+      }
+
+      // Delete the extra workspace
+      await prisma.workspace.delete({
+        where: { id: extraWorkspace.id },
+      });
+    }
+
+    console.log(`Consolidated ${extraWorkspaces.length} extra workspaces into primary workspace ${primaryWorkspace.id}`);
+  }
+  // If workspaces.length === 1, user already has exactly one workspace - nothing to do
+}
+
+/**
  * Ensure user exists in database, create or update as needed
  */
 export async function ensureUserInDb(user: SupabaseUser): Promise<void> {
@@ -26,6 +83,8 @@ export async function ensureUserInDb(user: SupabaseUser): Promise<void> {
       where: { email: user.email },
     });
 
+    let prismaUserId: string;
+
     if (existingBySupabaseId) {
       // User exists with this supabaseId, update it
       await prisma.user.update({
@@ -37,9 +96,10 @@ export async function ensureUserInDb(user: SupabaseUser): Promise<void> {
           updatedAt: new Date(),
         },
       });
+      prismaUserId = existingBySupabaseId.id;
     } else if (existingByEmail) {
       // User exists with this email but different supabaseId - update the existing record
-      await prisma.user.update({
+      const updatedUser = await prisma.user.update({
         where: { email: user.email },
         data: {
           supabaseId: user.id, // Update supabaseId to match current user
@@ -48,9 +108,10 @@ export async function ensureUserInDb(user: SupabaseUser): Promise<void> {
           updatedAt: new Date(),
         },
       });
+      prismaUserId = updatedUser.id;
     } else {
       // User doesn't exist, create new one
-      await prisma.user.create({
+      const newUser = await prisma.user.create({
         data: {
           supabaseId: user.id,
           email: user.email,
@@ -58,7 +119,11 @@ export async function ensureUserInDb(user: SupabaseUser): Promise<void> {
           avatarUrl: user.user_metadata?.avatar_url,
         },
       });
+      prismaUserId = newUser.id;
     }
+
+    // Ensure user has a workspace (auto-create if missing)
+    await ensureUserWorkspace(prismaUserId);
   } catch (error: any) {
     // Handle database authentication errors specifically
     if (error?.message?.includes('authentication failed') || error?.code === 'P1001' || error?.code === 'P1000') {
@@ -89,6 +154,8 @@ export async function ensureUserInDb(user: SupabaseUser): Promise<void> {
               updatedAt: new Date(),
             },
           });
+          // Ensure workspace exists for this user
+          await ensureUserWorkspace(existingUser.id);
           return; // Successfully updated
         }
       } catch (retryError) {

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import ChallengeCard from './ChallengeCard';
+import CreateChallengeForm from './CreateChallengeForm';
 
 interface Challenge {
   id: string;
@@ -23,6 +24,7 @@ export default function ChallengesList() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('active');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [showCreateForm, setShowCreateForm] = useState(false);
 
   useEffect(() => {
     fetchChallenges();
@@ -47,34 +49,54 @@ export default function ChallengesList() {
     }
   };
 
+  const handleCreateSuccess = () => {
+    setShowCreateForm(false);
+    fetchChallenges();
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row gap-4">
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-4 py-2 bg-[#172421]/90 border border-teal-400/20 rounded-lg text-white focus:outline-none focus:border-cyan-400"
+      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+        <div className="flex flex-col sm:flex-row gap-4 flex-1">
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-4 py-2 bg-[#172421]/90 border border-teal-400/20 rounded-lg text-white focus:outline-none focus:border-cyan-400"
+          >
+            <option value="">All Status</option>
+            <option value="upcoming">Upcoming</option>
+            <option value="active">Active</option>
+            <option value="ended">Ended</option>
+            <option value="judging">Judging</option>
+            <option value="completed">Completed</option>
+          </select>
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="px-4 py-2 bg-[#172421]/90 border border-teal-400/20 rounded-lg text-white focus:outline-none focus:border-cyan-400"
+          >
+            <option value="">All Categories</option>
+            <option value="innovation">Innovation</option>
+            <option value="coding">Coding</option>
+            <option value="research">Research</option>
+            <option value="ai">AI</option>
+            <option value="climate">Climate</option>
+          </select>
+        </div>
+        <button
+          onClick={() => setShowCreateForm(!showCreateForm)}
+          className="px-6 py-2 bg-gradient-to-r from-cyan-400 to-emerald-400 text-gray-900 font-semibold rounded-lg hover:scale-105 transition whitespace-nowrap"
         >
-          <option value="">All Status</option>
-          <option value="upcoming">Upcoming</option>
-          <option value="active">Active</option>
-          <option value="ended">Ended</option>
-          <option value="judging">Judging</option>
-          <option value="completed">Completed</option>
-        </select>
-        <select
-          value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
-          className="px-4 py-2 bg-[#172421]/90 border border-teal-400/20 rounded-lg text-white focus:outline-none focus:border-cyan-400"
-        >
-          <option value="">All Categories</option>
-          <option value="innovation">Innovation</option>
-          <option value="coding">Coding</option>
-          <option value="research">Research</option>
-          <option value="ai">AI</option>
-          <option value="climate">Climate</option>
-        </select>
+          {showCreateForm ? 'Cancel' : '+ Create Challenge'}
+        </button>
       </div>
+
+      {showCreateForm && (
+        <CreateChallengeForm
+          onSuccess={handleCreateSuccess}
+          onCancel={() => setShowCreateForm(false)}
+        />
+      )}
 
       {loading ? (
         <div className="text-center py-12 text-teal-100/80">Loading challenges...</div>

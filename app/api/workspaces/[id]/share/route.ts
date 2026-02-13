@@ -8,18 +8,25 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const { id } = await params;
     await ensureOwner(id);
 
-    const shares = await prisma.shareLink.findMany({
+    // Return single share link for workspace (one link per workspace)
+    const share = await prisma.shareLink.findFirst({
       where: { workspaceId: id },
       orderBy: { createdAt: 'desc' },
     });
-    return NextResponse.json(shares);
+    
+    // Return null if no share link exists (instead of empty array)
+    return NextResponse.json(share);
   } catch (error: any) {
+    if (error.message === 'Not authenticated') {
+      return NextResponse.json({ error: error.message }, { status: 401 });
+    }
     if (error.message === 'Workspace not found') {
       return NextResponse.json({ error: error.message }, { status: 404 });
     }
     if (error.message.includes('Forbidden')) {
       return NextResponse.json({ error: error.message }, { status: 403 });
     }
+    console.error('Share links GET error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -29,14 +36,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const { id } = await params;
     await ensureOwner(id);
 
-  const body = await req.json();
-  const parse = CreateShare.safeParse(body);
-  if (!parse.success) {
-    return NextResponse.json({ error: parse.error.message }, { status: 400 });
-  }
+    const body = await req.json();
+    const parse = CreateShare.safeParse(body);
+    if (!parse.success) {
+      return NextResponse.json({ error: parse.error.message }, { status: 400 });
+    }
 
-  // Generate a unique token
-  const token = crypto.randomUUID();
+    // Check if a share link already exists for this workspace
+    const existingShare = await prisma.shareLink.findFirst({
+      where: { workspaceId: id },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // If share link exists, return it instead of creating a new one
+    if (existingShare) {
+      return NextResponse.json(existingShare);
+    }
+
+    // Generate a unique token and create new share link
+    const token = crypto.randomUUID();
 
     const share = await prisma.shareLink.create({
       data: {
@@ -47,12 +65,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     });
     return NextResponse.json(share);
   } catch (error: any) {
+    if (error.message === 'Not authenticated') {
+      return NextResponse.json({ error: error.message }, { status: 401 });
+    }
     if (error.message === 'Workspace not found') {
       return NextResponse.json({ error: error.message }, { status: 404 });
     }
     if (error.message.includes('Forbidden')) {
       return NextResponse.json({ error: error.message }, { status: 403 });
     }
+    console.error('Share links POST error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

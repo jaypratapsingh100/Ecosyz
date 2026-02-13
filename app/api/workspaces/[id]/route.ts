@@ -20,12 +20,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     });
     return NextResponse.json(workspace);
   } catch (error: any) {
+    if (error.message === 'Not authenticated') {
+      return NextResponse.json({ error: error.message }, { status: 401 });
+    }
     if (error.message === 'Workspace not found') {
       return NextResponse.json({ error: error.message }, { status: 404 });
     }
     if (error.message.includes('Forbidden')) {
       return NextResponse.json({ error: error.message }, { status: 403 });
     }
+    console.error('Workspace GET error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -48,30 +52,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
     return NextResponse.json(updated);
   } catch (error: any) {
+    if (error.message === 'Not authenticated') {
+      return NextResponse.json({ error: error.message }, { status: 401 });
+    }
     if (error.message === 'Workspace not found') {
       return NextResponse.json({ error: error.message }, { status: 404 });
     }
     if (error.message.includes('Forbidden')) {
       return NextResponse.json({ error: error.message }, { status: 403 });
     }
+    console.error('Workspace GET error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await params;
-    await ensureOwner(id);
-
-    await prisma.workspace.delete({ where: { id } });
-    return NextResponse.json({ message: 'Deleted' });
-  } catch (error: any) {
-    if (error.message === 'Workspace not found') {
-      return NextResponse.json({ error: error.message }, { status: 404 });
-    }
-    if (error.message.includes('Forbidden')) {
-      return NextResponse.json({ error: error.message }, { status: 403 });
-    }
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
+  // Workspace deletion is disabled - users must keep their workspace
+  return NextResponse.json(
+    { error: 'Workspace deletion is not allowed. Each user must have one workspace.' },
+    { status: 403 }
+  );
 }

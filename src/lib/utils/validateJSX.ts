@@ -99,7 +99,17 @@ export function validateJSXCode(code: string, filename: string): ValidationResul
     });
   }
 
-  // Check 6: Unclosed JSX tags (basic check)
+  // Check 6: JSX/component tags incorrectly inside style object strings (common AI corruption)
+  // e.g. background: 'linear-gradient(... 100%    <App />  - unterminated string with JSX mixed in
+  if (/'[^']*<[A-Za-z][a-zA-Z0-9]*\s*\/?\s*>?/.test(code) || /"[^"]*<[A-Za-z][a-zA-Z0-9]*\s*\/?\s*>?/.test(code)) {
+    errors.push({
+      type: 'syntax',
+      message: 'Unterminated string or JSX tags incorrectly placed inside a style/string value',
+      suggestion: 'Check that style object strings are properly closed. Child components like <TodoList /> should be JSX children, not inside style={{ }}.'
+    });
+  }
+
+  // Check 7: Unclosed JSX tags (basic check)
   const openTags = (code.match(/<[A-Z][a-zA-Z0-9]*\s*>/g) || []).length;
   const closeTags = (code.match(/<\/[A-Z][a-zA-Z0-9]*>/g) || []).length;
   const selfClosingTags = (code.match(/<[A-Z][a-zA-Z0-9]*\s*\/>/g) || []).length;
