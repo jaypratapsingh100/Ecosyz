@@ -326,10 +326,7 @@ export async function POST(
       console.log('='.repeat(60));
       
       try {
-        const scaffoldFiles = getScaffoldFiles(frameworkForScaffold, {
-          projectTitle: project.title ?? 'My App',
-          useTypeScript,
-        });
+        const scaffoldFiles = getScaffoldFiles(frameworkForScaffold);
         let scaffoldSkipped = 0;
         
         // Create a visible default App component
