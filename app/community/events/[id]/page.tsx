@@ -320,7 +320,7 @@ export default function EventDetailPage() {
                       {isUpcoming && !isRegistered && (
                         <button
                           onClick={handleRegister}
-                          disabled={isRegistering || (event.maxAttendees && event._count.registrations >= event.maxAttendees)}
+                          disabled={!!(isRegistering || (event.maxAttendees && event._count.registrations >= event.maxAttendees))}
                           className="w-full px-6 py-3 bg-gradient-to-r from-cyan-400 to-emerald-400 text-gray-900 font-semibold rounded-lg hover:scale-105 transition disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {isRegistering
