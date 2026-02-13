@@ -88,7 +88,15 @@ export default function CareersPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showApplyModal, setShowApplyModal] = useState(false);
   const [applyJob, setApplyJob] = useState<typeof JOBS[0] | null>(null);
-  const [formData, setFormData] = useState({ name: '', email: '', linkedin: '' });
+  const [submitting, setSubmitting] = useState(false);
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    linkedin: '',
+    github: '',
+    coverNote: '',
+  });
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
 
   // Scroll to job when landing with #job-id (e.g. from shared link)
   useEffect(() => {
@@ -102,27 +110,44 @@ export default function CareersPage() {
 
   const handleApplyClick = (job: typeof JOBS[0]) => {
     setApplyJob(job);
-    setFormData({ name: '', email: '', linkedin: '' });
+    setFormData({ name: '', email: '', linkedin: '', github: '', coverNote: '' });
+    setResumeFile(null);
     setShowApplyModal(true);
   };
 
-  const handleApplySubmit = (e: React.FormEvent) => {
+  const handleApplySubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!applyJob || !formData.email.trim()) return;
 
-    const subject = encodeURIComponent(`Application: ${applyJob.title} - ${formData.name}`);
-    const linkParts = [
-      `Name: ${formData.name}`,
-      `Email: ${formData.email}`,
-      ...(formData.linkedin ? [`LinkedIn: ${formData.linkedin}`] : []),
-    ];
-    const body = encodeURIComponent(
-      `Hi Open Idea Team,\n\nI am applying for the ${applyJob.title} position.\n\n${linkParts.join('\n')}\n\n[Add your brief note here - why you're excited about Open Idea]\n\n${applyJob.needsGithub ? '[Include your GitHub profile link]' : ''}\n\nBest regards`
-    );
-    window.location.href = `mailto:info@openidea.world?subject=${subject}&body=${body}`;
-    toast.success('Opening your email client...');
-    setShowApplyModal(false);
-    setApplyJob(null);
+    setSubmitting(true);
+    try {
+      const fd = new FormData();
+      fd.append('name', formData.name);
+      fd.append('email', formData.email);
+      fd.append('linkedin', formData.linkedin);
+      fd.append('github', formData.github);
+      fd.append('coverNote', formData.coverNote);
+      fd.append('jobTitle', applyJob.title);
+      if (resumeFile) fd.append('resume', resumeFile);
+
+      const res = await fetch('/api/careers/apply', { method: 'POST', body: fd });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to submit. Please try again.');
+        return;
+      }
+
+      toast.success('Application sent! We\'ll be in touch soon.');
+      setShowApplyModal(false);
+      setApplyJob(null);
+      setFormData({ name: '', email: '', linkedin: '', github: '', coverNote: '' });
+      setResumeFile(null);
+    } catch {
+      toast.error('Something went wrong. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -328,11 +353,11 @@ export default function CareersPage() {
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="relative rounded-xl p-6 max-w-md w-full shadow-2xl border border-[#38bdf8]/30 bg-zinc-900/95 backdrop-blur-sm"
+            className="relative rounded-xl p-6 max-w-md w-full shadow-2xl border border-[#38bdf8]/30 bg-zinc-900/95 backdrop-blur-sm max-h-[90vh] overflow-y-auto"
           >
             <h3 className="text-lg font-semibold text-[#38bdf8] mb-1">{applyJob.title}</h3>
             <p className="text-sm text-teal-100/70 mb-5">
-              Provide your details. We&apos;ll open your email client to complete the application.
+              Submit your application. We&apos;ll send it directly to our team.
             </p>
             <form onSubmit={handleApplySubmit} className="space-y-4">
               <div>
@@ -368,13 +393,45 @@ export default function CareersPage() {
                   className="w-full px-4 py-2.5 rounded-lg bg-zinc-800/80 border border-[#38bdf8]/20 text-white text-sm placeholder-teal-100/40 focus:outline-none focus:border-[#38bdf8] focus:ring-1 focus:ring-[#38bdf8]/30"
                 />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-teal-100/80 mb-2">
+                  GitHub {applyJob.needsGithub && <span className="text-amber-400">(recommended)</span>}
+                </label>
+                <input
+                  type="url"
+                  value={formData.github}
+                  onChange={(e) => setFormData((p) => ({ ...p, github: e.target.value }))}
+                  placeholder="https://github.com/username"
+                  className="w-full px-4 py-2.5 rounded-lg bg-zinc-800/80 border border-[#38bdf8]/20 text-white text-sm placeholder-teal-100/40 focus:outline-none focus:border-[#38bdf8] focus:ring-1 focus:ring-[#38bdf8]/30"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-teal-100/80 mb-2">Resume <span className="text-red-400">*</span></label>
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx"
+                  onChange={(e) => setResumeFile(e.target.files?.[0] || null)}
+                  className="w-full px-4 py-2.5 rounded-lg bg-zinc-800/80 border border-[#38bdf8]/20 text-white text-sm file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-sm file:bg-[#38bdf8]/20 file:text-[#38bdf8] file:cursor-pointer focus:outline-none focus:border-[#38bdf8] focus:ring-1 focus:ring-[#38bdf8]/30"
+                />
+                <p className="mt-1 text-xs text-teal-100/50">PDF or DOC, max 5MB</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-teal-100/80 mb-2">Cover note / Why you?</label>
+                <textarea
+                  value={formData.coverNote}
+                  onChange={(e) => setFormData((p) => ({ ...p, coverNote: e.target.value }))}
+                  placeholder="Brief note about your experience and interest in Open Idea..."
+                  rows={4}
+                  className="w-full px-4 py-2.5 rounded-lg bg-zinc-800/80 border border-[#38bdf8]/20 text-white text-sm placeholder-teal-100/40 focus:outline-none focus:border-[#38bdf8] focus:ring-1 focus:ring-[#38bdf8]/30 resize-none"
+                />
+              </div>
               <div className="flex gap-3 pt-2">
                 <button
                   type="submit"
-                  disabled={!formData.email.trim()}
+                  disabled={!formData.email.trim() || !resumeFile || submitting}
                   className="flex-1 px-6 py-2.5 bg-gradient-to-r from-[#38bdf8] to-[#0ff0fc] text-gray-900 font-semibold text-sm rounded-lg hover:scale-[1.02] hover:shadow-lg hover:shadow-[#38bdf8]/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                 >
-                  Submit & Open Email
+                  {submitting ? 'Sending...' : 'Apply Now'}
                 </button>
                 <button
                   type="button"
@@ -382,7 +439,8 @@ export default function CareersPage() {
                     setShowApplyModal(false);
                     setApplyJob(null);
                   }}
-                  className="px-6 py-2.5 border border-[#38bdf8]/20 text-teal-100/80 text-sm font-medium rounded-lg hover:bg-[#38bdf8]/10 transition"
+                  disabled={submitting}
+                  className="px-6 py-2.5 border border-[#38bdf8]/20 text-teal-100/80 text-sm font-medium rounded-lg hover:bg-[#38bdf8]/10 transition disabled:opacity-50"
                 >
                   Cancel
                 </button>
