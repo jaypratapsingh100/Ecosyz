@@ -54,23 +54,21 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Create scaffold immediately so preview renders as soon as user opens chat
+    // Create scaffold in one bulk insert so preview renders quickly (avoids N round-trips)
     try {
       const scaffoldFiles = getScaffoldFiles(project.framework || 'react', {
         projectTitle: project.title || 'My App',
       });
-      for (const f of scaffoldFiles) {
-        await prisma.appFile.create({
-          data: {
-            projectId: project.id,
-            path: f.path,
-            name: f.name,
-            content: f.content ?? '',
-            language: f.language ?? (f.path.endsWith('.css') ? 'css' : f.path.endsWith('.html') ? 'html' : 'jsx'),
-            isMain: f.isMain ?? false,
-          },
-        });
-      }
+      await prisma.appFile.createMany({
+        data: scaffoldFiles.map((f) => ({
+          projectId: project.id,
+          path: f.path,
+          name: f.name,
+          content: f.content ?? '',
+          language: f.language ?? (f.path.endsWith('.css') ? 'css' : f.path.endsWith('.html') ? 'html' : 'jsx'),
+          isMain: f.isMain ?? false,
+        })),
+      });
     } catch (scaffoldErr) {
       console.warn('[app-projects] Scaffold creation failed, project still created:', scaffoldErr);
       try {

@@ -6,7 +6,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
-import { extractAgentResponse } from '@/lib/app-builder/agentSchema';
+import {
+  extractAgentResponse,
+  ALLOWED_PATHS,
+  COMPONENT_PATH_PATTERN,
+  SRC_ROOT_COMPONENT_PATTERN,
+  CSS_PATH_PATTERN,
+} from '@/lib/app-builder/agentSchema';
 
 export async function POST(
   req: NextRequest,
@@ -42,26 +48,69 @@ export async function POST(
 
     const body = await req.json().catch(() => ({}));
     const content = typeof body.content === 'string' ? body.content.trim() : '';
-    if (!content) {
+    const rawFiles = Array.isArray(body.files) ? body.files : null;
+
+    let filesToSave: Array<{ path: string; name: string; content: string; language?: string; isMain?: boolean }>;
+
+    if (rawFiles && rawFiles.length > 0) {
+      // Client sent pre-parsed files (e.g. from display); validate paths and use
+      filesToSave = [];
+      for (const f of rawFiles) {
+        if (!f || typeof f !== 'object' || typeof (f as { path?: string }).path !== 'string') continue;
+        const o = f as { path?: string; name?: string; content?: string; language?: string; isMain?: boolean };
+        if (!o.path || typeof o.content !== 'string') continue;
+        const path = o.path.replace(/\s+/g, '').replace(/\\/g, '/');
+        const valid =
+          ALLOWED_PATHS.includes(path as (typeof ALLOWED_PATHS)[number]) ||
+          COMPONENT_PATH_PATTERN.test(path) ||
+          SRC_ROOT_COMPONENT_PATTERN.test(path) ||
+          CSS_PATH_PATTERN.test(path);
+        if (!valid) continue;
+        filesToSave.push({
+          path,
+          name: typeof o.name === 'string' ? o.name : path.split('/').pop() || path,
+          content: o.content,
+          language: o.language,
+          isMain: o.isMain,
+        });
+      }
+    } else if (content) {
+      const agentResponse = extractAgentResponse(content);
+      if (!agentResponse || agentResponse.files.length === 0) {
+        return NextResponse.json({
+          ok: false,
+          success: false,
+          message: 'No files could be extracted. The content may not contain valid JSON with a "files" array. Try sending a chat message to generate code.',
+          createdCount: 0,
+          files: [],
+        });
+      }
+      filesToSave = agentResponse.files.map((f) => ({
+        path: f.path,
+        name: f.name,
+        content: f.content,
+        language: f.language,
+        isMain: f.isMain,
+      }));
+    } else {
       return NextResponse.json(
-        { error: 'Content is required', message: 'Provide { content: string } with chat message or JSON' },
+        { error: 'Content is required', message: 'Provide { content: string } or { files: [...] }' },
         { status: 400 }
       );
     }
 
-    const agentResponse = extractAgentResponse(content);
-    if (!agentResponse || agentResponse.files.length === 0) {
+    if (filesToSave.length === 0) {
       return NextResponse.json({
         ok: false,
         success: false,
-        message: 'No files could be extracted. The content may not contain valid JSON with a "files" array. Try sending a chat message to generate code.',
+        message: 'No valid files to extract. Check that paths are allowed (e.g. src/App.jsx, src/components/*.jsx).',
         createdCount: 0,
         files: [],
       });
     }
 
     const created: Array<{ path: string; success: boolean; error?: string }> = [];
-    for (const f of agentResponse.files) {
+    for (const f of filesToSave) {
       try {
         const fileName = f.name || f.path.split('/').pop() || f.path;
         const language = f.path.endsWith('.tsx') ? 'typescript' : f.path.endsWith('.jsx') ? 'javascript' : 'css';
@@ -102,9 +151,9 @@ export async function POST(
         ? `Extracted ${successCount} file(s). Preview will refresh automatically.`
         : 'No files were saved.',
       createdCount: successCount,
-      totalFound: agentResponse.files.length,
+      totalFound: filesToSave.length,
       files: created,
-      summary: agentResponse.summary,
+      summary: undefined,
     });
   } catch (error) {
     console.error('[EXTRACT] Error:', error);

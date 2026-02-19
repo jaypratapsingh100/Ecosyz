@@ -73,50 +73,43 @@ export async function ensureUserInDb(user: SupabaseUser): Promise<void> {
   }
 
   try {
-    // First, check if user exists by supabaseId
-    const existingBySupabaseId = await prisma.user.findUnique({
-      where: { supabaseId: user.id },
+    // Single query: find by supabaseId or email (avoids two round-trips)
+    const existing = await prisma.user.findFirst({
+      where: {
+        OR: [{ supabaseId: user.id }, { email: user.email }],
+      },
     });
 
-    // Also check if user exists by email (in case of email change or duplicate)
-    const existingByEmail = await prisma.user.findUnique({
-      where: { email: user.email },
-    });
+    const updateData = {
+      email: user.email,
+      name: user.user_metadata?.name || user.user_metadata?.full_name || user.email.split('@')[0],
+      avatarUrl: user.user_metadata?.avatar_url,
+      updatedAt: new Date(),
+    };
 
     let prismaUserId: string;
 
-    if (existingBySupabaseId) {
-      // User exists with this supabaseId, update it
-      await prisma.user.update({
-        where: { supabaseId: user.id },
-        data: {
-          email: user.email,
-          name: user.user_metadata?.name || user.user_metadata?.full_name || user.email.split('@')[0],
-          avatarUrl: user.user_metadata?.avatar_url,
-          updatedAt: new Date(),
-        },
-      });
-      prismaUserId = existingBySupabaseId.id;
-    } else if (existingByEmail) {
-      // User exists with this email but different supabaseId - update the existing record
-      const updatedUser = await prisma.user.update({
-        where: { email: user.email },
-        data: {
-          supabaseId: user.id, // Update supabaseId to match current user
-          name: user.user_metadata?.name || user.user_metadata?.full_name || user.email.split('@')[0],
-          avatarUrl: user.user_metadata?.avatar_url,
-          updatedAt: new Date(),
-        },
-      });
-      prismaUserId = updatedUser.id;
+    if (existing) {
+      if (existing.supabaseId === user.id) {
+        await prisma.user.update({
+          where: { id: existing.id },
+          data: updateData,
+        });
+      } else {
+        // Same email, different supabaseId – link to current Supabase user
+        await prisma.user.update({
+          where: { id: existing.id },
+          data: { ...updateData, supabaseId: user.id },
+        });
+      }
+      prismaUserId = existing.id;
     } else {
-      // User doesn't exist, create new one
       const newUser = await prisma.user.create({
         data: {
           supabaseId: user.id,
           email: user.email,
-          name: user.user_metadata?.name || user.user_metadata?.full_name || user.email.split('@')[0],
-          avatarUrl: user.user_metadata?.avatar_url,
+          name: updateData.name,
+          avatarUrl: updateData.avatarUrl,
         },
       });
       prismaUserId = newUser.id;

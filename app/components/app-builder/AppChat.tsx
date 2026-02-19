@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { useFileExtraction } from './chat/hooks/useFileExtraction';
 import ChatQuestionnaire from './ChatQuestionnaire';
 import { SUGGESTED_PROMPTS } from '@/lib/app-builder/businessWebsitePrompts';
+import { extractAgentResponse } from '@/lib/app-builder/agentSchema';
 import type { QuestionnaireData } from '@/app/types/app-builder';
 
 interface ChatMessage {
@@ -188,11 +189,26 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
     }
   };
 
+  const getStructuredFilesFromContent = (text: string) => {
+    const parsed = extractAgentResponse(text);
+    if (parsed?.files?.length) return parsed.files;
+    if (!hasExtractableContent(text)) return [];
+    const loose = parseFilesLoosely(text);
+    return loose.map((f) => ({
+      path: f.path,
+      name: f.name,
+      content: f.content,
+      language: f.language || (f.path.endsWith('.tsx') ? 'tsx' : f.path.endsWith('.jsx') ? 'jsx' : f.path.endsWith('.css') ? 'css' : 'html'),
+      isMain: f.isMain === true || f.path === 'src/App.jsx' || f.path === 'src/App.tsx',
+    }));
+  };
+
   const onExtractFromMessage = async (content: string) => {
     if (!content?.trim()) return;
     setExtracting(true);
     try {
-      const result = await handleExtractFiles(content);
+      const preParsed = getStructuredFilesFromContent(content);
+      const result = await handleExtractFiles(content, preParsed.length > 0 ? preParsed : undefined);
       if (result.ok && result.createdCount > 0) {
         toast.success('Files extracted', { description: result.message });
       } else if (!result.ok) {
@@ -209,9 +225,62 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
     (content.includes('```') || content.includes('"files"')) &&
     (content.includes('.jsx') || content.includes('.tsx') || content.includes('.css') || content.includes('App'));
 
+  // Fallback parser for loosely formatted JSON-like responses (e.g. unescaped newlines in "content")
+  const parseFilesLoosely = (text: string) => {
+    const files: Array<{
+      path: string;
+      name: string;
+      content: string;
+      language?: string;
+      isMain?: boolean;
+    }> = [];
+
+    const filesIndex = text.indexOf('"files"');
+    if (filesIndex === -1) return files;
+
+    const slice = text.slice(filesIndex);
+    const fileRegex =
+      /\{\s*"path":\s*"([^"]+)"[\s\S]*?"name":\s*"([^"]+)"[\s\S]*?"content":\s*"([\s\S]*?)"\s*,\s*\n\s*"language":\s*"([^"]+)"[\s\S]*?"isMain":\s*(true|false)/g;
+
+    let match: RegExpExecArray | null;
+    while ((match = fileRegex.exec(slice)) !== null) {
+      const [, path, name, rawContent, language, isMainRaw] = match;
+      const content = rawContent
+        .replace(/\\n/g, '\n')
+        .replace(/\\t/g, '\t')
+        .replace(/\\"/g, '"');
+
+      files.push({
+        path,
+        name,
+        content,
+        language,
+        isMain: isMainRaw === 'true',
+      });
+    }
+
+    return files;
+  };
+
   const renderMessage = (msg: ChatMessage) => {
     const isUser = msg.role === 'user';
     const showExtract = !isUser && hasExtractableContent(msg.content);
+    const parsedAgent = !isUser ? extractAgentResponse(msg.content) : null;
+    let structuredFiles = parsedAgent?.files ?? [];
+
+    // If strict parser fails but the message clearly contains files JSON, try a loose fallback parser
+    if (!isUser && structuredFiles.length === 0 && hasExtractableContent(msg.content)) {
+      const loose = parseFilesLoosely(msg.content);
+      if (loose.length > 0) {
+        structuredFiles = loose.map((f) => ({
+          path: f.path,
+          name: f.name,
+          content: f.content,
+          language: f.language || (f.path.endsWith('.tsx') ? 'tsx' : f.path.endsWith('.jsx') ? 'jsx' : f.path.endsWith('.css') ? 'css' : 'html'),
+          isMain: f.isMain === true || f.path === 'src/App.jsx' || f.path === 'src/App.tsx',
+        }));
+      }
+    }
     return (
       <div key={msg.id} className={`flex gap-3 items-start ${isUser ? 'flex-row-reverse' : ''}`}>
         <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1 ${
@@ -249,9 +318,41 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
               ? 'bg-gradient-to-r from-blue-500/20 to-indigo-500/20 border border-blue-500/30'
               : 'bg-[#1a1a1a] border border-white/10'
           }`}>
-            <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap break-words">
-              {msg.content}
-            </p>
+            {!isUser && structuredFiles.length > 0 ? (
+              <div className="space-y-3">
+                {parsedAgent?.summary && (
+                  <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap break-words">
+                    {parsedAgent.summary}
+                  </p>
+                )}
+                <div className="space-y-3">
+                  {structuredFiles.map((file) => (
+                    <div
+                      key={file.path}
+                      className="rounded-xl border border-white/10 bg-black/40 overflow-hidden"
+                    >
+                      <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 bg-white/5">
+                        <span className="text-xs font-mono text-emerald-300">
+                          {file.path}
+                        </span>
+                        {file.language && (
+                          <span className="text-[10px] uppercase text-gray-400">
+                            {file.language}
+                          </span>
+                        )}
+                      </div>
+                      <pre className="max-h-64 overflow-auto text-xs text-gray-100 px-3 py-2 whitespace-pre">
+                        {file.content}
+                      </pre>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap break-words">
+                {msg.content}
+              </p>
+            )}
             <div className="flex items-center gap-2 mt-2 flex-wrap">
               <p className="text-xs text-gray-500">
                 {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
