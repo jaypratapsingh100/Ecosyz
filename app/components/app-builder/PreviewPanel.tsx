@@ -51,7 +51,8 @@ export default function PreviewPanel({
       const html =
         (typeof data?.output === 'string' && data.output) ||
         (typeof data?.html === 'string' && data.html) ||
-        (typeof data?.preview === 'string' && data.preview);
+        (typeof data?.preview === 'string' && data.preview) ||
+        (typeof parsed.data === 'string' && parsed.data.startsWith('<!') ? parsed.data : null);
 
       if (html) {
         console.log('✅ PreviewPanel: Preview HTML received');
@@ -106,12 +107,15 @@ export default function PreviewPanel({
     return () => clearTimeout(timer);
   }, [projectId, generatePreview]);
 
-  // Debounced refresh events
+  // Debounced refresh events – only refresh when our project was updated
   useEffect(() => {
     let timeoutId: NodeJS.Timeout | null = null;
-    const DEBOUNCE_DELAY = 800;
+    const DEBOUNCE_DELAY = 600;
 
-    const triggerRefresh = () => {
+    const triggerRefresh = (e?: Event) => {
+      const detail = (e as CustomEvent<{ projectId?: string }>)?.detail;
+      const updatedProjectId = detail?.projectId;
+      if (updatedProjectId && updatedProjectId !== projectId) return;
       if (timeoutId) clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
         generatePreview();
@@ -129,7 +133,7 @@ export default function PreviewPanel({
       window.removeEventListener('preview-updated', triggerRefresh);
       window.removeEventListener('auto-refresh-preview', triggerRefresh);
     };
-  }, [generatePreview]);
+  }, [generatePreview, projectId]);
 
   return (
     <div className="h-full flex flex-col bg-[#0a0a0a]">

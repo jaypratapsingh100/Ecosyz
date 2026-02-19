@@ -82,14 +82,17 @@ export async function PATCH(
     }
 
     const body = await req.json();
-    const { title, description } = body;
+    const { title, description, questionnaireData } = body;
 
-    const updateData: { title?: string; description?: string } = {};
+    const updateData: Record<string, unknown> = {};
     if (title !== undefined) {
       updateData.title = title.trim() || 'Untitled project';
     }
     if (description !== undefined) {
       updateData.description = description || null;
+    }
+    if (questionnaireData !== undefined && typeof questionnaireData === 'object') {
+      updateData.questionnaireData = questionnaireData;
     }
 
     if (Object.keys(updateData).length === 0) {
@@ -101,7 +104,7 @@ export async function PATCH(
 
     const updatedProject = await prisma.appProject.update({
       where: { id },
-      data: updateData,
+      data: updateData as { title?: string; description?: string | null; questionnaireData?: object },
     });
 
     return NextResponse.json(updatedProject);

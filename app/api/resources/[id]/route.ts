@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { getUid } from '@/lib/auth'
+import { getCurrentUser } from '@/lib/auth'
+import { ensureUserInDb } from '@/lib/auth/core/user'
 
 export async function DELETE(
   request: NextRequest,
@@ -8,10 +9,22 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    const userId = await getUid()
+    const supabaseUser = await getCurrentUser()
 
-    if (!userId) {
+    if (!supabaseUser) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Ensure user exists in database
+    await ensureUserInDb(supabaseUser)
+
+    // Get the Prisma user record to get the correct ID
+    const prismaUser = await prisma.user.findUnique({
+      where: { supabaseId: supabaseUser.id },
+    })
+
+    if (!prismaUser) {
+      return NextResponse.json({ error: 'User not found in database' }, { status: 401 })
     }
 
     // Find the resource and verify ownership through workspace
@@ -24,7 +37,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Resource not found' }, { status: 404 })
     }
 
-    if (resource.workspace.ownerId !== userId) {
+    if (resource.workspace.ownerId !== prismaUser.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 

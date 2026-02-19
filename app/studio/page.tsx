@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
+import { toast } from 'sonner';
 import Header from '../components/Header';
 import ProjectManager, { type ProjectListItem } from '../components/app-builder/ProjectManager';
 import CodeEditor from '../components/app-builder/CodeEditor';
@@ -18,6 +19,7 @@ import CreateProjectModal from '../components/app-builder/CreateProjectModal';
 import WelcomeScreen from '../components/app-builder/WelcomeScreen';
 import { useAuthCheck } from '../hooks/useAuthCheck';
 import FeedbackForm from '../components/FeedbackForm';
+import { SAMPLE_REACT_PROJECT, SAMPLE_REACT_FILES } from './sampleReactProject';
 
 function AppBuilderPageContent() {
   const router = useRouter();
@@ -36,6 +38,7 @@ function AppBuilderPageContent() {
   });
   const [isResizing, setIsResizing] = useState(false);
   const [showTabMenu, setShowTabMenu] = useState(false);
+  const [isCreatingReactSample, setIsCreatingReactSample] = useState(false);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [isLoadingProject, setIsLoadingProject] = useState(false);
@@ -126,8 +129,14 @@ function AppBuilderPageContent() {
             appType: 'react',
             previewVersion: 'v2',
           }),
+          credentials: 'include',
         });
-        if (!projectRes.ok) throw new Error('Failed to create project');
+        if (!projectRes.ok) {
+          const errBody = await projectRes.json().catch(() => ({}));
+          const errMsg = (errBody as { error?: string })?.error || projectRes.statusText || 'Failed to create project';
+          const details = (errBody as { details?: string })?.details;
+          throw new Error(details ? `${errMsg}: ${details}` : errMsg);
+        }
         const project = await projectRes.json();
         setCreateModalOpen(false);
         setSelectedProjectId(project.id);
@@ -135,8 +144,9 @@ function AppBuilderPageContent() {
         setLeftSidebarTab('chat');
         await fetchProjects();
       } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to create new project. Please try again.';
         console.error('Error creating new project:', error);
-        alert('Failed to create new project. Please try again.');
+        toast.error('Failed to Create Project', { description: message, duration: 5000 });
       } finally {
         setIsCreatingNew(false);
       }
@@ -309,21 +319,6 @@ function AppBuilderPageContent() {
       }}
     >
       <Header />
-      {/* Beta Ribbon */}
-      <div className="w-full bg-gradient-to-r from-yellow-500/20 via-yellow-500/15 to-yellow-500/20 border-b border-yellow-500/30 px-4 py-2 flex items-center justify-center gap-2 relative z-50">
-        <span className="px-2 py-0.5 bg-yellow-500/30 text-yellow-300 text-xs font-semibold rounded border border-yellow-500/50">
-          BETA
-        </span>
-        <span className="text-yellow-200/90 text-xs font-medium">
-          App Builder is in beta. Your feedback helps us improve!
-        </span>
-        <button
-          onClick={() => setShowFeedbackModal(true)}
-          className="text-yellow-300 hover:text-yellow-200 text-xs font-medium underline transition-colors"
-        >
-          Share Feedback
-        </button>
-      </div>
       <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
         {selectedProjectId ? (
         <div style={{ display: 'flex', height: '100%', overflow: 'hidden', position: 'relative' }}>
@@ -598,12 +593,82 @@ function AppBuilderPageContent() {
           </div>
           
           {/* Main Content Area */}
-          <div className="flex-1 overflow-hidden flex items-center justify-center min-w-0">
-            <WelcomeScreen
+          <div className="flex-1 overflow-hidden flex flex-col min-w-0">
+            {/* Beta Ribbon - Only on Welcome Screen */}
+            <div className="w-full bg-gradient-to-r from-yellow-500/20 via-yellow-500/15 to-yellow-500/20 border-b border-yellow-500/30 px-4 py-2 flex items-center justify-center gap-2 flex-shrink-0">
+              <span className="px-2 py-0.5 bg-yellow-500/30 text-yellow-300 text-xs font-semibold rounded border border-yellow-500/50">
+                BETA
+              </span>
+              <span className="text-yellow-200/90 text-xs font-medium">
+                App Builder is in beta. Your feedback helps us improve!
+              </span>
+              <button
+                onClick={() => setShowFeedbackModal(true)}
+                className="text-yellow-300 hover:text-yellow-200 text-xs font-medium underline transition-colors"
+              >
+                Share Feedback
+              </button>
+            </div>
+            <div className="flex-1 overflow-hidden flex items-center justify-center">
+              <WelcomeScreen
+              onCreateReactSample={async () => {
+                setIsCreatingReactSample(true);
+                try {
+                  const projectRes = await fetch('/api/app-projects', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(SAMPLE_REACT_PROJECT),
+                    credentials: 'include',
+                  });
+
+                  if (!projectRes.ok) {
+                    const errBody = await projectRes.json().catch(() => ({}));
+                    const errMsg = (errBody as { error?: string; details?: string })?.error
+                      || (errBody as { message?: string })?.message
+                      || projectRes.statusText
+                      || 'Failed to create project';
+                    const details = (errBody as { details?: string })?.details;
+                    throw new Error(details ? `${errMsg}: ${details}` : errMsg);
+                  }
+
+                  const project = await projectRes.json();
+                  const projectId = project.id;
+
+                  for (const file of SAMPLE_REACT_FILES) {
+                    const fileRes = await fetch(`/api/app-projects/${projectId}/files`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(file),
+                      credentials: 'include',
+                    });
+                    if (!fileRes.ok) {
+                      console.warn('Failed to add file:', file.path, await fileRes.text());
+                    }
+                  }
+
+                  setSelectedProjectId(projectId);
+                  await fetchProjects();
+                  toast.success('React Sample Created', {
+                    description: 'Your React sample project has been created successfully!',
+                    duration: 3000,
+                  });
+                } catch (error) {
+                  const message = error instanceof Error ? error.message : 'Unknown error';
+                  console.error('Error creating React sample project:', error);
+                  toast.error('Failed to Create React Sample', {
+                    description: message,
+                    duration: 5000,
+                  });
+                } finally {
+                  setIsCreatingReactSample(false);
+                }
+              }}
               onCreateNew={handleCreateNewProject}
+              isCreatingReactSample={isCreatingReactSample}
               isCreatingNew={isCreatingNew}
               isAuthenticated={isAuthenticated === true}
             />
+            </div>
           </div>
         </div>
       )}

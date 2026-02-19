@@ -1,11 +1,60 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
+import { supabase } from '../../src/lib/supabase';
+
+const COMPANY_EMAIL = process.env.NEXT_PUBLIC_COMPANY_EMAIL ?? 'info@openidea.world';
 
 export default function ContributePage() {
+  const [formData, setFormData] = useState({ name: '', email: '', type: 'code', message: '' });
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const contributionTypes = [
+    { value: 'code', label: 'Code Contribution' },
+    { value: 'docs', label: 'Documentation' },
+    { value: 'bug', label: 'Bug Report' },
+    { value: 'feature', label: 'Feature Idea' },
+    { value: 'design', label: 'Design & UI' },
+    { value: 'testing', label: 'Testing / QA' },
+    { value: 'other', label: 'Other' },
+  ];
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      if (!supabase) throw new Error('Service unavailable');
+      const { error } = await supabase.functions.invoke('send-email', {
+        body: {
+          to: COMPANY_EMAIL,
+          subject: `Contribute Interest: ${contributionTypes.find(t => t.value === formData.type)?.label ?? formData.type} - ${formData.name}`,
+          html: `
+            <h2>Contribute Interest Form</h2>
+            <p><strong>Name:</strong> ${formData.name}</p>
+            <p><strong>Email:</strong> ${formData.email}</p>
+            <p><strong>Type:</strong> ${contributionTypes.find(t => t.value === formData.type)?.label ?? formData.type}</p>
+            <p><strong>Message:</strong></p>
+            <p>${(formData.message || '(none)').replace(/\n/g, '<br>')}</p>
+          `,
+          text: `Contribute Interest\n\nName: ${formData.name}\nEmail: ${formData.email}\nType: ${formData.type}\n\nMessage:\n${formData.message || '(none)'}`,
+        },
+      });
+      if (error) throw error;
+      setSubmitted(true);
+      setFormData({ name: '', email: '', type: 'code', message: '' });
+    } catch (err) {
+      setError('Something went wrong. Please try again or email us at info@openidea.world');
+    }
+    setLoading(false);
+  };
+
   const contributionWays = [
     {
       icon: '💻',
@@ -24,16 +73,16 @@ export default function ContributePage() {
     {
       icon: '🐛',
       title: 'Report Bugs',
-      description: 'Found a bug? Help us fix it by reporting it with details.',
+      description: 'Found a bug? Report it on GitHub or use our chatbot / form below if the repo is private.',
       link: 'https://github.com/Sony17/Ecosyz/issues/new',
-      linkText: 'Report Issue'
+      linkText: 'Report Issue (GitHub)'
     },
     {
       icon: '💡',
       title: 'Feature Ideas',
-      description: 'Have an idea? Share it with the community and help shape the future.',
+      description: 'Have an idea? Suggest it on GitHub or use our chatbot / form below if the repo is private.',
       link: 'https://github.com/Sony17/Ecosyz/issues/new',
-      linkText: 'Suggest Feature'
+      linkText: 'Suggest Feature (GitHub)'
     },
     {
       icon: '🎨',
@@ -155,6 +204,78 @@ export default function ContributePage() {
                 </div>
               ))}
             </div>
+            </div>
+          </div>
+
+          {/* Contribute Form - for when repo is private */}
+          <div className="relative py-16 px-4 sm:px-6 lg:px-8 z-10">
+            <div className="max-w-xl mx-auto">
+              <h2 className="text-2xl sm:text-3xl font-bold text-center text-white mb-2">
+                Repo Private? Express Your Interest
+              </h2>
+              <p className="text-center text-teal-200/70 text-sm mb-8">
+                Our GitHub repo may be private during early development. Use the form below to tell us how you&apos;d like to contribute — we&apos;ll get in touch.
+              </p>
+              {submitted ? (
+                <div className="glass glass-border rounded-xl p-8 text-center">
+                  <p className="text-emerald-400 font-medium">Thank you! We&apos;ll reach out soon.</p>
+                </div>
+              ) : (
+                <form onSubmit={handleSubmit} className="glass glass-border rounded-xl p-6 space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-teal-200/90 mb-1">Name</label>
+                    <input
+                      type="text"
+                      value={formData.name}
+                      onChange={(e) => setFormData(p => ({ ...p, name: e.target.value }))}
+                      required
+                      className="w-full px-4 py-2.5 rounded-lg bg-zinc-800/80 border border-[#38bdf8]/20 text-white text-sm focus:outline-none focus:border-[#38bdf8]"
+                      placeholder="Your name"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-teal-200/90 mb-1">Email</label>
+                    <input
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => setFormData(p => ({ ...p, email: e.target.value }))}
+                      required
+                      className="w-full px-4 py-2.5 rounded-lg bg-zinc-800/80 border border-[#38bdf8]/20 text-white text-sm focus:outline-none focus:border-[#38bdf8]"
+                      placeholder="you@email.com"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-teal-200/90 mb-1">I want to contribute via</label>
+                    <select
+                      value={formData.type}
+                      onChange={(e) => setFormData(p => ({ ...p, type: e.target.value }))}
+                      className="w-full px-4 py-2.5 rounded-lg bg-zinc-800/80 border border-[#38bdf8]/20 text-white text-sm focus:outline-none focus:border-[#38bdf8]"
+                    >
+                      {contributionTypes.map(t => (
+                        <option key={t.value} value={t.value}>{t.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-teal-200/90 mb-1">Message (optional)</label>
+                    <textarea
+                      value={formData.message}
+                      onChange={(e) => setFormData(p => ({ ...p, message: e.target.value }))}
+                      rows={4}
+                      className="w-full px-4 py-2.5 rounded-lg bg-zinc-800/80 border border-[#38bdf8]/20 text-white text-sm focus:outline-none focus:border-[#38bdf8] resize-none"
+                      placeholder="Tell us about your skills, experience, or what you'd like to work on..."
+                    />
+                  </div>
+                  {error && <p className="text-red-400 text-sm">{error}</p>}
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-semibold rounded-lg hover:scale-[1.02] transition disabled:opacity-50"
+                  >
+                    {loading ? 'Sending...' : 'Submit'}
+                  </button>
+                </form>
+              )}
             </div>
           </div>
 

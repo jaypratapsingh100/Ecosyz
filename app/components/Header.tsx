@@ -18,6 +18,7 @@ export default function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userData, setUserData] = useState<{ name?: string; email?: string; avatarUrl?: string } | null>(null);
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const mobileNavRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -48,6 +49,22 @@ export default function Header() {
           const data = await response.json();
           setIsAuthenticated(true);
           setUserData(data.user);
+          
+          // Fetch workspace ID
+          try {
+            const workspaceRes = await fetch('/api/workspaces', {
+              signal: controller.signal,
+            });
+            if (workspaceRes.ok) {
+              const workspaceData = await workspaceRes.json();
+              if (workspaceData?.id) {
+                setWorkspaceId(workspaceData.id);
+              }
+            }
+          } catch (error) {
+            // Silently fail - workspace will be fetched on click if needed
+            console.error('Failed to fetch workspace:', error);
+          }
         } else {
           // 401 is expected when user is not logged in - don't log as error
           // Only log unexpected errors (500, 503, etc.)
@@ -257,6 +274,37 @@ export default function Header() {
                         >
                           Profile
                         </Link>
+                        {workspaceId ? (
+                          <Link
+                            href={`/workspaces/${workspaceId}`}
+                            role="menuitem"
+                            className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                            onClick={() => setDropdownOpen(false)}
+                          >
+                            Workspace
+                          </Link>
+                        ) : (
+                          <button
+                            role="menuitem"
+                            className="block w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                            onClick={async () => {
+                              setDropdownOpen(false);
+                              try {
+                                const res = await fetch('/api/workspaces');
+                                if (res.ok) {
+                                  const data = await res.json();
+                                  if (data?.id) {
+                                    router.push(`/workspaces/${data.id}`);
+                                  }
+                                }
+                              } catch (error) {
+                                console.error('Failed to fetch workspace:', error);
+                              }
+                            }}
+                          >
+                            Workspace
+                          </button>
+                        )}
                         <button
                           role="menuitem"
                           onClick={handleLogout}
@@ -364,6 +412,37 @@ export default function Header() {
               >
                 Profile
               </Link>
+              {workspaceId ? (
+                <Link
+                  href={`/workspaces/${workspaceId}`}
+                  className="w-full flex items-center justify-center gap-2 p-3 rounded focus:outline-none focus:ring-2 focus:ring-emerald-400/60 hover:bg-white/10 text-white font-medium"
+                  onClick={() => setMobileOpen(false)}
+                  tabIndex={mobileOpen ? 0 : -1}
+                >
+                  Workspace
+                </Link>
+              ) : (
+                <button
+                  className="w-full flex items-center justify-center gap-2 p-3 rounded focus:outline-none focus:ring-2 focus:ring-emerald-400/60 hover:bg-white/10 text-white font-medium"
+                  onClick={async () => {
+                    setMobileOpen(false);
+                    try {
+                      const res = await fetch('/api/workspaces');
+                      if (res.ok) {
+                        const data = await res.json();
+                        if (data?.id) {
+                          router.push(`/workspaces/${data.id}`);
+                        }
+                      }
+                    } catch (error) {
+                      console.error('Failed to fetch workspace:', error);
+                    }
+                  }}
+                  tabIndex={mobileOpen ? 0 : -1}
+                >
+                  Workspace
+                </button>
+              )}
               <button
                 onClick={() => {
                   handleLogout();

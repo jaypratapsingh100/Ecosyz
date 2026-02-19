@@ -52,8 +52,42 @@ model Profile {
   bio         String?  @db.Text
   avatarUrl   String?
   preferences Json? // { theme: "system"|"light"|"dark", language: "en-IN", emailNotifications: boolean, marketingEmails: boolean }
+  
+  // Enhanced Profile Fields
+  location        String?  // City, Country
+  affiliation     String?  // University, Company, Organization
+  website         String?  // Personal website URL
+  expertiseTags   String[] // Array of expertise areas (e.g., ["machine-learning", "climate-science", "open-source"])
+  
+  // External Integrations
+  orcidId         String?  @unique // ORCID identifier for researchers
+  githubUsername  String?  // GitHub username
+  linkedinUrl     String?  // LinkedIn profile URL
+  twitterHandle   String?  // Twitter/X handle
+  
+  // Contribution Stats (computed fields, updated via triggers or background jobs)
+  projectsCreated     Int @default(0)
+  resourcesShared     Int @default(0)
+  discussionsStarted  Int @default(0)
+  discussionsReplied  Int @default(0)
+  groupsCreated       Int @default(0)
+  eventsCreated       Int @default(0)
+  challengesCreated   Int @default(0)
+  
+  // Reputation & Achievements
+  reputationScore     Float @default(0) // Calculated reputation score
+  achievementBadges   String[] // Array of badge IDs earned
+  
+  // Metadata
+  lastActivityAt      DateTime? // Last activity timestamp
+  profileCompleted   Boolean @default(false) // Whether profile is fully set up
+  
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  
+  @@index([orcidId])
+  @@index([githubUsername])
+  @@index([reputationScore])
 }
 
 model Workspace {

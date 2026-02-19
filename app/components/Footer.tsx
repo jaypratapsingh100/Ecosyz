@@ -93,8 +93,14 @@ export default function Footer() {
             </div>
           </div>
 
+          {/* Legal links */}
+          <div className="mt-6 pt-6 border-t border-white/5 flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs text-gray-500">
+            <Link href="/privacy" className="hover:text-emerald-400 transition-colors">Privacy Policy</Link>
+            <Link href="/terms" className="hover:text-emerald-400 transition-colors">Terms of Use</Link>
+            <Link href="/cookies" className="hover:text-emerald-400 transition-colors">Cookie Policy</Link>
+          </div>
           {/* Copyright */}
-          <div className="mt-6 pt-6 border-t border-white/5 text-center text-xs text-gray-500">
+          <div className="mt-4 text-center text-xs text-gray-500">
             © {currentYear} ECOSYZ. All rights reserved. Proudly built in India 🇮🇳 with ❤️ for global innovation.
           </div>
         </div>

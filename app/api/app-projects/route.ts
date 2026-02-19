@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
 import { CreateAppProject } from '@/lib/validation';
+import { getScaffoldFiles } from '@/app/lib/app-builder/scaffolds';
 
 export async function POST(req: NextRequest) {
   try {
@@ -52,6 +53,45 @@ export async function POST(req: NextRequest) {
         previewVersion: parse.data.previewVersion || 'v2',
       },
     });
+
+    // Create scaffold immediately so preview renders as soon as user opens chat
+    try {
+      const scaffoldFiles = getScaffoldFiles(project.framework || 'react', {
+        projectTitle: project.title || 'My App',
+      });
+      for (const f of scaffoldFiles) {
+        await prisma.appFile.create({
+          data: {
+            projectId: project.id,
+            path: f.path,
+            name: f.name,
+            content: f.content ?? '',
+            language: f.language ?? (f.path.endsWith('.css') ? 'css' : f.path.endsWith('.html') ? 'html' : 'jsx'),
+            isMain: f.isMain ?? false,
+          },
+        });
+      }
+    } catch (scaffoldErr) {
+      console.warn('[app-projects] Scaffold creation failed, project still created:', scaffoldErr);
+      try {
+        const fallback = getScaffoldFiles('react', { projectTitle: project.title || 'My App' });
+        const appFile = fallback.find((f) => f.path.includes('App'));
+        if (appFile) {
+          await prisma.appFile.create({
+            data: {
+              projectId: project.id,
+              path: appFile.path,
+              name: appFile.name,
+              content: appFile.content ?? '',
+              language: appFile.language ?? 'jsx',
+              isMain: true,
+            },
+          });
+        }
+      } catch {
+        // ignore
+      }
+    }
 
     return NextResponse.json(project, { status: 201 });
   } catch (error) {

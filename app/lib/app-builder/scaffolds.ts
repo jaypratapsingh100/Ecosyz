@@ -1,10 +1,13 @@
-// Minimal scaffold utilities for the app builder chat.
-// The original scaffolds module was removed; this stub keeps the
-// chat route compiling and provides a simple default App.jsx.
+/**
+ * Scaffold utilities for the app builder.
+ * Creates a Vite React project structure that:
+ * - Renders in the in-browser preview sandbox
+ * - Runs locally after download via npm install && npm run dev
+ */
 
 import type { ProjectFile } from '@/app/types/app-builder';
 
-/** Fallback App content when user's App.jsx has syntax errors (e.g. JSX inside style strings) */
+/** Fallback App content when user's App.jsx has syntax errors */
 export const DEFAULT_APP_CONTENT = `function App() {
   return (
     <div className="App" style={{
@@ -57,28 +60,8 @@ export const DEFAULT_APP_CONTENT = `function App() {
 
 export default App;`;
 
-/** Detect corruption: JSX tags inside style/string literals (causes "Unterminated string constant") */
-export function hasStyleStringCorruption(code: string): boolean {
-  return /'[^']*<[A-Za-z][a-zA-Z0-9]*\s*\/?\s*>?/.test(code) || /"[^"]*<[A-Za-z][a-zA-Z0-9]*\s*\/?\s*>?/.test(code);
-}
-
-/**
- * Return a small, generic React scaffold for a new project.
- * For now we keep this very simple: a single App.jsx file that
- * tells the user to go to the Chat tab and generate the real app.
- *
- * The /api/app-projects/[id]/generate route is responsible for
- * creating the full canonical structure (index.html, styles.css,
- * src/App.jsx). This scaffold is only a visual placeholder.
- */
-export function getScaffoldFiles(_framework: string): ProjectFile[] {
-  const files: ProjectFile[] = [
-    {
-      path: 'src/App.jsx',
-      name: 'App.jsx',
-      language: 'jsx',
-      isMain: true,
-      content: `function App() {
+/** Minimal default App for scaffold */
+const SCAFFOLD_APP_CONTENT = `function App() {
   return (
     <div style={{
       minHeight: '100vh',
@@ -111,7 +94,181 @@ export function getScaffoldFiles(_framework: string): ProjectFile[] {
 }
 
 export default App;
-`,
+`;
+
+/** Global styles - used by both preview and local run */
+const SCAFFOLD_STYLES = `* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+  line-height: 1.6;
+}
+
+.page, .section, .container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.hero, .card, .btn {
+  border-radius: 0.5rem;
+}
+`;
+
+/** Detect corruption: JSX tags inside style/string literals */
+export function hasStyleStringCorruption(code: string): boolean {
+  return /'[^']*<[A-Za-z][a-zA-Z0-9]*\s*\/?\s*>?/.test(code) || /"[^"]*<[A-Za-z][a-zA-Z0-9]*\s*\/?\s*>?/.test(code);
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Return complete Vite React scaffold - runnable locally with npm install && npm run dev.
+ * Structure: package.json, vite.config.js, index.html, src/main.jsx, src/App.jsx, src/index.css
+ */
+export function getScaffoldFiles(
+  framework: string,
+  options?: { projectTitle?: string; useTypeScript?: boolean }
+): ProjectFile[] {
+  const title = options?.projectTitle ?? 'My App';
+  const ext = options?.useTypeScript ? 'tsx' : 'jsx';
+  const appPath = options?.useTypeScript ? 'src/App.tsx' : 'src/App.jsx';
+  const appName = options?.useTypeScript ? 'App.tsx' : 'App.jsx';
+
+  const packageJson = {
+    name: (title || 'my-app').toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''),
+    private: true,
+    version: '0.0.0',
+    type: 'module',
+    scripts: {
+      dev: 'vite',
+      build: 'vite build',
+      preview: 'vite preview',
+    },
+    dependencies: {
+      react: '^18.3.1',
+      'react-dom': '^18.3.1',
+    },
+    devDependencies: {
+      '@vitejs/plugin-react': '^4.3.4',
+      vite: '^6.0.3',
+    },
+  };
+
+  const viteConfig = `import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+});
+`;
+
+  const mainContent = `import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import App from './App.${ext}';
+import './index.css';
+
+createRoot(document.getElementById('root')).render(
+  <StrictMode>
+    <App />
+  </StrictMode>
+);
+`;
+
+  const indexHtml = `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${escapeHtml(title)}</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.${ext}"></script>
+  </body>
+</html>
+`;
+
+  const readme = `# ${title}
+
+A React app built with Vite.
+
+## Run locally
+
+\`\`\`bash
+npm install
+npm run dev
+\`\`\`
+
+Then open http://localhost:5173 in your browser.
+
+## Build for production
+
+\`\`\`bash
+npm run build
+npm run preview
+\`\`\`
+`;
+
+  const files: ProjectFile[] = [
+    {
+      path: 'README.md',
+      name: 'README.md',
+      language: 'markdown',
+      isMain: false,
+      content: readme,
+    },
+    {
+      path: 'package.json',
+      name: 'package.json',
+      language: 'json',
+      isMain: false,
+      content: JSON.stringify(packageJson, null, 2),
+    },
+    {
+      path: 'vite.config.js',
+      name: 'vite.config.js',
+      language: 'javascript',
+      isMain: false,
+      content: viteConfig,
+    },
+    {
+      path: 'index.html',
+      name: 'index.html',
+      language: 'html',
+      isMain: false,
+      content: indexHtml,
+    },
+    {
+      path: `src/main.${ext}`,
+      name: `main.${ext}`,
+      language: options?.useTypeScript ? 'tsx' : 'jsx',
+      isMain: false,
+      content: mainContent,
+    },
+    {
+      path: appPath,
+      name: appName,
+      language: options?.useTypeScript ? 'tsx' : 'jsx',
+      isMain: true,
+      content: SCAFFOLD_APP_CONTENT,
+    },
+    {
+      path: 'src/index.css',
+      name: 'index.css',
+      language: 'css',
+      isMain: false,
+      content: SCAFFOLD_STYLES,
     },
   ];
 
