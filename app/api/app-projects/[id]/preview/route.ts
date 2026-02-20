@@ -139,17 +139,21 @@ export async function POST(
                                (html.includes('type="text/babel"') && html.includes('function App'));
       
       // If index.html has React libs but missing component code, or has src/App.jsx file, inject it
-      const mainJsFile = project.files.find(
-        (f: {
-          language: string | null;
-          path: string;
-          isMain: boolean;
-        }) =>
-          (f.language === 'jsx' || f.language === 'tsx' || f.path.endsWith('.jsx') || f.path.endsWith('.tsx')) &&
-          f.isMain &&
-          f.path !== 'index.html' &&
-          (f.path === 'src/App.jsx' || f.path === 'src/App.tsx' || f.path.includes('App.jsx') || f.path.includes('App.tsx'))
-      );
+      // Prefer file with isMain; fallback to App.jsx/App.tsx by path so preview always renders when file exists
+      type FileWithMain = { path: string; content: string; language: string | null; isMain?: boolean | null };
+      const mainJsFile =
+        (project.files.find(
+          (f: FileWithMain) =>
+            (f.language === 'jsx' || f.language === 'tsx' || f.path.endsWith('.jsx') || f.path.endsWith('.tsx')) &&
+            f.isMain === true &&
+            f.path !== 'index.html' &&
+            (f.path === 'src/App.jsx' || f.path === 'src/App.tsx' || f.path.includes('App.jsx') || f.path.includes('App.tsx'))
+        ) as FileWithMain | undefined) ||
+        (project.files.find(
+          (f: FileWithMain) =>
+            (f.path === 'src/App.jsx' || f.path === 'src/App.tsx' || f.path.includes('App.jsx') || f.path.includes('App.tsx')) &&
+            (f.language === 'jsx' || f.language === 'tsx' || f.path.endsWith('.jsx') || f.path.endsWith('.tsx'))
+        ) as FileWithMain | undefined);
       // Inject src/App.jsx and its component dependencies
       if (mainJsFile && !html.includes(mainJsFile.content) && (!hasComponentCode || !hasReactLibs)) {
         // Component files (ToDoList, ToDoForm, etc.) - inject before App so they're in scope
@@ -230,15 +234,34 @@ export async function POST(
         // Escape template literals so ${} in source isn't interpreted when we build the HTML
         appContent = appContent.replace(/\$\{/g, '\\${');
         
-        // Use array join to avoid ${} in appContent being interpreted as template literal
-        const appComponentScript = [
+        // Wrap app in an error boundary so runtime errors (e.g. .map on undefined) show a message instead of blank preview
+        const errorBoundaryScript = [
           '  <script type="text/babel">',
+          '    class PreviewErrorBoundary extends React.Component {',
+          '      constructor(props) { super(props); this.state = { hasError: false, error: null }; }',
+          '      static getDerivedStateFromError(error) { return { hasError: true, error }; }',
+          '      render() {',
+          '        if (this.state.hasError) {',
+          '          const msg = this.state.error && this.state.error.message ? this.state.error.message : String(this.state.error);',
+          '          const isMapError = /undefined.*\\.map|\\.map.*undefined/i.test(msg);',
+          '          const tip = isMapError ? "\\n\\nTip: Use (items || []).map(...) or useState([]) so the list is never undefined." : "";',
+          '          return React.createElement("div", {',
+          '            style: { padding: 20, fontFamily: "system-ui,sans-serif", color: "#1a1a1a", fontSize: 14, maxWidth: "100%", overflow: "auto" }',
+          '          },',
+          '            React.createElement("h2", { style: { margin: "0 0 12px 0", fontSize: 16 } }, "Preview error"),',
+          '            React.createElement("pre", { style: { margin: 0, padding: 12, background: "#f5f5f5", borderRadius: 8, whiteSpace: "pre-wrap", wordBreak: "break-word" } }, msg + tip)',
+          '          );',
+          '        }',
+          '        return this.props.children;',
+          '      }',
+          '    }',
           '    const { createRoot } = ReactDOM;',
           appContent,
           '    const root = createRoot(document.getElementById("root"));',
-          '    root.render(React.createElement(App));',
+          '    root.render(React.createElement(PreviewErrorBoundary, null, React.createElement(App)));',
           '  </script>',
         ].join('\n');
+        const appComponentScript = errorBoundaryScript;
         
         const scriptsToInject = componentScripts
           ? `${componentScripts}\n${appComponentScript}`

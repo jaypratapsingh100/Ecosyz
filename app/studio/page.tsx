@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -46,8 +46,8 @@ function AppBuilderPageContent() {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<{ id: string; title: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [projectFiles, setProjectFiles] = useState<{ id: string; path: string; name: string; content: string; language?: string }[]>([]);
-  const [selectedFile, setSelectedFile] = useState<{ id: string; path: string; name: string; content: string; language?: string } | null>(null);
+  const [projectFiles, setProjectFiles] = useState<{ id: string; path: string; name: string; content: string; language?: string; isMain?: boolean }[]>([]);
+  const [selectedFile, setSelectedFile] = useState<{ id: string; path: string; name: string; content: string; language?: string; isMain?: boolean } | null>(null);
 
   const fetchProjects = useCallback(async () => {
     try {
@@ -80,7 +80,7 @@ function AppBuilderPageContent() {
     if (isAuthenticated === true) fetchProjects();
   }, [isAuthenticated, fetchProjects]);
 
-  const fetchProjectFiles = useCallback(async (projectId: string) => {
+  const fetchProjectFiles = useCallback(async (projectId: string, preserveSelectedPath?: string) => {
     setIsLoadingProject(true);
     try {
       const res = await fetch(`/api/app-projects/${projectId}/files`);
@@ -91,7 +91,13 @@ function AppBuilderPageContent() {
       }
       const data = await res.json();
       setProjectFiles(data);
-      setSelectedFile(null);
+      // Keep same file selected with fresh content so code editor matches DB after chat
+      if (preserveSelectedPath && Array.isArray(data)) {
+        const same = data.find((f: { path: string }) => f.path === preserveSelectedPath);
+        setSelectedFile(same ?? null);
+      } else {
+        setSelectedFile(null);
+      }
     } catch {
       setProjectFiles([]);
       setSelectedFile(null);
@@ -99,6 +105,64 @@ function AppBuilderPageContent() {
       setIsLoadingProject(false);
     }
   }, []);
+
+  const saveFileContent = useCallback(
+    async (path: string, name: string, content: string, language?: string, isMain?: boolean) => {
+      if (!selectedProjectId) return;
+      try {
+        const res = await fetch(`/api/app-projects/${selectedProjectId}/files`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ path, name, content, language: language ?? undefined, isMain }),
+        });
+        if (!res.ok) return;
+        const updated = await res.json();
+        setProjectFiles((prev) =>
+          prev.map((f) => (f.path === path ? { ...f, ...updated, content: updated.content ?? content } : f))
+        );
+        if (selectedFile?.path === path) {
+          setSelectedFile((f) => (f?.path === path ? { ...f, ...updated, content: updated.content ?? content } : f));
+        }
+        window.dispatchEvent(new CustomEvent('files-updated', { detail: { projectId: selectedProjectId } }));
+        window.dispatchEvent(new CustomEvent('auto-refresh-preview', { detail: { projectId: selectedProjectId } }));
+      } catch {
+        // silent fail; user can retry by editing again
+      }
+    },
+    [selectedProjectId, selectedFile?.path]
+  );
+
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedSaveRef = useRef((path: string, name: string, content: string, language?: string, isMain?: boolean) => {
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => {
+      saveTimeoutRef.current = null;
+      saveFileContent(path, name, content, language, isMain);
+    }, 600);
+  });
+  useEffect(() => {
+    debouncedSaveRef.current = (path: string, name: string, content: string, language?: string, isMain?: boolean) => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = setTimeout(() => {
+        saveTimeoutRef.current = null;
+        saveFileContent(path, name, content, language, isMain);
+      }, 600);
+    };
+    return () => { if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
+  }, [saveFileContent]);
+
+  const handleEditorChange = useCallback(
+    (newContent: string) => {
+      if (!selectedFile) return;
+      setProjectFiles((prev) =>
+        prev.map((f) => (f.path === selectedFile.path ? { ...f, content: newContent } : f))
+      );
+      setSelectedFile((f) => (f ? { ...f, content: newContent } : null));
+      debouncedSaveRef.current(selectedFile.path, selectedFile.name, newContent, selectedFile.language, selectedFile.isMain);
+    },
+    [selectedFile]
+  );
 
   useEffect(() => {
     if (selectedProjectId) {
@@ -396,7 +460,7 @@ function AppBuilderPageContent() {
                       <CodeEditor
                         file={selectedFile}
                         projectId={selectedProjectId}
-                        onChange={() => {}}
+                        onChange={handleEditorChange}
                         files={projectFiles}
                         onFileSelect={setSelectedFile}
                       />
@@ -408,7 +472,11 @@ function AppBuilderPageContent() {
                         projectId={selectedProjectId || ''}
                         currentFile={undefined}
                         projectFiles={projectFiles}
-                        onFilesCreated={() => selectedProjectId && fetchProjectFiles(selectedProjectId)}
+                        onFilesCreated={() => {
+                        if (!selectedProjectId) return;
+                        const pathToPreserve = selectedFile?.path;
+                        setTimeout(() => fetchProjectFiles(selectedProjectId, pathToPreserve), 200);
+                      }}
                         projectTitle="New Project"
                         projectFramework="react"
                       />

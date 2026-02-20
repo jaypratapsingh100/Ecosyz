@@ -41,6 +41,7 @@
     "cytoscape": "^3.32.0",
     "esbuild": "^0.27.2",
     "framer-motion": "^12.23.15",
+    "html-to-image": "^1.11.13",
     "jszip": "^3.10.1",
     "lucide-react": "^0.544.0",
     "monaco-editor": "^0.55.1",

@@ -18,17 +18,20 @@ export default function PreviewPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Prevent overlapping preview calls
+  // Prevent overlapping preview calls; queue one more refresh if requested while in flight
   const inFlightRef = useRef(false);
+  const refreshPendingRef = useRef(false);
 
   const generatePreview = useCallback(async () => {
     if (!projectId) return;
     if (inFlightRef.current) {
-      console.log('⏳ PreviewPanel: Preview already in progress, skipping');
+      console.log('⏳ PreviewPanel: Preview in progress, will refresh again when done');
+      refreshPendingRef.current = true;
       return;
     }
 
     inFlightRef.current = true;
+    refreshPendingRef.current = false;
     setLoading(true);
     setError(null);
 
@@ -47,7 +50,7 @@ export default function PreviewPanel({
           ? (parsed.data as Record<string, unknown>)
           : null;
 
-      // ✅ Accept preview HTML in multiple valid formats
+      // ✅ Accept preview HTML in multiple valid formats (API returns { output: html })
       const html =
         (typeof data?.output === 'string' && data.output) ||
         (typeof data?.html === 'string' && data.html) ||
@@ -93,6 +96,11 @@ export default function PreviewPanel({
     } finally {
       setLoading(false);
       inFlightRef.current = false;
+      // If a refresh was requested while we were in flight, run it now
+      if (refreshPendingRef.current) {
+        refreshPendingRef.current = false;
+        setTimeout(() => generatePreview(), 0);
+      }
     }
   }, [projectId]);
 
@@ -136,7 +144,28 @@ export default function PreviewPanel({
   }, [generatePreview, projectId]);
 
   return (
-    <div className="h-full flex flex-col bg-[#0a0a0a]">
+    <div className="h-full flex flex-col bg-[#0a0a0a] relative">
+      {/* Refresh button - always show when we have a project so user can force re-render */}
+      {projectId && (
+        <div className="absolute top-2 right-2 z-10 flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => generatePreview()}
+            disabled={loading}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/10 hover:bg-emerald-500/20 border border-white/20 text-gray-300 hover:text-emerald-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+            title="Refresh preview"
+          >
+            {loading ? (
+              <span className="inline-block w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            )}
+            <span>{loading ? 'Loading…' : 'Refresh preview'}</span>
+          </button>
+        </div>
+      )}
       <div className="w-full h-full relative">
         {loading && !previewHtml ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#050505]">

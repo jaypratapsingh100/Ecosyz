@@ -74,9 +74,9 @@ function extractFilesLoosely(text: string): AgentFile[] {
   if (filesStart === -1) return normalized;
 
   const slice = text.slice(filesStart);
-  // Match each file object: path, name, content (multiline), language, isMain
+  // Match each file object: path, name, content (multiline; content may contain \" so we don't stop at first ")
   const fileBlockRegex =
-    /\{\s*"path":\s*"([^"]+)"[\s\S]*?"name":\s*"([^"]+)"[\s\S]*?"content":\s*"([\s\S]*?)"\s*,\s*[\s\n]*"language":\s*"([^"]+)"[\s\S]*?"isMain":\s*(true|false)/g;
+    /\{\s*"path":\s*"([^"]+)"[\s\S]*?"name":\s*"([^"]+)"[\s\S]*?"content":\s*"((?:[^"\\]|\\.)*)"\s*,\s*[\s\n]*"language":\s*"([^"]+)"[\s\S]*?"isMain":\s*(true|false)/g;
 
   let match: RegExpExecArray | null;
   while ((match = fileBlockRegex.exec(slice)) !== null) {

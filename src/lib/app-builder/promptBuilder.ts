@@ -24,7 +24,8 @@ export function buildSystemPrompt(options: {
 Allowed paths: ${paths}
 OUTPUT: Valid JSON only: {"files":[{"path":"src/App.${ext}","name":"App.${ext}","content":"...","language":"${ext.slice(0, 2)}x","isMain":true},...],"summary":"..."}
 Rules: JSON only. One response. Semantic HTML, responsive, accessible. Components in src/components/.
-Use CSS classes in styles.css; avoid inline styles except for dynamic values.`;
+Use CSS classes in styles.css; avoid inline styles except for dynamic values.
+CRITICAL: For any list/array used in .map(): always guard against undefined. Use useState([]) for list state; for props use (items || []).map(...) or (tasks ?? []).map(...). Never call .map() on a value that might be undefined.`;
 }
 
 /** Business website requirements - injected when app type is business-like */

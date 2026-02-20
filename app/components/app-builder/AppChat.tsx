@@ -203,11 +203,18 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
     }));
   };
 
-  const onExtractFromMessage = async (content: string) => {
+  const onExtractFromMessage = async (
+    content: string,
+    displayedFiles?: Array<{ path: string; name: string; content: string; language?: string; isMain?: boolean }>
+  ) => {
     if (!content?.trim()) return;
     setExtracting(true);
     try {
-      const preParsed = getStructuredFilesFromContent(content);
+      // Prefer the exact files we're showing in the chat so "extract" saves what you see (no re-parse mismatch)
+      const preParsed =
+        displayedFiles && displayedFiles.length > 0
+          ? displayedFiles
+          : getStructuredFilesFromContent(content);
       const result = await handleExtractFiles(content, preParsed.length > 0 ? preParsed : undefined);
       if (result.ok && result.createdCount > 0) {
         toast.success('Files extracted', { description: result.message });
@@ -239,8 +246,9 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
     if (filesIndex === -1) return files;
 
     const slice = text.slice(filesIndex);
+    // Content may contain \" so capture until closing " before "language" (same as agentSchema)
     const fileRegex =
-      /\{\s*"path":\s*"([^"]+)"[\s\S]*?"name":\s*"([^"]+)"[\s\S]*?"content":\s*"([\s\S]*?)"\s*,\s*\n\s*"language":\s*"([^"]+)"[\s\S]*?"isMain":\s*(true|false)/g;
+      /\{\s*"path":\s*"([^"]+)"[\s\S]*?"name":\s*"([^"]+)"[\s\S]*?"content":\s*"((?:[^"\\]|\\.)*)"\s*,\s*[\s\n]*"language":\s*"([^"]+)"[\s\S]*?"isMain":\s*(true|false)/g;
 
     let match: RegExpExecArray | null;
     while ((match = fileRegex.exec(slice)) !== null) {
@@ -304,7 +312,7 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
             {showExtract && (
               <button
                 type="button"
-                onClick={() => onExtractFromMessage(msg.content)}
+                onClick={() => onExtractFromMessage(msg.content, structuredFiles.length > 0 ? structuredFiles : undefined)}
                 disabled={extracting || !projectId}
                 className="ml-1 px-2 py-0.5 text-xs font-medium rounded-md bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 title="Extract files from this response and add to project"
