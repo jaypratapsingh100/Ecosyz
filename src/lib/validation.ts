@@ -181,3 +181,15 @@ export const UpdateChallengeSubmission = z.object({
   url: z.string().url().optional(),
   status: z.enum(["submitted", "shortlisted", "winner", "rejected"]).optional(),
 });
+
+// Problems & Ideas feed
+
+export const CreateProblemIdeaPost = z.object({
+  content: z.string().min(1).max(10000),
+  type: z.enum(['problem', 'idea']).default('idea'),
+  imageUrls: z.array(z.string().url()).max(6).optional(),
+});
+
+export const CreateProblemIdeaComment = z.object({
+  content: z.string().min(1).max(2000),
+});

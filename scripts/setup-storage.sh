@@ -47,6 +47,18 @@ async function setupStorage() {
       console.log('✅ Avatars bucket created or already exists');
     }
 
+    // Create problem-idea-images bucket (for Problems & Ideas feed)
+    const { error: piBucketError } = await supabaseServer.storage.createBucket('problem-idea-images', {
+      public: true,
+      allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
+      fileSizeLimit: 5242880, // 5MB
+    });
+    if (piBucketError && !piBucketError.message.includes('already exists')) {
+      console.error('❌ Error creating problem-idea-images bucket:', piBucketError.message);
+    } else {
+      console.log('✅ problem-idea-images bucket created or already exists');
+    }
+
     // Create bucket policy for public read access
     console.log('🔒 Setting up bucket policies...');
 

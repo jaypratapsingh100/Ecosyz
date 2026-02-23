@@ -6,9 +6,9 @@ const STORAGE_KEY = 'ai_api_key';
 const MODEL_STORAGE_KEY = 'ai_model';
 const PROVIDER_STORAGE_KEY = 'ai_provider';
 
-// Hardcoded: Only OpenRouter + DeepSeek Coder
+// Hardcoded: Only OpenRouter + DeepSeek Chat (versioned model; deepseek/deepseek-coder no longer available)
 const DEFAULT_PROVIDER: Provider = 'openrouter';
-const DEFAULT_MODEL = 'deepseek/deepseek-coder';
+const DEFAULT_MODEL = 'deepseek/deepseek-chat-v3-0324';
 
 // Helper function to get API key from storage
 export function getStoredApiKey(): string | null {
@@ -16,7 +16,7 @@ export function getStoredApiKey(): string | null {
   return localStorage.getItem(STORAGE_KEY);
 }
 
-// Helper function to get model from storage - Always DeepSeek Coder
+// Helper function to get model from storage
 export function getStoredModel(): string {
   if (typeof window === 'undefined') return DEFAULT_MODEL;
   const stored = localStorage.getItem(MODEL_STORAGE_KEY);

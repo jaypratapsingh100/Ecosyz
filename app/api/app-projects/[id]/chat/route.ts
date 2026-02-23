@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
 import { getScaffoldFiles, DEFAULT_APP_CONTENT } from '@/app/lib/app-builder/scaffolds';
 import { createAIClient, hasAIClient } from '@/lib/ai/provider';
+import { trackApiRequest } from '@/lib/api-usage';
 import { extractAgentResponse } from '@/lib/app-builder/agentSchema';
 import { buildSystemPrompt, buildUserPrompt, buildFixPrompt } from '@/lib/app-builder/promptBuilder';
 import { validateProjectFiles } from '../../../../../src/lib/utils/validateJSX';
@@ -1777,6 +1778,7 @@ root.render(
       }
       
       requestSuccess = true;
+      void trackApiRequest(provider, 'llm');
     } catch (error: unknown) {
       if (timeoutId) {
         clearTimeout(timeoutId);

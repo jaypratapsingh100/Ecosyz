@@ -374,16 +374,173 @@ interface Message {
   resourceLinks?: Array<{ index: number; resource: any }>;
 }
 
+const SESSION_STORAGE_KEY = 'openresources-session-id';
+const CHAT_LOCAL_KEY_PREFIX = 'openresources-chat-';
+
+function getOrCreateSessionId(): string {
+  if (typeof window === 'undefined') return 'anonymous';
+  let id = localStorage.getItem(SESSION_STORAGE_KEY);
+  if (!id) {
+    id = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+    localStorage.setItem(SESSION_STORAGE_KEY, id);
+  }
+  return id;
+}
+
+function messagesFromApi(raw: unknown): Message[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((m: Record<string, unknown> & { timestamp?: string }) => ({
+    ...m,
+    timestamp: m.timestamp ? new Date(m.timestamp) : new Date(),
+  })) as Message[];
+}
+
+function loadChatFromLocalStorage(query: string): Message[] | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const key = `${CHAT_LOCAL_KEY_PREFIX}${encodeURIComponent(query || '')}`;
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { messages?: Array<{ timestamp?: string }> };
+    if (!parsed?.messages?.length) return null;
+    return parsed.messages.map((m) => ({
+      ...m,
+      timestamp: m.timestamp ? new Date(m.timestamp) : new Date(),
+    })) as Message[];
+  } catch {
+    return null;
+  }
+}
+
+const RECENT_SESSIONS_KEY = 'openresources-recent-sessions';
+const RECENT_SESSIONS_MAX = 15;
+
+export type RecentSession = { query: string; title: string; updatedAt: string };
+
+function getRecentSessions(): RecentSession[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(RECENT_SESSIONS_KEY);
+    if (!raw) return [];
+    const list = JSON.parse(raw) as RecentSession[];
+    return Array.isArray(list) ? list.slice(0, RECENT_SESSIONS_MAX) : [];
+  } catch {
+    return [];
+  }
+}
+
+function pushRecentSession(query: string): void {
+  if (typeof window === 'undefined' || !query?.trim()) return;
+  try {
+    const list = getRecentSessions();
+    const title = query.trim();
+    const updatedAt = new Date().toISOString();
+    const without = list.filter((s) => s.query !== query);
+    const next = [{ query: query.trim(), title, updatedAt }, ...without].slice(0, RECENT_SESSIONS_MAX);
+    localStorage.setItem(RECENT_SESSIONS_KEY, JSON.stringify(next));
+  } catch (e) {
+    console.warn('Failed to update recent sessions:', e);
+  }
+}
+
+function saveChatToLocalStorage(query: string, messages: Message[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const key = `${CHAT_LOCAL_KEY_PREFIX}${encodeURIComponent(query || '')}`;
+    const payload = {
+      query,
+      messages: messages.map((m) => ({
+        ...m,
+        timestamp: m.timestamp instanceof Date ? m.timestamp.toISOString() : m.timestamp,
+      })),
+      savedAt: new Date().toISOString(),
+    };
+    localStorage.setItem(key, JSON.stringify(payload));
+    pushRecentSession(query);
+  } catch (e) {
+    console.warn('Failed to save chat to localStorage:', e);
+  }
+}
+
+/** Serialize messages for API: safe JSON, minimal resourceLinks to avoid size/circular refs */
+function serializeMessagesForApi(messages: Message[]): Array<Record<string, unknown>> {
+  return messages.map((m) => {
+    const base: Record<string, unknown> = {
+      id: m.id,
+      role: m.role,
+      content: m.content,
+      timestamp: m.timestamp instanceof Date ? m.timestamp.toISOString() : (m.timestamp as string),
+      followUps: m.followUps,
+    };
+    if (m.resourceLinks?.length) {
+      base.resourceLinks = m.resourceLinks.map((l) => ({
+        index: l.index,
+        resource: l.resource && typeof l.resource === 'object'
+          ? {
+              title: (l.resource as any).title,
+              url: (l.resource as any).url,
+              type: (l.resource as any).type,
+              year: (l.resource as any).year,
+              authors: (l.resource as any).authors,
+              source: (l.resource as any).source,
+            }
+          : undefined,
+      }));
+    }
+    return base;
+  });
+}
+
+async function loadChatFromApi(sessionId: string, query: string): Promise<Message[] | null> {
+  try {
+    const res = await fetch(`/api/openresources-chats?q=${encodeURIComponent(query)}`, {
+      headers: { 'x-openresources-session': sessionId },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const chat = data.chat as { messages?: unknown } | null;
+      if (chat?.messages) return messagesFromApi(chat.messages);
+    }
+  } catch {
+    // fall through to localStorage
+  }
+  return loadChatFromLocalStorage(query);
+}
+
+async function saveChatToApi(sessionId: string, query: string, messages: Message[]): Promise<void> {
+  if (!query?.trim()) return;
+  saveChatToLocalStorage(query, messages);
+  try {
+    const payload = JSON.stringify({
+      sessionId,
+      searchQuery: query,
+      messages: serializeMessagesForApi(messages),
+    });
+    const res = await fetch('/api/openresources-chats', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-openresources-session': sessionId },
+      body: payload,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      console.warn('Open Resources chat save failed:', res.status, err);
+    }
+  } catch (e) {
+    console.warn('Failed to save Open Resources chat to DB:', e);
+  }
+}
+
 interface OpenResourcesChatProps {
   searchResults?: any[];
   searchQuery?: string;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
-  onChatSearch?: (query: string) => Promise<any[]>; // Return search results
-  onFilterResources?: (filters: { type?: string; year?: number; license?: string; source?: string }) => void; // Filter resources
+  onSwitchSession?: (query: string) => void;
+  onChatSearch?: (query: string) => Promise<any[]>;
+  onFilterResources?: (filters: { type?: string; year?: number; license?: string; source?: string }) => void;
 }
 
-export default function OpenResourcesChat({ searchResults = [], searchQuery = '', isCollapsed: externalCollapsed, onToggleCollapse, onChatSearch, onFilterResources }: OpenResourcesChatProps) {
+export default function OpenResourcesChat({ searchResults = [], searchQuery = '', isCollapsed: externalCollapsed, onToggleCollapse, onSwitchSession, onChatSearch, onFilterResources }: OpenResourcesChatProps) {
   const [internalCollapsed, setInternalCollapsed] = useState(false);
   const isCollapsed = externalCollapsed !== undefined ? externalCollapsed : internalCollapsed;
   const setIsCollapsed = onToggleCollapse || setInternalCollapsed;
@@ -393,8 +550,8 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
       id: '1',
       role: 'assistant',
       content: searchResults.length > 0 
-        ? `Hello! I'm your Open Resources Assistant, powered by **DeepSeek Chat**. I have access to **all ${searchResults.length} resources** from your search. I can deeply analyze them, answer specific questions, compare resources, and provide comprehensive insights. Ask me anything about these resources!`
-        : "Hello! I'm your Open Resources Assistant, powered by **DeepSeek Chat**. Search for resources on the main page, and I'll analyze all of them to help answer your questions with detailed references. What would you like to know?",
+        ? `Hello! I'm your Open Resources Assistant, powered by **Groq**. I have access to **all ${searchResults.length} resources** from your search. I can deeply analyze them, answer specific questions, compare resources, and provide comprehensive insights. Ask me anything about these resources!`
+        : "Hello! I'm your Open Resources Assistant, powered by **Groq**. Search for resources on the main page, and I'll analyze all of them to help answer your questions with detailed references. What would you like to know?",
       timestamp: new Date(),
     },
   ]);
@@ -406,6 +563,8 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
   const [citationMenuOpen, setCitationMenuOpen] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [showVisualizations, setShowVisualizations] = useState(false);
+  const [recentSessions, setRecentSessions] = useState<RecentSession[]>(() => getRecentSessions());
+  const [sessionsMenuOpen, setSessionsMenuOpen] = useState(false);
   const [quickActions] = useState([
     "Compare top 3 resources",
     "Which is best for beginners?",
@@ -419,6 +578,37 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
   const inputRef = useRef<HTMLInputElement>(null);
   const citationMenuRef = useRef<HTMLDivElement>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
+  const sessionsMenuRef = useRef<HTMLDivElement>(null);
+  const sessionIdRef = useRef<string | null>(null);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestForUnloadRef = useRef<{ query: string; messages: Message[] }>({ query: '', messages: [] });
+
+  function getSessionId(): string {
+    if (sessionIdRef.current) return sessionIdRef.current;
+    sessionIdRef.current = getOrCreateSessionId();
+    return sessionIdRef.current;
+  }
+
+  // Ensure sessionId is set on mount so save always has it
+  useEffect(() => {
+    getSessionId();
+  }, []);
+
+  // Keep ref updated for unload save
+  latestForUnloadRef.current = { query: searchQuery, messages };
+
+  // Save on page unload/hide so we don't lose chat if user leaves before debounce
+  useEffect(() => {
+    const onUnload = () => {
+      const { query, messages: msgs } = latestForUnloadRef.current;
+      if (query?.trim() && msgs.length > 0) {
+        saveChatToLocalStorage(query, msgs);
+        saveChatToApi(getSessionId(), query, msgs);
+      }
+    };
+    window.addEventListener('pagehide', onUnload);
+    return () => window.removeEventListener('pagehide', onUnload);
+  }, []);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -438,6 +628,9 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
       }
       if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
         setExportMenuOpen(false);
+      }
+      if (sessionsMenuRef.current && !sessionsMenuRef.current.contains(event.target as Node)) {
+        setSessionsMenuOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -578,41 +771,64 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
     }
   };
 
-  // Clear chat and update welcome message when search query changes
+  // Load chat from DB when search query changes (don't overwrite when only results load)
   useEffect(() => {
-    // Check if this is a new search (query changed)
-    if (searchQuery && searchQuery !== previousQuery) {
-      // New search detected - clear chat history and reset
+    if (!searchQuery) return;
+
+    let cancelled = false;
+    const sessionId = getSessionId();
+    const queryChanged = searchQuery !== previousQuery || previousQuery === '';
+
+    (async () => {
+      const saved = await loadChatFromApi(sessionId, searchQuery);
+      if (cancelled) return;
+      if (saved && saved.length > 0) {
+        setMessages(saved);
+        setPreviousQuery(searchQuery);
+        return;
+      }
+
+      // No saved chat: show welcome only when query actually changed (avoid overwriting user messages when results load)
+      if (!queryChanged) return;
+      setPreviousQuery(searchQuery);
       setMessages([{
         id: '1',
         role: 'assistant',
         content: searchResults.length > 0
-          ? `Hello! I've updated my context with **${searchResults.length} new resources** from your search for "${searchQuery}". I can deeply analyze them, answer specific questions, compare resources, identify the best ones for your needs, and provide comprehensive insights. Ask me anything about these resources!`
+          ? `Hello! I'm your Open Resources Assistant, powered by **Groq**. I have access to **all ${searchResults.length} resources** from your search for "${searchQuery}". I can deeply analyze them, answer specific questions, compare resources, identify the best ones for your needs, and provide comprehensive insights. Ask me anything about these resources!`
           : `Hello! I'm ready to help with your search for "${searchQuery}". Once results are loaded, I'll analyze them for you.`,
         timestamp: new Date(),
       }]);
-      setPreviousQuery(searchQuery);
-    } else if (searchQuery && previousQuery === '') {
-      // First search - set the query and update message if results are available
-      setPreviousQuery(searchQuery);
-      if (searchResults.length > 0) {
-        setMessages([{
-          id: '1',
-          role: 'assistant',
-          content: `Hello! I'm your Open Resources Assistant, powered by **DeepSeek Chat**. I have access to **all ${searchResults.length} resources** from your search for "${searchQuery}". I can deeply analyze them, answer specific questions, compare resources, identify the best ones for your needs, and provide comprehensive insights. Ask me anything about these resources!`,
-          timestamp: new Date(),
-        }]);
-      }
-    } else if (searchResults.length > 0 && messages.length === 1 && messages[0].id === '1' && searchQuery === previousQuery) {
-      // Same query but results updated - just update the welcome message
-      setMessages([{
-        id: '1',
-        role: 'assistant',
-        content: `Hello! I'm your Open Resources Assistant, powered by **DeepSeek Chat**. I have access to **all ${searchResults.length} resources** from your search for "${searchQuery}". I can deeply analyze them, answer specific questions, compare resources, identify the best ones for your needs, and provide comprehensive insights. Ask me anything about these resources!`,
-        timestamp: new Date(),
-      }]);
-    }
-  }, [searchResults.length, searchQuery, previousQuery]);
+    })();
+
+    return () => { cancelled = true; };
+  }, [searchQuery, previousQuery]);
+
+  // Update welcome message text when results load (only if we still have single welcome message)
+  useEffect(() => {
+    if (!searchQuery || searchResults.length === 0) return;
+    setMessages((prev) => {
+      if (prev.length !== 1 || prev[0].id !== '1') return prev;
+      return [{
+        ...prev[0],
+        content: `Hello! I'm your Open Resources Assistant, powered by **Groq**. I have access to **all ${searchResults.length} resources** from your search for "${searchQuery}". I can deeply analyze them, answer specific questions, compare resources, identify the best ones for your needs, and provide comprehensive insights. Ask me anything about these resources!`,
+      }];
+    });
+  }, [searchResults.length, searchQuery]);
+
+  // Auto-save chat to DB (debounced) so we persist after each message
+  useEffect(() => {
+    if (!searchQuery || messages.length === 0) return;
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => {
+      saveTimeoutRef.current = null;
+      saveChatToApi(getSessionId(), searchQuery, messages);
+      setRecentSessions(getRecentSessions());
+    }, 400);
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
+  }, [searchQuery, messages]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -760,7 +976,13 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
           followUps: followUps.length > 0 ? followUps : undefined,
           resourceLinks: enhancedResourceLinks.length > 0 ? enhancedResourceLinks : undefined,
         };
-        setMessages((prev) => [...prev, assistantMessage]);
+        setMessages((prev) => {
+          const next = [...prev, assistantMessage];
+          if (searchQuery) {
+            queueMicrotask(() => saveChatToApi(getSessionId(), searchQuery, next));
+          }
+          return next;
+        });
       } else {
         let errorMessage = 'Failed to get response';
         try {
@@ -795,13 +1017,13 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
         errorMessage += `💡 **Quick Link:** [Add Credits Now](https://openrouter.ai/settings/credits)\n\n`;
         errorMessage += `${searchResults.length > 0 ? `I have access to ${searchResults.length} resources and I'm ready to analyze them once credits are added. ` : ''}`;
       } else if (errorMsg.includes('API key') || errorMsg.includes('authentication') || errorMsg.includes('Invalid API key') || errorMsg.includes('401')) {
-        errorMessage = `🔑 **API Key Error**: ${errorMsg || 'Please check your API key settings (⚙️ icon). Make sure OPENROUTER_API_KEY is configured for DeepSeek Chat.'}`;
+        errorMessage = `🔑 **API Key Error**: ${errorMsg || 'Please set GROQ_API_KEY in your server environment (⚙️ / https://console.groq.com/keys).'}`;
       } else if (errorMsg.includes('Rate limit') || errorMsg.includes('429')) {
         errorMessage = `⏱️ **Rate Limit Exceeded**: ${errorMsg || 'Too many requests. Please try again in a few moments.'}\n\n💡 **Check your OpenRouter limits:** https://openrouter.ai/settings/credits\n💡 **Free tier:** ~10 requests/minute\n💡 **Upgrade for higher limits:** https://openrouter.ai/settings/credits`;
       } else if (errorMsg.includes('HTTP 500') || errorMsg.includes('Internal Server Error')) {
         errorMessage = `🔧 **Server Error**: ${errorMsg || 'An internal error occurred. Please try again later.'}`;
       } else {
-        errorMessage = `❌ **Error**: ${errorMsg || 'An unexpected error occurred.'}\n\n${searchResults.length > 0 ? `I have access to ${searchResults.length} resources and I'm ready to analyze them. ` : ''}Please try again, or check your API key settings (⚙️ icon). Make sure OPENROUTER_API_KEY is configured for DeepSeek Chat.`;
+        errorMessage = `❌ **Error**: ${errorMsg || 'An unexpected error occurred.'}\n\n${searchResults.length > 0 ? `I have access to ${searchResults.length} resources and I'm ready to analyze them. ` : ''}Please try again. To enable the assistant, set GROQ_API_KEY in your server environment (https://console.groq.com/keys).`;
       }
       
       const assistantMessage: Message = {
@@ -810,7 +1032,13 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
         content: errorMessage,
         timestamp: new Date(),
       };
-      setMessages((prev) => [...prev, assistantMessage]);
+      setMessages((prev) => {
+        const next = [...prev, assistantMessage];
+        if (searchQuery) {
+          queueMicrotask(() => saveChatToApi(getSessionId(), searchQuery, next));
+        }
+        return next;
+      });
     } finally {
       setIsLoading(false);
     }
@@ -864,6 +1092,48 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
               <p className="text-xs text-gray-400">Always here to help</p>
             </div>
             <div className="flex items-center gap-1">
+              {/* Recent Sessions (like ChatGPT) */}
+              {onSwitchSession && (
+                <div className="relative" ref={sessionsMenuRef}>
+                  <button
+                    onClick={() => {
+                      setSessionsMenuOpen((open) => {
+                        if (!open) setRecentSessions(getRecentSessions());
+                        return !open;
+                      });
+                    }}
+                    className="p-1.5 rounded-md hover:bg-gray-700 text-gray-400 hover:text-gray-200 transition-colors"
+                    aria-label="Recent sessions"
+                    title="Recent chats"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                    </svg>
+                  </button>
+                  {sessionsMenuOpen && (
+                    <div className="absolute left-0 mt-1 w-56 max-h-64 overflow-y-auto bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-20">
+                      <div className="px-3 py-2 text-xs font-medium text-gray-400 border-b border-gray-700">Recent chats</div>
+                      {recentSessions.length === 0 ? (
+                        <div className="px-3 py-4 text-xs text-gray-500">No saved chats yet. Start a search to create one.</div>
+                      ) : (
+                        recentSessions.map((s) => (
+                          <button
+                            key={s.query + s.updatedAt}
+                            onClick={() => {
+                              onSwitchSession(s.query);
+                              setSessionsMenuOpen(false);
+                            }}
+                            className={`w-full text-left px-3 py-2.5 text-sm hover:bg-gray-700 transition-colors truncate ${s.query === searchQuery ? 'text-emerald-400 bg-gray-700/50' : 'text-gray-200'}`}
+                            title={s.query}
+                          >
+                            {s.title || s.query || 'Untitled'}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
               {/* Export Chat Button */}
               {messages.length > 1 && (
                 <div className="relative" ref={exportMenuRef}>

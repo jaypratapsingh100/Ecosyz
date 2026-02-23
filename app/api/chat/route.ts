@@ -47,12 +47,12 @@ const PROVIDER_CONFIGS: Record<Provider, ProviderConfig> = {
   },
   openrouter: {
     baseURL: 'https://openrouter.ai/api/v1',
-    defaultModel: 'deepseek/deepseek-chat', // More reliable than deepseek-coder
+    defaultModel: 'deepseek/deepseek-chat-v3-0324', // Versioned model (deepseek/deepseek-chat may be deprecated)
     models: [
       'meta-llama/llama-3.2-70b-instruct',
       'meta-llama/llama-3.1-8b-instruct',
-      'deepseek/deepseek-chat',
-      'deepseek/deepseek-coder',
+      'deepseek/deepseek-chat-v3-0324',
+      'deepseek/deepseek-chat-v3.1',
       'openai/gpt-4o',
       'openai/gpt-4o-mini',
       'anthropic/claude-3-haiku',
@@ -60,14 +60,16 @@ const PROVIDER_CONFIGS: Record<Provider, ProviderConfig> = {
   },
 };
 
-// Model normalization map for OpenRouter
+// Model normalization map for OpenRouter (use versioned IDs; deepseek/deepseek-chat can 404)
 const OPENROUTER_MODEL_MAP: Record<string, string> = {
-  'deepseek': 'deepseek/deepseek-chat',
-  'deepseek-chat': 'deepseek/deepseek-chat',
-  'deepseek-coder': 'deepseek/deepseek-chat', // Migrate to chat (coder not available)
-  'deepseekcoder': 'deepseek/deepseek-chat', // Migrate to chat
-  'deepseek/deepseek-coder': 'deepseek/deepseek-chat', // Migrate to chat (coder not available)
-  'deepseek/deepseek-chat': 'deepseek/deepseek-chat',
+  'deepseek': 'deepseek/deepseek-chat-v3-0324',
+  'deepseek-chat': 'deepseek/deepseek-chat-v3-0324',
+  'deepseek-coder': 'deepseek/deepseek-chat-v3-0324', // Migrate to chat (coder not available)
+  'deepseekcoder': 'deepseek/deepseek-chat-v3-0324', // Migrate to chat
+  'deepseek/deepseek-coder': 'deepseek/deepseek-chat-v3-0324', // Migrate to chat (coder not available)
+  'deepseek/deepseek-chat': 'deepseek/deepseek-chat-v3-0324',
+  'deepseek/deepseek-chat-v3-0324': 'deepseek/deepseek-chat-v3-0324',
+  'deepseek/deepseek-chat-v3.1': 'deepseek/deepseek-chat-v3.1',
 };
 
 // Normalize model name for OpenRouter
@@ -86,9 +88,12 @@ function normalizeModelName(modelName: string | undefined, provider: Provider): 
     
     // If model already looks like a valid OpenRouter ID (contains /), check if it's the deprecated coder model
     if (modelName.includes('/')) {
-      // Migrate deprecated deepseek-coder to deepseek-chat
+      // Migrate deprecated deepseek-coder / legacy deepseek-chat to versioned model
       if (modelName.toLowerCase().includes('deepseek-coder')) {
-        return 'deepseek/deepseek-chat';
+        return 'deepseek/deepseek-chat-v3-0324';
+      }
+      if (modelName === 'deepseek/deepseek-chat') {
+        return 'deepseek/deepseek-chat-v3-0324';
       }
       return modelName;
     }
@@ -199,23 +204,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Azure DeepSeek ONLY - no API key needed
-    const apiKey = process.env.AZURE_DEEPSEEK_API_KEY || 'not-required';
-    
-    // ONLY use Azure DeepSeek - no fallbacks
-    if (!process.env.AZURE__URL) {
-      console.error('Azure DeepSeek URL not configured');
+    // Open Resources chat: Groq only — use Groq default model (ignore stored OpenRouter/DeepSeek model)
+    if (!process.env.GROQ_API_KEY) {
       return NextResponse.json({
-        error: 'Azure DeepSeek is not configured. Please set AZURE_DEEPSEEK_URL environment variable.',
-        response: 'Azure DeepSeek URL is required. Please configure AZURE_DEEPSEEK_URL in your environment variables.'
+        error: 'Groq is not configured. Set GROQ_API_KEY in your environment (get a free key at https://console.groq.com/keys).',
+        response: 'To use the Open Resources Assistant, add GROQ_API_KEY to your server environment variables.'
       }, { status: 500 });
     }
-    
-    provider = 'azure-deepseek';
+    provider = 'groq';
+    const apiKey = process.env.GROQ_API_KEY;
 
     let client, model;
     try {
-      const clientResult = createClient(apiKey, provider, userModel);
+      const clientResult = createClient(apiKey, provider, undefined);
       client = clientResult.client;
       model = clientResult.model;
     } catch (clientError: any) {
@@ -252,8 +253,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Build system prompt with context
-    let systemPrompt = `You are DeepSeek Coder, an expert AI assistant powered by DeepSeek's deployed model, specializing in analyzing and understanding open resources (research papers, datasets, code repositories, AI models, hardware designs, etc.).
+    // Build system prompt with context (provider-agnostic)
+    let systemPrompt = `You are an expert AI assistant specializing in analyzing and understanding open resources (research papers, datasets, code repositories, AI models, hardware designs, etc.).
 
 Your primary role is to deeply analyze ALL provided resources and answer questions with specific, detailed references to them.
 
@@ -410,7 +411,7 @@ Your capabilities:
       }
     }
 
-    return NextResponse.json({ response, model: finalModel });
+    return NextResponse.json({ response, model: finalModel, provider });
   } catch (error: any) {
     console.error('=== CHAT API ERROR ===');
     console.error('Error:', error);

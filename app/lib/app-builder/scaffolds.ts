@@ -96,8 +96,8 @@ const SCAFFOLD_APP_CONTENT = `function App() {
 export default App;
 `;
 
-/** Global styles - used by both preview and local run */
-const SCAFFOLD_STYLES = `* {
+/** Global styles - used by both preview and local run. Exported for preview fallback. */
+export const SCAFFOLD_STYLES = `* {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
@@ -117,6 +117,36 @@ body {
 .hero, .card, .btn {
   border-radius: 0.5rem;
 }
+`;
+
+/** Minimal base CSS for app-builder preview when project has no CSS or for common LLM class names */
+export const PREVIEW_BASE_CSS = `
+.contact-input, .contact-textarea, input[type="text"], input[type="email"], textarea {
+  display: block;
+  width: 100%;
+  max-width: 400px;
+  padding: 0.5rem 0.75rem;
+  margin: 0.5rem 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.375rem;
+  font-size: 1rem;
+}
+.contact-textarea, textarea { min-height: 100px; resize: vertical; }
+.contact-cta, .btn, button {
+  padding: 0.5rem 1rem;
+  margin: 0.5rem 0.25rem 0.5rem 0;
+  border-radius: 0.375rem;
+  font-size: 1rem;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: #38bdf8;
+  color: #fff;
+}
+.contact-cta:hover, .btn:hover, button:hover { opacity: 0.9; }
+.footer-copyright { margin: 1rem 0; color: #6b7280; font-size: 0.875rem; }
+.footer-links { list-style: none; display: flex; gap: 1rem; flex-wrap: wrap; margin: 0.5rem 0; padding: 0; }
+.footer-link, .footer-links a { color: #38bdf8; text-decoration: none; }
+.footer-link:hover, .footer-links a:hover { text-decoration: underline; }
 `;
 
 /** Detect corruption: JSX tags inside style/string literals */

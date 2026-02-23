@@ -1,6 +1,12 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
+  async redirects() {
+    return [
+      { source: '/problem-mentions', destination: '/problems-and-ideas', permanent: true },
+      { source: '/open-idea', destination: '/problems-and-ideas', permanent: true },
+    ];
+  },
   eslint: {
     ignoreDuringBuilds: true,
   },
@@ -33,6 +39,24 @@ const nextConfig: NextConfig = {
         hostname: 'your-supabase-project.supabase.co',
         port: '',
         pathname: '/storage/v1/object/public/avatars/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'your-supabase-project.supabase.co',
+        port: '',
+        pathname: '/storage/v1/object/public/problem-idea-images/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'media2.dev.to',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'res.cloudinary.com',
+        port: '',
+        pathname: '/**',
       },
     ],
   },

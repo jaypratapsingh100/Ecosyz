@@ -77,6 +77,7 @@ export async function GET(req: NextRequest) {
     let deploymentStats, frameworkStats, appTypeStats, communityActivity, recentUsers, recentProjects;
 
     try {
+      // Run all core queries in a single transaction to use one DB connection and avoid pool exhaustion
       [
         totalUsers,
         totalAppProjects,
@@ -100,122 +101,121 @@ export async function GET(req: NextRequest) {
         communityActivity,
         recentUsers,
         recentProjects,
-      ] = await Promise.all([
-      // Total counts
-      prisma.user.count(),
-      prisma.appProject.count(),
-      prisma.workspace.count(),
-      prisma.communityGroup.count(),
-      prisma.discussion.count(),
-      prisma.event.count(),
-      prisma.challenge.count(),
-      prisma.challengeSubmission.count(),
-      prisma.resource.count(),
+      ] = await prisma.$transaction([
+        // Total counts
+        prisma.user.count(),
+        prisma.appProject.count(),
+        prisma.workspace.count(),
+        prisma.communityGroup.count(),
+        prisma.discussion.count(),
+        prisma.event.count(),
+        prisma.challenge.count(),
+        prisma.challengeSubmission.count(),
+        prisma.resource.count(),
 
-      // User growth
-      prisma.user.count({
-        where: { createdAt: { gte: last7Days } },
-      }),
-      prisma.user.count({
-        where: { createdAt: { gte: last30Days } },
-      }),
-      prisma.user.count({
-        where: { createdAt: { gte: last90Days } },
-      }),
+        // User growth
+        prisma.user.count({
+          where: { createdAt: { gte: last7Days } },
+        }),
+        prisma.user.count({
+          where: { createdAt: { gte: last30Days } },
+        }),
+        prisma.user.count({
+          where: { createdAt: { gte: last90Days } },
+        }),
 
-      // Project growth
-      prisma.appProject.count({
-        where: { createdAt: { gte: last7Days } },
-      }),
-      prisma.appProject.count({
-        where: { createdAt: { gte: last30Days } },
-      }),
-      prisma.appProject.count({
-        where: { createdAt: { gte: last90Days } },
-      }),
+        // Project growth
+        prisma.appProject.count({
+          where: { createdAt: { gte: last7Days } },
+        }),
+        prisma.appProject.count({
+          where: { createdAt: { gte: last30Days } },
+        }),
+        prisma.appProject.count({
+          where: { createdAt: { gte: last90Days } },
+        }),
 
-      // Active users (users who created projects, discussions, or other activity in last 30 days)
-      prisma.user.count({
-        where: {
-          OR: [
-            { appProjects: { some: { createdAt: { gte: last30Days } } } },
-            { discussions: { some: { createdAt: { gte: last30Days } } } },
-            { activities: { some: { createdAt: { gte: last30Days } } } },
-          ],
-        },
-      }),
+        // Active users (users who created projects, discussions, or other activity in last 30 days)
+        prisma.user.count({
+          where: {
+            OR: [
+              { appProjects: { some: { createdAt: { gte: last30Days } } } },
+              { discussions: { some: { createdAt: { gte: last30Days } } } },
+              { activities: { some: { createdAt: { gte: last30Days } } } },
+            ],
+          },
+        }),
 
-      // Deployment statistics
-      prisma.appProject.groupBy({
-        by: ['deploymentStatus'],
-        _count: true,
-        where: {
-          deploymentStatus: { not: null },
-        },
-      }),
+        // Deployment statistics
+        prisma.appProject.groupBy({
+          by: ['deploymentStatus'],
+          _count: true,
+          where: {
+            deploymentStatus: { not: null },
+          },
+        }),
 
-      // Framework statistics
-      prisma.appProject.groupBy({
-        by: ['framework'],
-        _count: true,
-        where: {
-          framework: { not: null },
-        },
-      }),
+        // Framework statistics
+        prisma.appProject.groupBy({
+          by: ['framework'],
+          _count: true,
+          where: {
+            framework: { not: null },
+          },
+        }),
 
-      // App type statistics
-      prisma.appProject.groupBy({
-        by: ['appType'],
-        _count: true,
-        where: {
-          appType: { not: null },
-        },
-      }),
+        // App type statistics
+        prisma.appProject.groupBy({
+          by: ['appType'],
+          _count: true,
+          where: {
+            appType: { not: null },
+          },
+        }),
 
-      // Community activity (last 30 days)
-      prisma.activity.count({
-        where: { createdAt: { gte: last30Days } },
-      }),
+        // Community activity (last 30 days)
+        prisma.activity.count({
+          where: { createdAt: { gte: last30Days } },
+        }),
 
-      // Recent users (last 10)
-      prisma.user.findMany({
-        take: 10,
-        orderBy: { createdAt: 'desc' },
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          createdAt: true,
-          _count: {
-            select: {
-              appProjects: true,
-              workspaces: true,
+        // Recent users (last 10)
+        prisma.user.findMany({
+          take: 10,
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            createdAt: true,
+            _count: {
+              select: {
+                appProjects: true,
+                workspaces: true,
+              },
             },
           },
-        },
-      }),
+        }),
 
-      // Recent projects (last 10)
-      prisma.appProject.findMany({
-        take: 10,
-        orderBy: { createdAt: 'desc' },
-        select: {
-          id: true,
-          title: true,
-          type: true,
-          framework: true,
-          appType: true,
-          deploymentStatus: true,
-          createdAt: true,
-          owner: {
-            select: {
-              email: true,
-              name: true,
+        // Recent projects (last 10)
+        prisma.appProject.findMany({
+          take: 10,
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            title: true,
+            type: true,
+            framework: true,
+            appType: true,
+            deploymentStatus: true,
+            createdAt: true,
+            owner: {
+              select: {
+                email: true,
+                name: true,
+              },
             },
           },
-        },
-      }),
-
+        }),
       ]);
     } catch (coreError: unknown) {
       console.error('Error fetching core analytics data:', coreError);
@@ -254,57 +254,38 @@ export async function GET(req: NextRequest) {
     if (hasTrackingModels) {
       const prismaAny = prisma as any;
       try {
-        const trackingPromises = [
-          prismaAny.pageVisit.count().catch(() => 0),
-          prismaAny.pageVisit.count({ where: { createdAt: { gte: today } } }).catch(() => 0),
-          prismaAny.searchLog.count().catch(() => 0),
-          prismaAny.searchLog.count({ where: { createdAt: { gte: today } } }).catch(() => 0),
-          prismaAny.resourceView.count().catch(() => 0),
-          prismaAny.resourceView.count({ where: { createdAt: { gte: today } } }).catch(() => 0),
-          prismaAny.searchLog.groupBy({ by: ['clicked'], _count: true }).catch(() => []),
-          prismaAny.searchLog.findMany({ select: { query: true } }).catch(() => []),
-          prismaAny.searchLog.findMany({ select: { providers: true } }).catch(() => []),
-          prismaAny.pageVisit.findMany({
-            where: { createdAt: { gte: today } },
-            select: { sessionId: true },
-            distinct: ['sessionId'],
-          }).catch(() => []),
-          prismaAny.pageVisit.findMany({
-            where: { createdAt: { gte: last7Days } },
-            select: { sessionId: true },
-            distinct: ['sessionId'],
-          }).catch(() => []),
-          prismaAny.pageVisit.findMany({
-            where: { createdAt: { gte: last30Days } },
-            select: { sessionId: true },
-            distinct: ['sessionId'],
-          }).catch(() => []),
-        ];
-
-        const trackingResults = await Promise.allSettled(trackingPromises);
-        
-        [
-          totalPageVisits,
-          dailyPageVisits,
-          totalSearches,
-          dailySearches,
-          totalResourceViews,
-          dailyResourceViews,
-          searchStats,
-          popularSearches,
-          searchProviders,
-          uniqueVisitorsToday,
-          uniqueVisitorsLast7Days,
-          uniqueVisitorsLast30Days,
-        ] = trackingResults.map((result, idx) => {
-          if (result.status === 'fulfilled') {
-            return result.value;
-          } else {
-            // Return default values based on index
-            if (idx < 6) return 0; // counts
-            return []; // arrays
+        // Run tracking queries sequentially to avoid connection pool exhaustion (limit: 1)
+        const run = async <T>(p: () => Promise<T>, fallback: T): Promise<T> => {
+          try {
+            return await p();
+          } catch {
+            return fallback;
           }
-        });
+        };
+        totalPageVisits = await run(() => prismaAny.pageVisit.count(), 0);
+        dailyPageVisits = await run(() => prismaAny.pageVisit.count({ where: { createdAt: { gte: today } } }), 0);
+        totalSearches = await run(() => prismaAny.searchLog.count(), 0);
+        dailySearches = await run(() => prismaAny.searchLog.count({ where: { createdAt: { gte: today } } }), 0);
+        totalResourceViews = await run(() => prismaAny.resourceView.count(), 0);
+        dailyResourceViews = await run(() => prismaAny.resourceView.count({ where: { createdAt: { gte: today } } }), 0);
+        searchStats = await run(() => prismaAny.searchLog.groupBy({ by: ['clicked'], _count: true }), []);
+        popularSearches = await run(() => prismaAny.searchLog.findMany({ select: { query: true } }), []);
+        searchProviders = await run(() => prismaAny.searchLog.findMany({ select: { providers: true } }), []);
+        uniqueVisitorsToday = await run(() => prismaAny.pageVisit.findMany({
+          where: { createdAt: { gte: today } },
+          select: { sessionId: true },
+          distinct: ['sessionId'],
+        }), []);
+        uniqueVisitorsLast7Days = await run(() => prismaAny.pageVisit.findMany({
+          where: { createdAt: { gte: last7Days } },
+          select: { sessionId: true },
+          distinct: ['sessionId'],
+        }), []);
+        uniqueVisitorsLast30Days = await run(() => prismaAny.pageVisit.findMany({
+          where: { createdAt: { gte: last30Days } },
+          select: { sessionId: true },
+          distinct: ['sessionId'],
+        }), []);
       } catch (error) {
         // Tracking tables don't exist yet - this is OK, will work after migration
         console.warn('Error fetching tracking data. Run "npx prisma generate" and migration:', error);

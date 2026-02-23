@@ -63,10 +63,21 @@ async function ensureUserWorkspace(userId: string): Promise<void> {
   // If workspaces.length === 1, user already has exactly one workspace - nothing to do
 }
 
+export type EnsureUserInDbOptions = {
+  /** When false, skips workspace ensure/consolidation (faster for routes that only need user id, e.g. saved news). Default true. */
+  ensureWorkspace?: boolean;
+};
+
 /**
- * Ensure user exists in database, create or update as needed
+ * Ensure user exists in database, create or update as needed.
+ * Returns the Prisma user id so callers can avoid an extra findUnique.
  */
-export async function ensureUserInDb(user: SupabaseUser): Promise<void> {
+export async function ensureUserInDb(
+  user: SupabaseUser,
+  options: EnsureUserInDbOptions = {}
+): Promise<{ id: string }> {
+  const { ensureWorkspace = true } = options;
+
   if (!user.email) {
     console.error('User email is required');
     throw new Error('User email is required');
@@ -115,8 +126,10 @@ export async function ensureUserInDb(user: SupabaseUser): Promise<void> {
       prismaUserId = newUser.id;
     }
 
-    // Ensure user has a workspace (auto-create if missing)
-    await ensureUserWorkspace(prismaUserId);
+    if (ensureWorkspace) {
+      await ensureUserWorkspace(prismaUserId);
+    }
+    return { id: prismaUserId };
   } catch (error: any) {
     // Handle database authentication errors specifically
     if (error?.message?.includes('authentication failed') || error?.code === 'P1001' || error?.code === 'P1000') {
@@ -147,9 +160,10 @@ export async function ensureUserInDb(user: SupabaseUser): Promise<void> {
               updatedAt: new Date(),
             },
           });
-          // Ensure workspace exists for this user
-          await ensureUserWorkspace(existingUser.id);
-          return; // Successfully updated
+          if (ensureWorkspace) {
+            await ensureUserWorkspace(existingUser.id);
+          }
+          return { id: existingUser.id };
         }
       } catch (retryError) {
         console.error('Failed to recover from unique constraint error:', retryError);

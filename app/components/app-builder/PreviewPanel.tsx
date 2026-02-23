@@ -81,17 +81,23 @@ export default function PreviewPanel({
     } catch (err: any) {
       console.error('❌ PreviewPanel: Preview exception', err);
       let errorMessage = 'Failed to generate preview';
-      
+
       if (err?.message) {
-        if (err.message.includes('network') || err.message.includes('fetch')) {
-          errorMessage = 'Network error. Please check your connection and try again.';
+        if (
+          err.message.includes('network') ||
+          err.message.includes('fetch') ||
+          err.message.toLowerCase().includes('failed to fetch')
+        ) {
+          errorMessage =
+            'Cannot reach the server. Make sure the dev server is running (e.g. npm run dev or pnpm dev) and try again.';
         } else if (err.message.includes('timeout')) {
-          errorMessage = 'Preview generation timed out. Your project may be too large or complex.';
+          errorMessage =
+            'Preview generation timed out. Your project may be too large or complex.';
         } else {
           errorMessage = err.message;
         }
       }
-      
+
       setError(errorMessage);
     } finally {
       setLoading(false);

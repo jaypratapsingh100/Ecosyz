@@ -230,7 +230,7 @@ function OpenResourcesPage() {
         body: JSON.stringify({
           message: `Based on these ${searchResults.length} search results about "${query}", provide a brief, easy-to-understand summary (2-3 sentences) that explains: 1) What this topic is generally about, 2) What kinds of resources are available (papers, code, datasets, etc.), and 3) What users can expect to find. Keep it simple, helpful, and conversational - like explaining to a friend what they'll find.`,
           apiKey: userApiKey,
-          model: userModel || 'deepseek/deepseek-chat',
+          model: userModel || 'deepseek/deepseek-chat-v3-0324',
           provider: userProvider || 'openrouter',
           context: {
             searchQuery: query,
@@ -409,73 +409,51 @@ function OpenResourcesPage() {
               </button>
             )}
 
-            {/* Chat Sidebar - Stacked above on mobile, side-by-side on desktop */}
-            {!chatCollapsed && (
-              <div className="md:hidden w-full h-[50vh] flex-shrink-0 border-b border-white/10">
-                <OpenResourcesChat 
-                  searchResults={results} 
-                  searchQuery={q}
-                  isCollapsed={chatCollapsed}
-                  onToggleCollapse={() => setChatCollapsed(!chatCollapsed)}
-                  onFilterResources={(filters) => {
-                    let filtered = [...results];
-                    if (filters.type) filtered = filtered.filter(r => r.type === filters.type);
-                    if (filters.year) filtered = filtered.filter(r => r.year && r.year >= filters.year!);
-                    if (filters.license) filtered = filtered.filter(r => r.license && r.license.toLowerCase().includes('open'));
-                    if (filters.source) filtered = filtered.filter(r => r.source === filters.source);
-                    setResults(filtered);
-                    setTotal(filtered.length);
-                  }}
-                  onChatSearch={async (query: string) => {
-                    setChatSearchActive(true);
-                    setLoading(true);
-                    try {
-                      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&type=all&limit=20`, { cache: 'no-store' });
-                      if (!res.ok) throw new Error('Search failed');
-                      const data = await res.json();
-                      const searchResults = Array.isArray(data.results) ? data.results : [];
-                      setChatSearchResults(searchResults);
-                      return searchResults; // Return results for chat analysis
-                    } catch (e: any) {
-                      setError(e.message || 'Search failed');
-                      setChatSearchResults([]);
-                      return [];
-                    } finally {
-                      setLoading(false);
-                    }
-                  }}
-                />
-              </div>
-            )}
-
-            {/* Chat Sidebar - Desktop side-by-side */}
-            <div className={`hidden md:block transition-all duration-300 flex-shrink-0 h-full ${chatCollapsed ? 'w-0' : 'w-[40%]'}`}>
-              {!chatCollapsed && (
-                <OpenResourcesChat 
-                  searchResults={results} 
-                  searchQuery={q}
-                  isCollapsed={chatCollapsed}
-                  onToggleCollapse={() => setChatCollapsed(!chatCollapsed)}
-                  onChatSearch={async (query: string) => {
-                    setChatSearchActive(true);
-                    setLoading(true);
-                    try {
-                      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&type=all&limit=20`, { cache: 'no-store' });
-                      if (!res.ok) throw new Error('Search failed');
-                      const data = await res.json();
-                      const searchResults = Array.isArray(data.results) ? data.results : [];
-                      setChatSearchResults(searchResults);
-                      return searchResults; // Return results for chat analysis
-                    } catch (e: any) {
-                      setError(e.message || 'Search failed');
-                      setChatSearchResults([]);
-                      return [];
-                    } finally {
-                      setLoading(false);
-                    }
-                  }}
-                />
-              )}
+            {/* Chat Sidebar - Always mounted so session is preserved when closed (like ChatGPT) */}
+            <div
+              className={`flex-shrink-0 transition-all duration-300 overflow-hidden border-r border-white/10 ${
+                chatCollapsed
+                  ? 'w-0 max-w-0 min-w-0 opacity-0 pointer-events-none md:h-full'
+                  : 'w-full md:w-[40%] h-[50vh] md:h-full'
+              }`}
+            >
+              <OpenResourcesChat
+                searchResults={results}
+                searchQuery={q}
+                isCollapsed={chatCollapsed}
+                onToggleCollapse={() => setChatCollapsed(!chatCollapsed)}
+                onSwitchSession={(query: string) => {
+                  setQ(query);
+                  search(query, type, limit);
+                }}
+                onFilterResources={(filters) => {
+                  let filtered = [...results];
+                  if (filters.type) filtered = filtered.filter(r => r.type === filters.type);
+                  if (filters.year) filtered = filtered.filter(r => r.year && r.year >= filters.year!);
+                  if (filters.license) filtered = filtered.filter(r => r.license && r.license.toLowerCase().includes('open'));
+                  if (filters.source) filtered = filtered.filter(r => r.source === filters.source);
+                  setResults(filtered);
+                  setTotal(filtered.length);
+                }}
+                onChatSearch={async (query: string) => {
+                  setChatSearchActive(true);
+                  setLoading(true);
+                  try {
+                    const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&type=all&limit=20`, { cache: 'no-store' });
+                    if (!res.ok) throw new Error('Search failed');
+                    const data = await res.json();
+                    const searchResults = Array.isArray(data.results) ? data.results : [];
+                    setChatSearchResults(searchResults);
+                    return searchResults;
+                  } catch (e: any) {
+                    setError(e.message || 'Search failed');
+                    setChatSearchResults([]);
+                    return [];
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+              />
             </div>
             
             {/* Content - Right side (60%) */}

@@ -18,6 +18,7 @@ import type { Resource, ResourceType } from '../../../src/types/resource';
 import { dedupeConservative } from './lib/dedupe';
 import { getCurrentUser } from '../../../src/lib/auth';
 import { prisma } from '../../../src/lib/db';
+import { trackApiRequest } from '../../../src/lib/api-usage';
 
 interface SearchCoverage {
   requestedProviders: string[];
@@ -178,6 +179,7 @@ export async function GET(req: NextRequest) {
     providerFns.map(async ({ name, fn }) => {
       try {
         results[name] = await fn();
+        void trackApiRequest(name, 'search');
       } catch {
         results[name] = [];
       }

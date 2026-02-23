@@ -1,7 +1,14 @@
+/**
+ * App Builder Preview API: builds HTML for iframe sandbox so user always sees the project.
+ * Standardization: (1) Base CSS always injected for React so styles show even without project CSS.
+ * (2) Link stub provided so generated Header/nav using <Link> works. (3) Error boundary shows
+ * "Copy and ask AI in Chat to fix". (4) Future: self-extract — iframe postMessage(error) so
+ * parent can offer "Send to Chat" and LLM auto-fixes.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
-import { DEFAULT_APP_CONTENT } from '@/app/lib/app-builder/scaffolds';
+import { DEFAULT_APP_CONTENT, SCAFFOLD_STYLES, PREVIEW_BASE_CSS } from '@/app/lib/app-builder/scaffolds';
 
 export async function POST(
   req: NextRequest,
@@ -118,9 +125,18 @@ export async function POST(
         ''
       );
     }
+
+    // Standardize preview: inject base CSS for all projects so user always sees a styled app
+    // (project CSS is injected after so it overrides; base covers missing CSS or LLM classNames like contact-*, footer-*)
+    const baseCss = `<style id="preview-base">${SCAFFOLD_STYLES}${PREVIEW_BASE_CSS}</style>`;
+    if (html.includes('</head>')) {
+      html = html.replace('</head>', `${baseCss}\n</head>`);
+    } else {
+      html = baseCss + html;
+    }
+
     for (const cssFile of cssFiles) {
       const cssTag = `<style>${cssFile.content}</style>`;
-      // Insert before closing head tag or at the beginning
       if (html.includes('</head>')) {
         html = html.replace('</head>', `${cssTag}\n</head>`);
       } else {
@@ -190,6 +206,21 @@ export async function POST(
           return `<script type="text/babel">\n${c}\n</script>`;
         }).join('\n');
 
+        // Stub Link for preview: created code (e.g. Header) often uses Link; imports are stripped and Next/router aren't in iframe
+        const linkStubScript = `
+  <script>
+    (function() {
+      var R = window.React;
+      if (R && R.createElement) {
+        window.Link = function Link(props) {
+          var href = props.href, children = props.children, rest = {};
+          for (var k in props) { if (k !== 'href' && k !== 'children' && props.hasOwnProperty(k)) rest[k] = props[k]; }
+          return R.createElement('a', Object.assign({ href: href || '#' }, rest), children);
+        };
+      }
+    })();
+  </script>`;
+
         // Ensure React, ReactDOM, and Babel are loaded
         const reactScripts = `
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
@@ -249,7 +280,8 @@ export async function POST(
           '            style: { padding: 20, fontFamily: "system-ui,sans-serif", color: "#1a1a1a", fontSize: 14, maxWidth: "100%", overflow: "auto" }',
           '          },',
           '            React.createElement("h2", { style: { margin: "0 0 12px 0", fontSize: 16 } }, "Preview error"),',
-          '            React.createElement("pre", { style: { margin: 0, padding: 12, background: "#f5f5f5", borderRadius: 8, whiteSpace: "pre-wrap", wordBreak: "break-word" } }, msg + tip)',
+          '            React.createElement("pre", { style: { margin: 0, padding: 12, background: "#f5f5f5", borderRadius: 8, whiteSpace: "pre-wrap", wordBreak: "break-word" } }, msg + tip),',
+          '            React.createElement("p", { style: { margin: "12px 0 0 0", fontSize: 12, color: "#6b7280" } }, "Copy this error and ask the AI in Chat to fix it.")',
           '          );',
           '        }',
           '        return this.props.children;',
@@ -264,8 +296,8 @@ export async function POST(
         const appComponentScript = errorBoundaryScript;
         
         const scriptsToInject = componentScripts
-          ? `${componentScripts}\n${appComponentScript}`
-          : appComponentScript;
+          ? `${linkStubScript}\n${componentScripts}\n${appComponentScript}`
+          : `${linkStubScript}\n${appComponentScript}`;
         if (html.includes('</body>')) {
           html = html.replace('</body>', `${scriptsToInject}\n</body>`);
         } else {
