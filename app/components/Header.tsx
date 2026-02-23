@@ -219,6 +219,29 @@ export default function Header() {
           
           {/* Utilities right - Improved responsive layout */}
           <div className="flex items-center gap-2 md:gap-3 shrink-0">
+            {/* Mobile auth CTA - visible next to hamburger on small screens */}
+            {!isAuthenticated && pathname !== '/auth' && (
+              <Link
+                href="/auth"
+                className="md:hidden mr-1 flex items-center justify-center w-9 h-9 rounded-full bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-400/60"
+                aria-label="Sign up or sign in"
+              >
+                <svg
+                  className="w-4 h-4"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M19 8v6" />
+                  <path d="M22 11h-6" />
+                </svg>
+              </Link>
+            )}
             {/* User profile / Sign In - Always visible on md+ */}
             <div className="hidden md:flex items-center gap-2 md:gap-3">
               {isAuthenticated && userData ? (
@@ -335,21 +358,21 @@ export default function Header() {
                 BETA
               </span>
             </div>
+            {/* Hamburger for mobile - Show on screens smaller than md */}
+            <button
+              type="button"
+              className="md:hidden p-2 rounded focus:outline-none focus:ring-2 focus:ring-emerald-400/60 hover:bg-white/10 text-white shrink-0"
+              aria-label="Open menu"
+              aria-controls="mobile-nav"
+              aria-expanded={mobileOpen}
+              onClick={() => setMobileOpen(v => !v)}
+            >
+              <span className="sr-only">Open menu</span>
+              <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d={mobileOpen ? "M6 18L18 6M6 6l12 12" : "M4 6h16M4 12h16M4 18h16"} />
+              </svg>
+            </button>
           </div>
-          {/* Hamburger for mobile - Show on screens smaller than md */}
-          <button
-            type="button"
-            className="md:hidden p-2 rounded focus:outline-none focus:ring-2 focus:ring-emerald-400/60 hover:bg-white/10 text-white shrink-0"
-            aria-label="Open menu"
-            aria-controls="mobile-nav"
-            aria-expanded={mobileOpen}
-            onClick={() => setMobileOpen(v => !v)}
-          >
-            <span className="sr-only">Open menu</span>
-            <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d={mobileOpen ? "M6 18L18 6M6 6l12 12" : "M4 6h16M4 12h16M4 18h16"} />
-            </svg>
-          </button>
         </div>
         {/* Mobile nav panel */}
         <div
