@@ -54,7 +54,9 @@ function OpenResourcesPage() {
   const [summaries, setSummaries] = useState<Record<string, any>>({});
   const [summarizingId, setSummarizingId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ type: 'error'|'info'; message: string } | null>(null);
-  const [searchSummary, setSearchSummary] = useState<string>('');
+  /** General summary about the *resources* (not topic), in 3 levels so users can understand the subject at basic / college / expert. */
+  const [generalSummary, setGeneralSummary] = useState<{ basic: string; intermediate: string; expert: string } | null>(null);
+  const [generalSummaryLevel, setGeneralSummaryLevel] = useState<'basic' | 'intermediate' | 'expert'>('basic');
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [generalSummaryModal, setGeneralSummaryModal] = useState(false);
   const [summaryModal, setSummaryModal] = useState<{
@@ -181,7 +183,7 @@ function OpenResourcesPage() {
     const controller = new AbortController();
     activeAbort.current = controller;
     setLoading(true); setError('');
-    setSearchSummary(''); // Clear previous summary
+    setGeneralSummary(null); // Clear previous summary
     try {
       const res = await fetch(`/api/search?q=${encodeURIComponent(customQ)}&type=${customType}&limit=${customLimit}` , { cache: 'no-store', signal: controller.signal });
       if (!res.ok) throw new Error('Search failed');
@@ -209,29 +211,33 @@ function OpenResourcesPage() {
     }
   }
 
-  // Generate helpful summary with gist of all results
+  // Generate resource summary (what these resources are and how they help) at 3 understanding levels: basic, intermediate, expert
   async function generateSearchSummary(query: string, searchResults: any[]) {
     setSummaryLoading(true);
     try {
-      // Get API key from localStorage
       const userApiKey = typeof window !== 'undefined' ? localStorage.getItem('ai_api_key') : null;
       const userModel = typeof window !== 'undefined' ? localStorage.getItem('ai_model') : null;
       const userProvider = typeof window !== 'undefined' ? localStorage.getItem('ai_provider') : null;
-      
-      // Prepare resource overview - get titles and descriptions
+
       const resourceOverview = searchResults.slice(0, 15).map((r, idx) => ({
         title: r.title || 'Untitled',
         type: r.type || 'unknown',
-        description: (r.description || r.summary || '').substring(0, 200), // Limit description length
+        description: (r.description || r.summary || '').substring(0, 200),
       }));
 
       const response = await fetch('/api/chat', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: `Based on these ${searchResults.length} search results about "${query}", provide a brief, easy-to-understand summary (2-3 sentences) that explains: 1) What this topic is generally about, 2) What kinds of resources are available (papers, code, datasets, etc.), and 3) What users can expect to find. Keep it simple, helpful, and conversational - like explaining to a friend what they'll find.`,
+          message: `You are summarizing the RESOURCES (not the topic) so the user can understand what these resources are and how they help—especially when the topic is unfamiliar.
+
+Return a valid JSON object with exactly these three keys (each value is a string, 2–4 sentences):
+
+- "basic": Explain what these resources are and what they help you do, in the simplest terms—so a 5-year-old could get the idea. No jargon. Focus on: what you can do with these resources.
+- "intermediate": College-level explanation of what kinds of resources are available (papers, code, datasets, etc.), what they cover, and how someone could use them to learn or build.
+- "expert": Concise expert-level summary: resource landscape, types, quality signals, and how to leverage them. Technical but brief.
+
+Output ONLY the JSON object, no markdown code fence, no extra text. Example shape: {"basic":"...","intermediate":"...","expert":"..."}`,
           apiKey: userApiKey,
           model: userModel || 'deepseek/deepseek-chat-v3-0324',
           provider: userProvider || 'openrouter',
@@ -246,48 +252,66 @@ function OpenResourcesPage() {
 
       if (response.ok) {
         const data = await response.json();
-        setSearchSummary(data.response || '');
-      } else {
-        // Fallback: Create a simple but helpful summary
-        const types = [...new Set(searchResults.map(r => r.type).filter(Boolean))];
-        const typeLabels = types.map(t => {
-          const labels: Record<string, string> = {
-            'paper': 'research papers',
-            'dataset': 'datasets',
-            'code': 'code repositories',
-            'model': 'AI models',
-            'video': 'videos',
-            'hardware': 'hardware designs'
-          };
-          return labels[t] || t;
-        });
-        
-        setSearchSummary(
-          `Found ${searchResults.length} open resources about "${query}". ` +
-          `You'll find ${typeLabels.slice(0, 3).join(', ')}${types.length > 3 ? ', and more' : ''} covering various aspects of this topic. ` +
-          `These resources include research, implementations, datasets, and educational materials you can explore.`
-        );
+        const raw = (data.response || '').trim();
+        try {
+          // Strip optional markdown code block if present
+          const jsonStr = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+          const parsed = JSON.parse(jsonStr) as { basic?: string; intermediate?: string; expert?: string };
+          const basic = typeof parsed.basic === 'string' ? parsed.basic : '';
+          const intermediate = typeof parsed.intermediate === 'string' ? parsed.intermediate : '';
+          const expert = typeof parsed.expert === 'string' ? parsed.expert : '';
+          if (basic || intermediate || expert) {
+            setGeneralSummary({
+              basic: basic || '—',
+              intermediate: intermediate || '—',
+              expert: expert || '—',
+            });
+            return;
+          }
+        } catch (_) {
+          // Fall through to use fallback
+        }
       }
-    } catch (error) {
-      console.error('Summary generation error:', error);
-      // Simple fallback
+
+      // Fallback: build 3-level summary from result types
       const types = [...new Set(searchResults.map(r => r.type).filter(Boolean))];
       const typeLabels = types.map(t => {
         const labels: Record<string, string> = {
-          'paper': 'research papers',
-          'dataset': 'datasets',
-          'code': 'code repositories',
-          'model': 'AI models',
-          'video': 'videos',
-          'hardware': 'hardware designs'
+          paper: 'research papers',
+          dataset: 'datasets',
+          code: 'code repositories',
+          model: 'AI models',
+          video: 'videos',
+          hardware: 'hardware designs',
         };
         return labels[t] || t;
       });
-      
-      setSearchSummary(
-        `Found ${searchResults.length} open resources about "${query}". ` +
-        `Includes ${typeLabels.slice(0, 3).join(', ')}${types.length > 3 ? ', and more' : ''} covering various aspects of this topic.`
-      );
+      const joinTypes = typeLabels.slice(0, 3).join(', ') + (types.length > 3 ? ', and more' : '');
+      setGeneralSummary({
+        basic: `These ${searchResults.length} resources help you learn and use things about "${query}". You can find stuff to read, try, and build with.`,
+        intermediate: `Found ${searchResults.length} open resources about "${query}": ${joinTypes}. They cover research, tools, data, and learning materials you can use for projects or study.`,
+        expert: `${searchResults.length} resources (${joinTypes}) for "${query}". Mix of papers, code, datasets, and tools; explore by type and relevance for implementation or research.`,
+      });
+    } catch (error) {
+      console.error('Summary generation error:', error);
+      const types = [...new Set(searchResults.map(r => r.type).filter(Boolean))];
+      const typeLabels = types.map(t => {
+        const labels: Record<string, string> = {
+          paper: 'research papers',
+          dataset: 'datasets',
+          code: 'code repositories',
+          model: 'AI models',
+          video: 'videos',
+          hardware: 'hardware designs',
+        };
+        return labels[t] || t;
+      });
+      const joinTypes = typeLabels.slice(0, 3).join(', ') + (types.length > 3 ? ', and more' : '');
+      setGeneralSummary({
+        basic: `These resources are about "${query}". You can use them to learn and try things.`,
+        intermediate: `Found ${searchResults.length} resources: ${joinTypes} for "${query}".`,
+        expert: `${searchResults.length} resources (${joinTypes}) for "${query}".`,
+      });
     } finally {
       setSummaryLoading(false);
     }
@@ -928,26 +952,28 @@ function OpenResourcesPage() {
                     </button>
                   )}
                   
-                  {/* Knowledge Graph Button */}
+                  {/* Explore connections (Knowledge Graph) Button */}
                   {results.length > 0 && (
-                    <button
-                      className="px-4 py-2 md:px-5 md:py-2.5 rounded-lg text-sm md:text-base font-semibold transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-purple-400/60 whitespace-nowrap bg-gradient-to-r from-purple-500/30 to-pink-500/30 border-2 border-purple-400/50 text-purple-200 hover:from-purple-500/40 hover:to-pink-500/40 hover:border-purple-400/70 hover:shadow-lg hover:shadow-purple-500/30 hover:scale-105"
-                      onClick={() => {
-                        // Store results in sessionStorage for the Knowledge Graph page
-                        if (typeof window !== 'undefined') {
-                          sessionStorage.setItem('kg-results', JSON.stringify(results));
-                          sessionStorage.setItem('kg-query', committedQuery || '');
-                        }
-                        router.push(`/openresources/knowledge-graph?q=${encodeURIComponent(committedQuery || '')}`);
-                      }}
-                    >
-                      <span className="flex items-center gap-2">
-                        <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-                        </svg>
-                        Knowledge Graph
-                      </span>
-                    </button>
+                    <div className="flex flex-col items-start gap-0.5">
+                      <button
+                        className="px-4 py-2 md:px-5 md:py-2.5 rounded-lg text-sm md:text-base font-semibold transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-purple-400/60 whitespace-nowrap bg-gradient-to-r from-purple-500/30 to-pink-500/30 border-2 border-purple-400/50 text-purple-200 hover:from-purple-500/40 hover:to-pink-500/40 hover:border-purple-400/70 hover:shadow-lg hover:shadow-purple-500/30 hover:scale-105"
+                        onClick={() => {
+                          if (typeof window !== 'undefined') {
+                            sessionStorage.setItem('kg-results', JSON.stringify(results));
+                            sessionStorage.setItem('kg-query', committedQuery || '');
+                          }
+                          router.push(`/openresources/knowledge-graph?q=${encodeURIComponent(committedQuery || '')}`);
+                        }}
+                      >
+                        <span className="flex items-center gap-2">
+                          <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                          </svg>
+                          Explore connections
+                        </span>
+                      </button>
+                      <span className="text-xs text-white/50 px-1">See how results connect by topic, author, and source</span>
+                    </div>
                   )}
                 </div>
               ) : null}
@@ -1623,7 +1649,7 @@ function OpenResourcesPage() {
             </div>
             )}
 
-            {/* General Summary Modal */}
+            {/* General Summary Modal — resource summary at 3 understanding levels */}
             {generalSummaryModal && (
               <div
                 className="fixed inset-0 z-40 flex items-center justify-center p-4"
@@ -1634,7 +1660,6 @@ function OpenResourcesPage() {
               >
                 <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setGeneralSummaryModal(false)} />
                 <div className="relative z-10 w-full max-w-3xl rounded-2xl glass-strong glass-border max-h-[90vh] flex flex-col">
-                  {/* Top-right close button */}
                   <button
                     aria-label="Close"
                     className="absolute top-2 right-2 p-2 rounded-md bg-white/10 hover:bg-white/15 text-white"
@@ -1644,11 +1669,37 @@ function OpenResourcesPage() {
                       <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
                     </svg>
                   </button>
-                  {/* Header */}
                   <div className="p-5 sm:p-6 pb-3">
                     <h3 className="text-lg font-semibold text-white">General Summary</h3>
+                    <p className="text-white/60 text-xs mt-1">What these resources are and how they help</p>
                   </div>
-                  {/* Scrollable body */}
+                  {generalSummary && !summaryLoading && (
+                    <div className="px-5 sm:px-6 pb-2">
+                      <p className="text-white/50 text-xs mb-2">Difficulty level</p>
+                      <div className="flex gap-2 flex-wrap">
+                        {(['basic', 'intermediate', 'expert'] as const).map((level) => (
+                          <button
+                            key={level}
+                            type="button"
+                            onClick={() => setGeneralSummaryLevel(level)}
+                            className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                              generalSummaryLevel === level
+                                ? level === 'basic'
+                                  ? 'bg-cyan-500/30 border border-cyan-400/60 text-cyan-200'
+                                  : level === 'intermediate'
+                                    ? 'bg-amber-500/30 border border-amber-400/60 text-amber-200'
+                                    : 'bg-emerald-500/30 border border-emerald-400/60 text-emerald-200'
+                                : 'bg-white/10 border border-white/10 text-white/70 hover:bg-white/15 hover:border-white/20'
+                            }`}
+                          >
+                            {level === 'basic' && "Basic — Explain like I'm 5"}
+                            {level === 'intermediate' && 'Intermediate — College'}
+                            {level === 'expert' && 'Expert'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div className="px-5 sm:px-6 py-2 overflow-y-auto" style={{ maxHeight: '70vh' }}>
                     {summaryLoading ? (
                       <div className="flex items-center gap-3">
@@ -1656,15 +1707,32 @@ function OpenResourcesPage() {
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                         </svg>
-                        <span className="text-sm text-gray-300">Generating summary...</span>
+                        <span className="text-sm text-gray-300">Generating resource summary...</span>
                       </div>
-                    ) : searchSummary ? (
-                      <p className="text-white/90 text-sm leading-relaxed">{searchSummary}</p>
+                    ) : generalSummary ? (
+                      <div className="rounded-xl bg-white/5 border border-white/10 p-4">
+                        <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                          {generalSummaryLevel === 'basic' && (
+                            <span className="text-cyan-300 rounded-full bg-cyan-500/20 px-2 py-0.5 text-xs">Basic</span>
+                          )}
+                          {generalSummaryLevel === 'intermediate' && (
+                            <span className="text-amber-300 rounded-full bg-amber-500/20 px-2 py-0.5 text-xs">Intermediate</span>
+                          )}
+                          {generalSummaryLevel === 'expert' && (
+                            <span className="text-emerald-300 rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs">Expert</span>
+                          )}
+                          {generalSummaryLevel === 'basic' && "Explain like I'm 5"}
+                          {generalSummaryLevel === 'intermediate' && 'College level'}
+                          {generalSummaryLevel === 'expert' && 'Technical summary'}
+                        </h4>
+                        <p className="text-white/90 text-sm leading-relaxed">
+                          {generalSummary[generalSummaryLevel]}
+                        </p>
+                      </div>
                     ) : (
-                      <p className="text-white/60 text-sm">No summary available. Please perform a search first.</p>
+                      <p className="text-white/60 text-sm">No summary available. Run a search first to see a resource summary at basic, intermediate, and expert levels.</p>
                     )}
                   </div>
-                  {/* Footer */}
                   <div className="flex items-center justify-end gap-2 p-3 border-t border-white/10 bg-black/20">
                     <button 
                       className="px-3 py-1.5 rounded-lg bg-white/10 text-white hover:bg-white/15" 
