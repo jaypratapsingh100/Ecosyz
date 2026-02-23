@@ -70,15 +70,15 @@ export default function KnowledgeGraph3D({ nodes, edges, onNodeClick, width: wid
           const node = n as GraphNode;
           if (node?.id != null && onNodeClick) onNodeClick(node.id, node.type ?? 'resource');
         }}
-        nodeThreeObject={(n) => {
+        nodeThreeObject={(n: any) => {
           const node = n as GraphNode;
           const label = node.label || node.id;
           const sprite = new SpriteText(label);
           sprite.color = '#e5e7eb';
           sprite.textHeight = 4;
-          sprite.position.y = 8;
+          (sprite as any).position.y = 8;
           // Keep text visible even when behind nodes
-          (sprite.material as any).depthWrite = false;
+          (sprite as any).material.depthWrite = false;
           return sprite;
         }}
         nodeThreeObjectExtend

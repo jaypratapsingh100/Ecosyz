@@ -51,6 +51,10 @@ export default function ShareLinksPanel({ workspaceId }: ShareLinksPanelProps) {
           } catch {
             // Ignore redirect errors
           }
+
+          // For auth/permission issues, just show empty state without throwing
+          setShareLink(null)
+          return
         }
         throw new Error(`HTTP ${res.status}`)
       }
