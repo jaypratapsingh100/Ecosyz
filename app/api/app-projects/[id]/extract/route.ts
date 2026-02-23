@@ -128,10 +128,11 @@ export async function POST(
         });
         created.push({ path: f.path, success: true });
       } catch (err) {
+        console.error('Error saving extracted file:', err);
         created.push({
           path: f.path,
           success: false,
-          error: err instanceof Error ? err.message : 'Unknown error',
+          error: 'Failed to save file',
         });
       }
     }
@@ -157,10 +158,13 @@ export async function POST(
     });
   } catch (error) {
     console.error('[EXTRACT] Error:', error);
+    const isDev = process.env.NODE_ENV === 'development';
     return NextResponse.json(
       {
         error: 'Extract failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
+        ...(isDev && {
+          details: error instanceof Error ? error.message : 'Unknown error',
+        }),
       },
       { status: 500 }
     );

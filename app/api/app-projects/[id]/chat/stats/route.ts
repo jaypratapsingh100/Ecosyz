@@ -61,9 +61,14 @@ export async function GET(
     });
   } catch (error: unknown) {
     console.error('Load balancer stats error:', error);
-    const errorMessage = error instanceof Error ? error.message : String(error) || 'Failed to get load balancer stats';
+    const isDev = process.env.NODE_ENV === 'development';
     return NextResponse.json(
-      { error: errorMessage },
+      {
+        error: 'Failed to get load balancer stats',
+        ...(isDev && {
+          details: error instanceof Error ? error.message : String(error),
+        }),
+      },
       { status: 500 }
     );
   }

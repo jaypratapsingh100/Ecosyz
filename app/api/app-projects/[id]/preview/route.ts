@@ -358,8 +358,14 @@ export async function POST(
     });
   } catch (error) {
     console.error('Error generating preview:', error);
+    const isDev = process.env.NODE_ENV === 'development';
     return NextResponse.json(
-      { error: 'Failed to generate preview', details: error instanceof Error ? error.message : 'Unknown error' },
+      {
+        error: 'Failed to generate preview',
+        ...(isDev && {
+          details: error instanceof Error ? error.message : 'Unknown error',
+        }),
+      },
       { status: 500 }
     );
   }

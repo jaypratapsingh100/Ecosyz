@@ -41,8 +41,12 @@ export async function POST(req: NextRequest) {
     });
   } catch (error: any) {
     console.error('Subscription activation error:', error);
+    const isDev = process.env.NODE_ENV === 'development';
     return NextResponse.json(
-      { error: 'Failed to activate subscription', details: error.message },
+      {
+        error: 'Failed to activate subscription',
+        ...(isDev && { details: error.message }),
+      },
       { status: 500 }
     );
   }

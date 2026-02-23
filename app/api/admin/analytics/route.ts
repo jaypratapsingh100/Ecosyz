@@ -919,32 +919,39 @@ export async function GET(req: NextRequest) {
   } catch (error: unknown) {
     console.error('Error fetching admin analytics:', error);
     console.error('Error type:', typeof error);
-    console.error('Error stringified:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
-    
-    // Extract error information safely
-    const errorMessage = error instanceof Error ? error.message : (typeof error === 'string' ? error : String(error)) || 'Failed to fetch analytics data';
-    const errorName = error instanceof Error ? error.name : 'Error';
-    const errorObj = error as { code?: string | number; statusCode?: string | number };
-    const errorCode = errorObj?.code || errorObj?.statusCode || 'UNKNOWN';
-    
-    const errorDetails: Record<string, unknown> = {
-      message: errorMessage,
-      name: errorName,
-      code: String(errorCode),
-    };
-    
-    if (process.env.NODE_ENV === 'development') {
+    try {
+      console.error('Error stringified:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
+    } catch {
+      console.error('Error could not be stringified safely');
+    }
+
+    const isDev = process.env.NODE_ENV === 'development';
+
+    const errorDetails: Record<string, unknown> = {};
+    if (isDev) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : typeof error === 'string'
+          ? error
+          : 'Failed to fetch analytics data';
+      const errorName = error instanceof Error ? error.name : 'Error';
+      const errorObj = error as { code?: string | number; statusCode?: string | number };
+      const errorCode = errorObj?.code || errorObj?.statusCode || 'UNKNOWN';
+
+      errorDetails.message = errorMessage;
+      errorDetails.name = errorName;
+      errorDetails.code = String(errorCode);
+
       if (error instanceof Error && error.stack) errorDetails.stack = error.stack;
       if (error instanceof Error && error.cause) errorDetails.cause = String(error.cause);
       errorDetails.fullError = String(error);
     }
-    
+
     return NextResponse.json(
-      { 
-        error: process.env.NODE_ENV === 'development' 
-          ? `Failed to fetch analytics data: ${errorMessage}`
-          : 'Failed to fetch analytics data',
-        details: errorDetails,
+      {
+        error: 'Failed to fetch analytics data',
+        ...(isDev && { details: errorDetails }),
       },
       { status: 500 }
     );

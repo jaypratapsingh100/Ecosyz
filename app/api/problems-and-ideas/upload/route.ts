@@ -83,11 +83,15 @@ export async function POST(req: NextRequest) {
 
       if (error) {
         console.error('Upload error:', error);
+        const isDev = process.env.NODE_ENV === 'development';
+        const baseMessage = error.message.includes('Bucket')
+          ? 'Storage bucket not found. Check your Supabase Storage configuration.'
+          : 'Image upload failed. Please try again.';
+
         return NextResponse.json(
           {
-            error: error.message.includes('Bucket')
-              ? `Storage bucket "${BUCKET}" not found. Create a public bucket named "problem-idea-images" in Supabase Dashboard → Storage.`
-              : `Upload failed: ${error.message}`,
+            error: baseMessage,
+            ...(isDev && { details: error.message }),
           },
           { status: 500 }
         );
@@ -99,8 +103,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ urls });
   } catch (err) {
     console.error('Upload error:', err);
+    const isDev = process.env.NODE_ENV === 'development';
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Upload failed' },
+      {
+        error: 'Upload failed',
+        ...(isDev && { details: err instanceof Error ? err.message : String(err) }),
+      },
       { status: 500 }
     );
   }

@@ -84,9 +84,14 @@ export async function GET(
     });
   } catch (error: unknown) {
     console.error('Error fetching chat history:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const isDev = process.env.NODE_ENV === 'development';
     return NextResponse.json(
-      { error: 'Failed to fetch chat history', message: errorMessage },
+      {
+        error: 'Failed to fetch chat history',
+        ...(isDev && {
+          details: error instanceof Error ? error.message : String(error),
+        }),
+      },
       { status: 500 }
     );
   }
@@ -825,6 +830,29 @@ export async function POST(
         // Format 4: header IS the file path directly  (e.g. ```src/App.jsx)
         if (!filePath && isFilePath(header)) {
           filePath = header;
+        }
+
+        // Format 5: first non-empty line inside the block is a path
+        // Many models emit:
+        //   src/components/Contact.jsx
+        //   import React from 'react';
+        //   ...
+        // so treat that leading line as the file path and strip it.
+        if (!filePath) {
+          const lines = content.split('\n');
+          const firstNonEmptyIndex = lines.findIndex((line) => line.trim().length > 0);
+          if (firstNonEmptyIndex !== -1) {
+            const firstLine = lines[firstNonEmptyIndex].trim();
+            if (isFilePath(firstLine)) {
+              filePath = firstLine;
+              content = [
+                ...lines.slice(0, firstNonEmptyIndex),
+                ...lines.slice(firstNonEmptyIndex + 1),
+              ]
+                .join('\n')
+                .trim();
+            }
+          }
         }
 
         if (filePath) {
