@@ -24,6 +24,10 @@ export async function GET(req: NextRequest) {
     }
 
     const model = getProblemIdeaPostModel();
+    const prismaUser = await prisma.user.findUnique({
+      where: { supabaseId: user.id },
+    });
+    const currentUserId = prismaUser?.id ?? null;
 
     const { searchParams } = new URL(req.url);
     const page = parseInt(searchParams.get('page') || '1');
@@ -34,22 +38,24 @@ export async function GET(req: NextRequest) {
     const where: { type?: string } = {};
     if (type === 'problem' || type === 'idea') where.type = type;
 
+    const include = {
+      author: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          avatarUrl: true,
+        },
+      },
+      _count: {
+        select: { comments: true },
+      },
+    };
+
     const [posts, total] = await Promise.all([
       model.findMany({
         where,
-        include: {
-          author: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              avatarUrl: true,
-            },
-          },
-          _count: {
-            select: { comments: true },
-          },
-        },
+        include,
         orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
@@ -57,8 +63,15 @@ export async function GET(req: NextRequest) {
       model.count({ where }),
     ]);
 
+    const postsWithMeta = posts.map((p: { authorId: string; _count: { comments: number } }) => ({
+      ...p,
+      isOwn: p.authorId === currentUserId,
+      likedByMe: false,
+      likeCount: 0,
+    }));
+
     return NextResponse.json({
-      posts,
+      posts: postsWithMeta,
       pagination: {
         page,
         limit,

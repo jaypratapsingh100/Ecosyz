@@ -24,7 +24,10 @@ type Post = {
   authorId: string;
   author: Author;
   createdAt: string;
-  _count: { comments: number };
+  _count: { comments: number; likes?: number };
+  isOwn?: boolean;
+  likedByMe?: boolean;
+  likeCount?: number;
 };
 
 type Comment = {
@@ -33,6 +36,8 @@ type Comment = {
   authorId: string;
   author: Author;
   createdAt: string;
+  likedByMe?: boolean;
+  likeCount?: number;
 };
 
 export default function ProblemsAndIdeasPage() {
@@ -52,6 +57,10 @@ export default function ProblemsAndIdeasPage() {
   const [commentsByPost, setCommentsByPost] = useState<Record<string, Comment[]>>({});
   const [commentText, setCommentText] = useState<Record<string, string>>({});
   const [submittingComment, setSubmittingComment] = useState<Record<string, boolean>>({});
+  const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
+  const [likingPostId, setLikingPostId] = useState<string | null>(null);
+  const [likingCommentId, setLikingCommentId] = useState<string | null>(null);
+  const [shareMenuPostId, setShareMenuPostId] = useState<string | null>(null);
 
   const [fetchError, setFetchError] = useState<string | null>(null);
 
@@ -204,7 +213,16 @@ export default function ProblemsAndIdeasPage() {
         throw new Error(d.error || 'Failed to post');
       }
       const newPost = await res.json();
-      setPosts((prev) => [newPost, ...prev]);
+      setPosts((prev) => [
+        {
+          ...newPost,
+          isOwn: true,
+          likedByMe: false,
+          likeCount: 0,
+          _count: { ...newPost._count, likes: 0 },
+        },
+        ...prev,
+      ]);
       setContent('');
       setImageUrlsText('');
       setImagePreviewUrls((prev) => {
@@ -263,6 +281,105 @@ export default function ProblemsAndIdeasPage() {
     return d.toLocaleDateString();
   };
 
+  const handleDeletePost = async (postId: string) => {
+    if (!confirm('Delete this post? This cannot be undone.')) return;
+    setDeletingPostId(postId);
+    try {
+      const res = await fetch(`/api/problems-and-ideas/posts/${postId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || 'Failed to delete');
+      }
+      setPosts((prev) => prev.filter((p) => p.id !== postId));
+      toast.success('Post deleted');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete post');
+    } finally {
+      setDeletingPostId(null);
+    }
+  };
+
+  const handleLikePost = async (postId: string) => {
+    setLikingPostId(postId);
+    try {
+      const res = await fetch(`/api/problems-and-ideas/posts/${postId}/like`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to update like');
+      const data = await res.json();
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.id === postId
+            ? {
+                ...p,
+                likedByMe: data.liked,
+                likeCount: data.likeCount ?? (p.likeCount ?? 0) + (data.liked ? 1 : -1),
+              }
+            : p
+        )
+      );
+    } catch {
+      toast.error('Failed to update like');
+    } finally {
+      setLikingPostId(null);
+    }
+  };
+
+  const handleLikeComment = async (commentId: string, postId: string) => {
+    setLikingCommentId(commentId);
+    try {
+      const res = await fetch(`/api/problems-and-ideas/comments/${commentId}/like`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to update like');
+      const data = await res.json();
+      setCommentsByPost((prev) => ({
+        ...prev,
+        [postId]: (prev[postId] || []).map((c) =>
+          c.id === commentId
+            ? { ...c, likedByMe: data.liked, likeCount: data.likeCount ?? (c.likeCount ?? 0) + (data.liked ? 1 : -1) }
+            : c
+        ),
+      }));
+    } catch {
+      toast.error('Failed to update like');
+    } finally {
+      setLikingCommentId(null);
+    }
+  };
+
+  const getPostShareUrl = (post: Post) => {
+    if (typeof window === 'undefined') return '';
+    return `${window.location.origin}/problems-and-ideas?post=${post.id}`;
+  };
+
+  const handleShare = (post: Post, platform: 'twitter' | 'linkedin' | 'copy') => {
+    const url = getPostShareUrl(post);
+    const text = post.content.slice(0, 200) + (post.content.length > 200 ? '…' : '');
+    if (platform === 'twitter') {
+      window.open(
+        `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`,
+        '_blank',
+        'noopener,noreferrer'
+      );
+    } else if (platform === 'linkedin') {
+      window.open(
+        `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`,
+        '_blank',
+        'noopener,noreferrer'
+      );
+    } else {
+      navigator.clipboard.writeText(url);
+      toast.success('Link copied to clipboard');
+    }
+    setShareMenuPostId(null);
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex flex-col">
@@ -312,17 +429,31 @@ export default function ProblemsAndIdeasPage() {
   const contentLength = content.length;
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#0c2321]">
+    <div className="min-h-screen flex flex-col">
       <Header />
-      <main className="flex-1 border-t border-white/5 max-w-[600px] w-full mx-auto">
-        {/* Twitter-style header */}
-        <div className="sticky top-0 z-10 bg-[#0c2321]/95 backdrop-blur border-b border-white/5 px-4 py-3">
+      <main className="flex-1">
+        <section className="relative overflow-hidden bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016] min-h-screen">
+          {/* Globe background */}
+          <div className="pointer-events-none absolute inset-0 z-0">
+            <Image
+              src="/hero-globe.png"
+              alt=""
+              fill
+              className="object-cover object-right opacity-30"
+            />
+            <div className="absolute left-1/2 top-1/3 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] bg-gradient-radial from-[#38bdf8]/20 to-transparent opacity-80 blur-3xl" />
+          </div>
+
+          <div className="relative z-10 flex justify-center">
+            <div className="flex-1 border-t border-white/5 max-w-[600px] w-full mx-auto bg-[#020b11]/70 backdrop-blur-sm">
+              {/* Twitter-style header */}
+              <div className="sticky top-0 z-10 bg-[#020b11]/95 backdrop-blur border-b border-white/5 px-4 py-3">
           <h1 className="text-xl font-bold text-white">Problems & Ideas</h1>
           <p className="text-xs text-teal-200/60 mt-0.5">Share a problem or an idea</p>
         </div>
 
-        {/* Compose tweet-style */}
-        <div className="p-4 border-b border-white/5">
+              {/* Compose tweet-style */}
+              <div className="p-4 border-b border-white/5">
           <form onSubmit={handleCreatePost} className="flex gap-3">
             <div className="w-10 h-10 rounded-full bg-[#38bdf8]/20 flex-shrink-0 overflow-hidden flex items-center justify-center text-[#38bdf8] font-semibold">
               +
@@ -490,6 +621,17 @@ export default function ProblemsAndIdeasPage() {
                         <span className="text-teal-100/50 text-[13px]">
                           · {formatDate(post.createdAt)}
                         </span>
+                        {post.isOwn && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePost(post.id)}
+                            disabled={deletingPostId === post.id}
+                            className="ml-auto text-red-400/80 hover:text-red-400 text-xs disabled:opacity-50"
+                            aria-label="Delete post"
+                          >
+                            {deletingPostId === post.id ? '…' : 'Delete'}
+                          </button>
+                        )}
                       </div>
                       <p className="mt-0.5 text-[15px] text-teal-100/90 whitespace-pre-wrap break-words leading-5">
                         {post.content}
@@ -518,6 +660,18 @@ export default function ProblemsAndIdeasPage() {
                       <div className="mt-2 flex items-center gap-4 text-teal-100/50">
                         <button
                           type="button"
+                          onClick={() => handleLikePost(post.id)}
+                          disabled={likingPostId === post.id}
+                          className={`flex items-center gap-1.5 text-sm transition-colors disabled:opacity-50 ${
+                            post.likedByMe ? 'text-red-400' : 'hover:text-red-400/80'
+                          }`}
+                          aria-label={post.likedByMe ? 'Unlike' : 'Like'}
+                        >
+                          <span className="text-base">{post.likedByMe ? '❤️' : '🤍'}</span>
+                          <span>{(post.likeCount ?? 0) > 0 ? post.likeCount : 'Like'}</span>
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => toggleComments(post.id)}
                           className="flex items-center gap-1.5 text-sm hover:text-[#38bdf8] transition-colors"
                         >
@@ -528,6 +682,49 @@ export default function ProblemsAndIdeasPage() {
                             <span>Comment</span>
                           )}
                         </button>
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setShareMenuPostId(shareMenuPostId === post.id ? null : post.id)}
+                            className="flex items-center gap-1.5 text-sm hover:text-[#38bdf8] transition-colors"
+                            aria-label="Share"
+                          >
+                            <span className="text-base">↗</span>
+                            <span>Share</span>
+                          </button>
+                          {shareMenuPostId === post.id && (
+                            <>
+                              <div
+                                className="fixed inset-0 z-10"
+                                aria-hidden
+                                onClick={() => setShareMenuPostId(null)}
+                              />
+                              <div className="absolute left-0 top-full mt-1 z-20 py-1 rounded-lg bg-[#0c2321] border border-white/10 shadow-xl min-w-[140px]">
+                                <button
+                                  type="button"
+                                  onClick={() => handleShare(post, 'twitter')}
+                                  className="w-full px-3 py-2 text-left text-sm text-teal-100 hover:bg-white/5"
+                                >
+                                  Twitter / X
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleShare(post, 'linkedin')}
+                                  className="w-full px-3 py-2 text-left text-sm text-teal-100 hover:bg-white/5"
+                                >
+                                  LinkedIn
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleShare(post, 'copy')}
+                                  className="w-full px-3 py-2 text-left text-sm text-teal-100 hover:bg-white/5"
+                                >
+                                  Copy link
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -545,6 +742,18 @@ export default function ProblemsAndIdeasPage() {
                               {c.author.name || c.author.email} · {formatDate(c.createdAt)}
                             </span>
                             <p className="text-[14px] text-teal-100/90 mt-0.5">{c.content}</p>
+                            <button
+                              type="button"
+                              onClick={() => handleLikeComment(c.id, post.id)}
+                              disabled={likingCommentId === c.id}
+                              className={`mt-0.5 flex items-center gap-1 text-xs transition-colors disabled:opacity-50 ${
+                                c.likedByMe ? 'text-red-400' : 'text-teal-100/50 hover:text-red-400/80'
+                              }`}
+                              aria-label={c.likedByMe ? 'Unlike comment' : 'Like comment'}
+                            >
+                              {c.likedByMe ? '❤️' : '🤍'}
+                              {(c.likeCount ?? 0) > 0 && <span>{c.likeCount}</span>}
+                            </button>
                           </div>
                         </div>
                       ))}
@@ -606,6 +815,9 @@ export default function ProblemsAndIdeasPage() {
             </button>
           </div>
         )}
+            </div>
+          </div>
+        </section>
       </main>
       <Footer />
     </div>

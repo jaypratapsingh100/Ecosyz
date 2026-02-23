@@ -33,7 +33,13 @@ export async function GET(
       orderBy: { createdAt: 'asc' },
     });
 
-    return NextResponse.json({ comments });
+    const commentsWithMeta = comments.map((c) => ({
+      ...c,
+      likedByMe: false,
+      likeCount: 0,
+    }));
+
+    return NextResponse.json({ comments: commentsWithMeta });
   } catch (error) {
     console.error('Error fetching comments:', error);
     return NextResponse.json(

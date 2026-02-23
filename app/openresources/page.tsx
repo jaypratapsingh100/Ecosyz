@@ -86,6 +86,10 @@ function OpenResourcesPage() {
   const [chatSearchFilter, setChatSearchFilter] = useState('all');
   // Tab state for resource cards
   const [activeCardTabs, setActiveCardTabs] = useState<Record<string, 'overview' | 'qa' | 'mindmap'>>({});
+  // Inline Q&A per card: input text, loading, and list of { q, a } pairs
+  const [cardQaInput, setCardQaInput] = useState<Record<string, string>>({});
+  const [cardQaLoading, setCardQaLoading] = useState<Record<string, boolean>>({});
+  const [cardQaPairs, setCardQaPairs] = useState<Record<string, Array<{ q: string; a: string }>>>({});
 
   // Authentication and modal state
   const { user, loading: authLoading } = useAuth();
@@ -165,8 +169,97 @@ function OpenResourcesPage() {
     router.replace(`/openresources${qs ? `?${qs}` : ''}` as any, { scroll: false } as any);
   }
 
+  // Format a single resource for the chat API (same shape as OpenResourcesChat)
+  function formatResourceForChat(r: any) {
+    return {
+      title: r.title || r.name || 'Untitled',
+      type: r.type || 'unknown',
+      source: r.source || 'unknown',
+      description: r.description || r.summary || '',
+      authors: Array.isArray(r.authors) ? r.authors : (r.author ? [r.author] : []),
+      tags: Array.isArray(r.tags) ? r.tags : [],
+      url: r.url || r.link || '',
+      year: r.year || null,
+      license: r.license || null,
+    };
+  }
+
+  async function handleCardAsk(resource: any, resKey: string) {
+    const question = (cardQaInput[resKey] || '').trim();
+    if (!question) return;
+    setCardQaLoading((prev) => ({ ...prev, [resKey]: true }));
+    try {
+      const detailedResult = [formatResourceForChat(resource)];
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: question,
+          context: {
+            searchQuery: resource.title || 'This resource',
+            resultsCount: 1,
+            results: detailedResult,
+            hasContext: true,
+          },
+        }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || err.message || `HTTP ${response.status}`);
+      }
+      const data = await response.json();
+      const answer = data.response || 'No response received.';
+      setCardQaPairs((prev) => ({
+        ...prev,
+        [resKey]: [...(prev[resKey] || []), { q: question, a: answer }],
+      }));
+      setCardQaInput((prev) => ({ ...prev, [resKey]: '' }));
+    } catch (e: any) {
+      setCardQaPairs((prev) => ({
+        ...prev,
+        [resKey]: [...(prev[resKey] || []), { q: question, a: `Error: ${e?.message || 'Failed to get answer.'}` }],
+      }));
+      setCardQaInput((prev) => ({ ...prev, [resKey]: '' }));
+    } finally {
+      setCardQaLoading((prev) => ({ ...prev, [resKey]: false }));
+    }
+  }
+
   function sanitizeText(s: any) {
     return cleanDescription(typeof s === 'string' ? s : '');
+  }
+
+  /** Build mind map data for any resource: code repo, paper, dataset, model, video, hardware. */
+  function getMindMapData(r: any): { centerLabel: string; innerNodes: string[]; outerNodes: string[] } {
+    const centerLabel = (r.title || 'Resource').substring(0, 14);
+    const inner: string[] = [];
+    const outer: string[] = [];
+
+    // Inner ring: type, source, year, license + type-specific meta
+    if (r.type) inner.push(r.type === 'model' ? 'Model' : r.type === 'video' ? 'Video' : r.type === 'hardware' ? 'Hardware' : (r.type as string).charAt(0).toUpperCase() + (r.type as string).slice(1));
+    if (r.source) inner.push(PROVIDER_LABELS[r.source] || String(r.source));
+    if (r.year) inner.push(String(r.year));
+    if (r.license) inner.push(String(r.license).substring(0, 10));
+    if (r.meta && typeof r.meta === 'object') {
+      if (r.type === 'code' && (r.meta.language || r.meta.languages)) {
+        const lang = r.meta.language ?? (Array.isArray(r.meta.languages) ? r.meta.languages[0] : r.meta.languages);
+        if (lang) inner.push(String(lang).substring(0, 10));
+      }
+      if (r.type === 'model' && r.meta.pipeline) inner.push(String(r.meta.pipeline).substring(0, 12));
+      if (r.type === 'video' && (r.meta.duration || r.meta.channel)) inner.push(r.meta.duration ? String(r.meta.duration) : String(r.meta.channel).substring(0, 10));
+      if (r.type === 'hardware' && r.meta.cert_id) inner.push(`Cert ${String(r.meta.cert_id).substring(0, 6)}`);
+    }
+
+    // Outer ring: topics (tags) and people (authors)
+    if (r.tags && r.tags.length) outer.push(...r.tags.slice(0, 4).map((t: string) => String(t).substring(0, 10)));
+    if (r.authors && r.authors.length) {
+      r.authors.slice(0, 2).forEach((a: string) => {
+        const s = String(a);
+        outer.push(s.length > 12 ? s.substring(0, 10) + '…' : s);
+      });
+    }
+
+    return { centerLabel, innerNodes: inner, outerNodes: outer };
   }
 
   async function search(
@@ -695,8 +788,8 @@ Output ONLY the JSON object, no markdown code fence, no extra text. Example shap
                               {activeCardTabs[resKey] === 'qa' && (
                                 <div className="mb-4 min-h-[200px]">
                                   <div className="space-y-4">
-                                    <div className="text-center py-4">
-                                      <svg className="w-10 h-10 mx-auto mb-3 text-emerald-400/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <div className="text-center py-2">
+                                      <svg className="w-10 h-10 mx-auto mb-2 text-emerald-400/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                       </svg>
                                       <h4 className="text-white font-semibold mb-2 text-sm">Q&A</h4>
@@ -724,61 +817,82 @@ Output ONLY the JSON object, no markdown code fence, no extra text. Example shap
                                           </div>
                                         </div>
                                       </div>
-                                      <button className="w-full px-3 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 rounded-lg text-emerald-300 text-xs font-medium transition-colors">
-                                        Ask a Question
-                                      </button>
+                                      {(cardQaPairs[resKey] || []).map((pair, idx) => (
+                                        <div key={idx} className="bg-white/5 rounded-lg p-3 border border-white/10">
+                                          <div className="flex items-start gap-2">
+                                            <div className="w-6 h-6 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                              <span className="text-emerald-400 text-xs font-bold">Q</span>
+                                            </div>
+                                            <div className="flex-1">
+                                              <p className="text-white text-xs font-medium mb-1">{pair.q}</p>
+                                              <p className="text-white/70 text-xs leading-relaxed whitespace-pre-wrap">{pair.a}</p>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                      <div className="flex gap-2">
+                                        <input
+                                          type="text"
+                                          placeholder="Ask a question about this resource..."
+                                          value={cardQaInput[resKey] || ''}
+                                          onChange={(e) => setCardQaInput((prev) => ({ ...prev, [resKey]: e.target.value }))}
+                                          onKeyDown={(e) => e.key === 'Enter' && handleCardAsk(r, resKey)}
+                                          className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-xs placeholder-white/40 focus:outline-none focus:border-emerald-500/50"
+                                          disabled={cardQaLoading[resKey]}
+                                        />
+                                        <button
+                                          onClick={() => handleCardAsk(r, resKey)}
+                                          disabled={cardQaLoading[resKey] || !(cardQaInput[resKey] || '').trim()}
+                                          className="px-3 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 rounded-lg text-emerald-300 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                                        >
+                                          {cardQaLoading[resKey] ? '…' : 'Ask'}
+                                        </button>
+                                      </div>
                                     </div>
                                   </div>
                                 </div>
                               )}
 
-                              {activeCardTabs[resKey] === 'mindmap' && (
-                                <div className="mb-4 min-h-[200px]">
-                                  <div className="relative w-full h-[180px] bg-gradient-to-br from-emerald-900/20 to-cyan-900/20 rounded-lg border border-emerald-500/20 p-4 overflow-hidden">
-                                    {/* Mind Map Visualization */}
-                                    <div className="relative w-full h-full">
-                                      {/* Central Node */}
-                                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 bg-gradient-to-r from-emerald-400 to-cyan-400 rounded-full flex items-center justify-center z-10 shadow-lg">
-                                        <span className="text-gray-900 text-[10px] font-bold text-center px-1 leading-tight">{r.title.substring(0, 12)}...</span>
-                                      </div>
-                                      
-                                      {/* Connected Nodes */}
-                                      {r.tags && r.tags.slice(0, 4).map((tag: string, idx: number) => {
-                                        const angle = (idx * 90) * (Math.PI / 180);
-                                        const radius = 50;
-                                        const x = Math.cos(angle) * radius;
-                                        const y = Math.sin(angle) * radius;
-                                        return (
-                                          <div key={idx}>
-                                            {/* Connection Line */}
-                                            <svg className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full pointer-events-none" style={{ zIndex: 1 }}>
-                                              <line
-                                                x1="50%"
-                                                y1="50%"
-                                                x2={`${50 + (x / 2)}%`}
-                                                y2={`${50 + (y / 2)}%`}
-                                                stroke="rgba(16, 185, 129, 0.3)"
-                                                strokeWidth="2"
-                                              />
-                                            </svg>
-                                            {/* Node */}
-                                            <div
-                                              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-14 h-14 bg-emerald-500/30 border border-emerald-400/50 rounded-lg flex items-center justify-center shadow-md"
-                                              style={{
-                                                transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`,
-                                                zIndex: 5
-                                              }}
-                                            >
-                                              <span className="text-emerald-200 text-[10px] font-medium text-center px-1 leading-tight">{tag.substring(0, 8)}</span>
-                                            </div>
+                              {activeCardTabs[resKey] === 'mindmap' && (() => {
+                                const { centerLabel, innerNodes, outerNodes } = getMindMapData(r);
+                                const R_INNER = 48;
+                                const R_OUTER = 72;
+                                const toXY = (angleDeg: number, radius: number) => {
+                                  const rad = (angleDeg * Math.PI) / 180;
+                                  return { x: Math.cos(rad) * radius, y: Math.sin(rad) * radius };
+                                };
+                                const allInner = innerNodes.map((label, i) => ({ label, ...toXY((360 / Math.max(1, innerNodes.length)) * i, R_INNER), ring: 'inner' as const }));
+                                const outerStart = outerNodes.length ? (360 / Math.max(1, innerNodes.length)) / 2 : 0;
+                                const allOuter = outerNodes.map((label, i) => ({ label, ...toXY(outerStart + (360 / Math.max(1, outerNodes.length)) * i, R_OUTER), ring: 'outer' as const }));
+                                const nodes = [...allInner, ...allOuter];
+                                return (
+                                  <div className="mb-4 min-h-[200px]">
+                                    <div className="relative w-full h-[180px] bg-gradient-to-br from-emerald-900/20 to-cyan-900/20 rounded-lg border border-emerald-500/20 p-4 overflow-hidden">
+                                      <div className="absolute inset-0 flex items-center justify-center">
+                                        <svg className="absolute w-full h-full pointer-events-none" viewBox="-100 -90 200 180" preserveAspectRatio="xMidYMid meet" style={{ zIndex: 1 }}>
+                                          {nodes.map((n, idx) => (
+                                            <line key={idx} x1={0} y1={0} x2={n.x} y2={n.y} stroke="rgba(16, 185, 129, 0.35)" strokeWidth="1.5" />
+                                          ))}
+                                        </svg>
+                                        <div className="absolute w-14 h-14 bg-gradient-to-r from-emerald-400 to-cyan-400 rounded-full flex items-center justify-center shadow-lg z-10" style={{ transform: 'translate(-50%, -50%)' }}>
+                                          <span className="text-gray-900 text-[10px] font-bold text-center px-1 leading-tight">{centerLabel}{(r.title || '').length > 14 ? '…' : ''}</span>
+                                        </div>
+                                        {nodes.map((n, idx) => (
+                                          <div
+                                            key={idx}
+                                            className={`absolute w-12 min-w-0 rounded-md flex items-center justify-center shadow-md z-10 px-1 py-0.5 ${n.ring === 'inner' ? 'bg-emerald-500/40 border border-emerald-400/50 text-emerald-100' : 'bg-cyan-500/30 border border-cyan-400/50 text-cyan-100'}`}
+                                            style={{ transform: `translate(calc(-50% + ${n.x}px), calc(-50% + ${n.y}px))`, fontSize: '9px' }}
+                                            title={n.label}
+                                          >
+                                            <span className="truncate max-w-full">{n.label}</span>
                                           </div>
-                                        );
-                                      })}
+                                        ))}
+                                      </div>
                                     </div>
+                                    <p className="text-white/60 text-xs mt-2 text-center">Type, source, tags &amp; authors — code repos show language; models show pipeline</p>
                                   </div>
-                                  <p className="text-white/60 text-xs mt-2 text-center">Interactive mind map showing relationships</p>
-                                </div>
-                              )}
+                                );
+                              })()}
                               
                               {/* Action Buttons */}
                               <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-white/10">
@@ -1218,8 +1332,8 @@ Output ONLY the JSON object, no markdown code fence, no extra text. Example shap
                           {activeCardTabs[resKey] === 'qa' && (
                             <div className="mb-4 min-h-[200px]">
                               <div className="space-y-4">
-                                <div className="text-center py-4">
-                                  <svg className="w-10 h-10 mx-auto mb-3 text-emerald-400/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <div className="text-center py-2">
+                                  <svg className="w-10 h-10 mx-auto mb-2 text-emerald-400/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                   </svg>
                                   <h4 className="text-white font-semibold mb-2 text-sm">Q&A</h4>
@@ -1247,61 +1361,82 @@ Output ONLY the JSON object, no markdown code fence, no extra text. Example shap
                                       </div>
                                     </div>
                                   </div>
-                                  <button className="w-full px-3 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 rounded-lg text-emerald-300 text-xs font-medium transition-colors">
-                                    Ask a Question
-                                  </button>
+                                  {(cardQaPairs[resKey] || []).map((pair, idx) => (
+                                    <div key={idx} className="bg-white/5 rounded-lg p-3 border border-white/10">
+                                      <div className="flex items-start gap-2">
+                                        <div className="w-6 h-6 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                          <span className="text-emerald-400 text-xs font-bold">Q</span>
+                                        </div>
+                                        <div className="flex-1">
+                                          <p className="text-white text-xs font-medium mb-1">{pair.q}</p>
+                                          <p className="text-white/70 text-xs leading-relaxed whitespace-pre-wrap">{pair.a}</p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                  <div className="flex gap-2">
+                                    <input
+                                      type="text"
+                                      placeholder="Ask a question about this resource..."
+                                      value={cardQaInput[resKey] || ''}
+                                      onChange={(e) => setCardQaInput((prev) => ({ ...prev, [resKey]: e.target.value }))}
+                                      onKeyDown={(e) => e.key === 'Enter' && handleCardAsk(r, resKey)}
+                                      className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-xs placeholder-white/40 focus:outline-none focus:border-emerald-500/50"
+                                      disabled={cardQaLoading[resKey]}
+                                    />
+                                    <button
+                                      onClick={() => handleCardAsk(r, resKey)}
+                                      disabled={cardQaLoading[resKey] || !(cardQaInput[resKey] || '').trim()}
+                                      className="px-3 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 rounded-lg text-emerald-300 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                                    >
+                                      {cardQaLoading[resKey] ? '…' : 'Ask'}
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
                             </div>
                           )}
 
-                          {activeCardTabs[resKey] === 'mindmap' && (
-                            <div className="mb-4 min-h-[200px]">
-                              <div className="relative w-full h-[180px] bg-gradient-to-br from-emerald-900/20 to-cyan-900/20 rounded-lg border border-emerald-500/20 p-4 overflow-hidden">
-                                {/* Mind Map Visualization */}
-                                <div className="relative w-full h-full">
-                                  {/* Central Node */}
-                                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 bg-gradient-to-r from-emerald-400 to-cyan-400 rounded-full flex items-center justify-center z-10 shadow-lg">
-                                    <span className="text-gray-900 text-[10px] font-bold text-center px-1 leading-tight">{r.title.substring(0, 12)}...</span>
-                                  </div>
-                                  
-                                  {/* Connected Nodes */}
-                                  {r.tags && r.tags.slice(0, 4).map((tag: string, idx: number) => {
-                                    const angle = (idx * 90) * (Math.PI / 180);
-                                    const radius = 50;
-                                    const x = Math.cos(angle) * radius;
-                                    const y = Math.sin(angle) * radius;
-                                    return (
-                                      <div key={idx}>
-                                        {/* Connection Line */}
-                                        <svg className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full pointer-events-none" style={{ zIndex: 1 }}>
-                                          <line
-                                            x1="50%"
-                                            y1="50%"
-                                            x2={`${50 + (x / 2)}%`}
-                                            y2={`${50 + (y / 2)}%`}
-                                            stroke="rgba(16, 185, 129, 0.3)"
-                                            strokeWidth="2"
-                                          />
-                                        </svg>
-                                        {/* Node */}
-                                        <div
-                                          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-14 h-14 bg-emerald-500/30 border border-emerald-400/50 rounded-lg flex items-center justify-center shadow-md"
-                                          style={{
-                                            transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`,
-                                            zIndex: 5
-                                          }}
-                                        >
-                                          <span className="text-emerald-200 text-[10px] font-medium text-center px-1 leading-tight">{tag.substring(0, 8)}</span>
-                                        </div>
+                          {activeCardTabs[resKey] === 'mindmap' && (() => {
+                            const { centerLabel, innerNodes, outerNodes } = getMindMapData(r);
+                            const R_INNER = 48;
+                            const R_OUTER = 72;
+                            const toXY = (angleDeg: number, radius: number) => {
+                              const rad = (angleDeg * Math.PI) / 180;
+                              return { x: Math.cos(rad) * radius, y: Math.sin(rad) * radius };
+                            };
+                            const allInner = innerNodes.map((label, i) => ({ label, ...toXY((360 / Math.max(1, innerNodes.length)) * i, R_INNER), ring: 'inner' as const }));
+                            const outerStart = outerNodes.length ? (360 / Math.max(1, innerNodes.length)) / 2 : 0;
+                            const allOuter = outerNodes.map((label, i) => ({ label, ...toXY(outerStart + (360 / Math.max(1, outerNodes.length)) * i, R_OUTER), ring: 'outer' as const }));
+                            const nodes = [...allInner, ...allOuter];
+                            return (
+                              <div className="mb-4 min-h-[200px]">
+                                <div className="relative w-full h-[180px] bg-gradient-to-br from-emerald-900/20 to-cyan-900/20 rounded-lg border border-emerald-500/20 p-4 overflow-hidden">
+                                  <div className="absolute inset-0 flex items-center justify-center">
+                                    <svg className="absolute w-full h-full pointer-events-none" viewBox="-100 -90 200 180" preserveAspectRatio="xMidYMid meet" style={{ zIndex: 1 }}>
+                                      {nodes.map((n, idx) => (
+                                        <line key={idx} x1={0} y1={0} x2={n.x} y2={n.y} stroke="rgba(16, 185, 129, 0.35)" strokeWidth="1.5" />
+                                      ))}
+                                    </svg>
+                                    <div className="absolute w-14 h-14 bg-gradient-to-r from-emerald-400 to-cyan-400 rounded-full flex items-center justify-center shadow-lg z-10" style={{ transform: 'translate(-50%, -50%)' }}>
+                                      <span className="text-gray-900 text-[10px] font-bold text-center px-1 leading-tight">{centerLabel}{(r.title || '').length > 14 ? '…' : ''}</span>
+                                    </div>
+                                    {nodes.map((n, idx) => (
+                                      <div
+                                        key={idx}
+                                        className={`absolute w-12 min-w-0 rounded-md flex items-center justify-center shadow-md z-10 px-1 py-0.5 ${n.ring === 'inner' ? 'bg-emerald-500/40 border border-emerald-400/50 text-emerald-100' : 'bg-cyan-500/30 border border-cyan-400/50 text-cyan-100'}`}
+                                        style={{ transform: `translate(calc(-50% + ${n.x}px), calc(-50% + ${n.y}px))`, fontSize: '9px' }}
+                                        title={n.label}
+                                      >
+                                        <span className="truncate max-w-full">{n.label}</span>
                                       </div>
-                                    );
-                                  })}
+                                    ))}
+                                  </div>
                                 </div>
+                                <p className="text-white/60 text-xs mt-2 text-center">Type, source, tags &amp; authors — code repos show language; models show pipeline</p>
                               </div>
-                              <p className="text-white/60 text-xs mt-2 text-center">Interactive mind map showing relationships</p>
-                            </div>
-                          )}
+                            );
+                          })()}
                           
                           {/* Action Buttons */}
                           <div className="flex flex-wrap gap-2.5 mt-4 pt-4 border-t border-white/10">

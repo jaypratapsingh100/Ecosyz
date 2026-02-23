@@ -60,11 +60,14 @@ function KnowledgeGraphPage() {
           <div className="mb-6 flex items-center justify-between">
             <div>
               <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent mb-2">
-                Knowledge Graph
+                Explore connections
               </h1>
+              <p className="text-gray-400 text-sm md:text-base mb-1">
+                A map of how your search results connect by topic, author, and source so you can spot clusters and key people fast.
+              </p>
               {q && (
-                <p className="text-gray-400">
-                  Showing connections for: <span className="text-white font-medium">{q}</span>
+                <p className="text-gray-500 text-sm">
+                  Search: <span className="text-white font-medium">{q}</span>
                 </p>
               )}
             </div>
@@ -83,7 +86,8 @@ function KnowledgeGraphPage() {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                <p className="text-gray-400">Loading knowledge graph...</p>
+                <p className="text-gray-400">Loading connection map...</p>
+                <p className="text-gray-500 text-sm mt-2">You&apos;ll see papers, topics, authors, and sources as nodes; lines show how they connect.</p>
               </div>
             </div>
           ) : results.length > 0 ? (

@@ -44,6 +44,8 @@ model User {
   resourceViews         ResourceView[]
   problemIdeaPosts      ProblemIdeaPost[]
   problemIdeaComments   ProblemIdeaComment[]
+  problemIdeaPostLikes    ProblemIdeaPostLike[]
+  problemIdeaCommentLikes ProblemIdeaCommentLike[]
   savedNews             SavedNews[]
 }
 
@@ -461,33 +463,61 @@ model ResourceView {
 // Problems & Ideas feed (social-style posts and comments)
 
 model ProblemIdeaPost {
-  id        String               @id @default(cuid())
-  content   String               @db.Text
-  imageUrls String[]             // URLs of attached images
-  type      String               @default("idea") // "problem" | "idea"
+  id        String                 @id @default(cuid())
+  content   String                 @db.Text
+  imageUrls String[]               // URLs of attached images
+  type      String                 @default("idea") // "problem" | "idea"
   authorId  String
-  author    User                 @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  author    User                   @relation(fields: [authorId], references: [id], onDelete: Cascade)
   comments  ProblemIdeaComment[]
-  createdAt DateTime             @default(now())
-  updatedAt DateTime             @updatedAt
+  likes     ProblemIdeaPostLike[]
+  createdAt DateTime               @default(now())
+  updatedAt DateTime               @updatedAt
 
   @@index([authorId])
   @@index([createdAt])
   @@index([type])
 }
 
-model ProblemIdeaComment {
+model ProblemIdeaPostLike {
   id        String         @id @default(cuid())
   postId    String
   post      ProblemIdeaPost @relation(fields: [postId], references: [id], onDelete: Cascade)
-  content   String         @db.Text
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime       @default(now())
+
+  @@unique([postId, userId])
+  @@index([postId])
+  @@index([userId])
+}
+
+model ProblemIdeaComment {
+  id        String                  @id @default(cuid())
+  postId    String
+  post      ProblemIdeaPost         @relation(fields: [postId], references: [id], onDelete: Cascade)
+  content   String                  @db.Text
   authorId  String
-  author    User           @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  author    User                    @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  likes     ProblemIdeaCommentLike[]
+  createdAt DateTime                @default(now())
+  updatedAt DateTime                @updatedAt
 
   @@index([postId])
   @@index([authorId])
+}
+
+model ProblemIdeaCommentLike {
+  id        String             @id @default(cuid())
+  commentId String
+  comment   ProblemIdeaComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime           @default(now())
+
+  @@unique([commentId, userId])
+  @@index([commentId])
+  @@index([userId])
 }
 
 // AI News: user-saved articles and "add to newsletter" suggestions
