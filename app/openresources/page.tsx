@@ -40,6 +40,8 @@ function OpenResourcesPage() {
   const router = useRouter();
   const params = useSearchParams();
   const [q, setQ] = useState('');
+  // Query we actually ran search for (used for chat/session). Only set on Enter, Search click, or URL load.
+  const [committedQuery, setCommittedQuery] = useState('');
   const [type, setType] = useState('all');
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -171,6 +173,7 @@ function OpenResourcesPage() {
     customLimit = limit
   ) {
     if (!customQ) return; // Prevent search if query is empty
+    setCommittedQuery(customQ); // So chat/session use the query we actually searched for, not per-keystroke input
     // Abort any in-flight request
     if (activeAbort.current) {
       activeAbort.current.abort();
@@ -323,6 +326,7 @@ function OpenResourcesPage() {
       setQ(qp);
       setType(tp);
       setLimit(lm);
+      setCommittedQuery(qp);
       // Kick off initial search
       search(qp, tp, lm);
     }
@@ -419,7 +423,7 @@ function OpenResourcesPage() {
             >
               <OpenResourcesChat
                 searchResults={results}
-                searchQuery={q}
+                searchQuery={committedQuery}
                 isCollapsed={chatCollapsed}
                 onToggleCollapse={() => setChatCollapsed(!chatCollapsed)}
                 onSwitchSession={(query: string) => {
@@ -932,9 +936,9 @@ function OpenResourcesPage() {
                         // Store results in sessionStorage for the Knowledge Graph page
                         if (typeof window !== 'undefined') {
                           sessionStorage.setItem('kg-results', JSON.stringify(results));
-                          sessionStorage.setItem('kg-query', q || '');
+                          sessionStorage.setItem('kg-query', committedQuery || '');
                         }
-                        router.push(`/openresources/knowledge-graph?q=${encodeURIComponent(q || '')}`);
+                        router.push(`/openresources/knowledge-graph?q=${encodeURIComponent(committedQuery || '')}`);
                       }}
                     >
                       <span className="flex items-center gap-2">
