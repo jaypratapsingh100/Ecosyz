@@ -153,6 +153,7 @@ export async function GET(req: NextRequest) {
           where: {
             deploymentStatus: { not: null },
           },
+          orderBy: { deploymentStatus: 'asc' },
         }),
 
         // Framework statistics
@@ -162,6 +163,7 @@ export async function GET(req: NextRequest) {
           where: {
             framework: { not: null },
           },
+          orderBy: { framework: 'asc' },
         }),
 
         // App type statistics
@@ -171,6 +173,7 @@ export async function GET(req: NextRequest) {
           where: {
             appType: { not: null },
           },
+          orderBy: { appType: 'asc' },
         }),
 
         // Community activity (last 30 days)
@@ -268,7 +271,7 @@ export async function GET(req: NextRequest) {
         dailySearches = await run(() => prismaAny.searchLog.count({ where: { createdAt: { gte: today } } }), 0);
         totalResourceViews = await run(() => prismaAny.resourceView.count(), 0);
         dailyResourceViews = await run(() => prismaAny.resourceView.count({ where: { createdAt: { gte: today } } }), 0);
-        searchStats = await run(() => prismaAny.searchLog.groupBy({ by: ['clicked'], _count: true }), []);
+        searchStats = await run(() => prismaAny.searchLog.groupBy({ by: ['clicked'], _count: true, orderBy: { clicked: 'asc' } }), []);
         popularSearches = await run(() => prismaAny.searchLog.findMany({ select: { query: true } }), []);
         searchProviders = await run(() => prismaAny.searchLog.findMany({ select: { providers: true } }), []);
         uniqueVisitorsToday = await run(() => prismaAny.pageVisit.findMany({
@@ -302,19 +305,19 @@ export async function GET(req: NextRequest) {
 
     // Format deployment stats
     const deploymentStatsFormatted = deploymentStats.reduce((acc, item) => {
-      acc[item.deploymentStatus || 'unknown'] = item._count;
+      acc[item.deploymentStatus || 'unknown'] = typeof item._count === 'number' ? item._count : (item._count as { _all?: number })?._all ?? 0;
       return acc;
     }, {} as Record<string, number>);
 
     // Format framework stats
     const frameworkStatsFormatted = frameworkStats.reduce((acc, item) => {
-      acc[item.framework || 'unknown'] = item._count;
+      acc[item.framework || 'unknown'] = typeof item._count === 'number' ? item._count : (item._count as { _all?: number })?._all ?? 0;
       return acc;
     }, {} as Record<string, number>);
 
     // Format app type stats
     const appTypeStatsFormatted = appTypeStats.reduce((acc, item) => {
-      acc[item.appType || 'unknown'] = item._count;
+      acc[item.appType || 'unknown'] = typeof item._count === 'number' ? item._count : (item._count as { _all?: number })?._all ?? 0;
       return acc;
     }, {} as Record<string, number>);
 
@@ -570,6 +573,7 @@ export async function GET(req: NextRequest) {
     const resourcesByType = await prisma.resource.groupBy({
       by: ['type'],
       _count: true,
+      orderBy: { type: 'asc' },
     });
     const resourceTypesDistribution = resourcesByType.reduce((acc, item) => {
       acc[item.type || 'unknown'] = item._count;

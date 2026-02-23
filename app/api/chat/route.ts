@@ -501,8 +501,8 @@ Your capabilities:
         rateLimitMessage += ` Rate limit resets at ${resetDate.toLocaleTimeString()}.`;
       }
       
-      // Rate limit message for azure-deepseek
-      if (provider === 'azure-deepseek') {
+      // Rate limit message for azure-deepseek (provider may be narrowed in some code paths)
+      if ((provider as Provider) === 'azure-deepseek') {
         rateLimitMessage += '\n\n💡 This is an Azure DeepSeek rate limit. Please try again later.';
       }
       

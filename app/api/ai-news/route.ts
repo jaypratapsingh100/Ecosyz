@@ -36,7 +36,7 @@ async function fetchHnSearch(query: string, category: string): Promise<AiNewsIte
   const data = await res.json();
   const hits = data.hits ?? [];
   return hits
-    .filter((h: { title: string; url?: string }) => h.title && (h.url || h.story_url))
+    .filter((h: { title: string; url?: string; story_url?: string }) => h.title && (h.url || h.story_url))
     .map((h: { objectID: string; title: string; url?: string; story_url?: string; author: string; created_at: string; points?: number; num_comments?: number }) => {
       const fallback = `${h.title} — From Hacker News. Tap to read more.`;
       return {

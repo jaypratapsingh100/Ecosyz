@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { PrismaClient } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
 
-function getSavedNewsModel() {
-  const model = (prisma as { savedNews?: { findMany: unknown; upsert: unknown; deleteMany: unknown } }).savedNews;
+type SavedNewsDelegate = PrismaClient['savedNews'];
+
+function getSavedNewsModel(): SavedNewsDelegate {
+  const model = (prisma as { savedNews?: SavedNewsDelegate }).savedNews;
   if (!model) {
     throw new Error(
       'SavedNews model not in Prisma client. Run: npx prisma generate && npx prisma migrate deploy'

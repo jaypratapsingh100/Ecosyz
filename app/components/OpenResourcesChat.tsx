@@ -671,7 +671,7 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
     return text;
   };
 
-  const saveChatToLocalStorage = () => {
+  const addCurrentChatToSavedList = () => {
     const chatData = {
       id: Date.now().toString(),
       query: searchQuery,
@@ -1152,7 +1152,7 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
                     <div className="absolute right-0 mt-1 w-40 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-10 overflow-hidden">
                       <button
                         onClick={() => {
-                          saveChatToLocalStorage();
+                          addCurrentChatToSavedList();
                           setExportMenuOpen(false);
                           // Show toast notification
                           alert('Chat saved to local storage!');

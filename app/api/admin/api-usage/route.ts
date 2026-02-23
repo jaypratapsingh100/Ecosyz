@@ -38,11 +38,12 @@ export async function GET() {
 
     let counts: Array<{ provider: string; category: string; _count: { id: number } }>;
     try {
-      counts = await prisma.externalApiRequest.groupBy({
+      counts = (await prisma.externalApiRequest.groupBy({
         by: ['provider', 'category'],
         where: { requestedAt: { gte: startOfToday } },
         _count: { id: true },
-      });
+        orderBy: [{ provider: 'asc' }, { category: 'asc' }],
+      } as never)) as typeof counts;
     } catch (dbError: unknown) {
       const msg = dbError instanceof Error ? dbError.message : String(dbError);
       const isMissingTable =
