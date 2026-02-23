@@ -11,9 +11,9 @@ const STORAGE_KEY = 'ai_api_key';
 const MODEL_STORAGE_KEY = 'ai_model';
 const PROVIDER_STORAGE_KEY = 'ai_provider';
 
-// Hardcoded: Only OpenRouter + DeepSeek Chat (use versioned model; deepseek/deepseek-chat can 404)
-const PROVIDER = 'openrouter';
-const MODEL = 'deepseek/deepseek-chat-v3-0324';
+// Hardcoded: Only Groq (Llama 3.3 70B)
+const PROVIDER = 'groq';
+const MODEL = 'llama-3.3-70b-versatile';
 
 // Export utility functions to get stored values
 export function getStoredApiKey(): string | null {
@@ -24,19 +24,17 @@ export function getStoredApiKey(): string | null {
 export function getStoredModel(): string {
   if (typeof window === 'undefined') return MODEL;
   const stored = localStorage.getItem(MODEL_STORAGE_KEY);
-  // Migrate old/deleted model IDs to current versioned model
-  if (stored === 'deepseek/deepseek-coder' || stored === 'deepseek-coder' || stored === 'deepseekcoder' ||
-      stored === 'deepseek/deepseek-chat') {
-    localStorage.setItem(MODEL_STORAGE_KEY, MODEL);
+  // Migrate old OpenRouter/DeepSeek model IDs to Groq default
+  if (!stored || stored.includes('deepseek') || stored.includes('openrouter')) {
+    if (typeof window !== 'undefined') localStorage.setItem(MODEL_STORAGE_KEY, MODEL);
     return MODEL;
   }
-  // Default to DeepSeek Chat if nothing stored
   return stored || MODEL;
 }
 
 export function getStoredProvider(): string {
   if (typeof window === 'undefined') return PROVIDER;
-  // Always return OpenRouter (hardcoded)
+  // Always return Groq (hardcoded)
   const stored = localStorage.getItem(PROVIDER_STORAGE_KEY);
   if (stored !== PROVIDER) {
     localStorage.setItem(PROVIDER_STORAGE_KEY, PROVIDER);
@@ -45,8 +43,7 @@ export function getStoredProvider(): string {
 }
 
 export default function ChatSettings({ isOpen, onClose }: ChatSettingsProps) {
-  // Hardcoded: Only OpenRouter + DeepSeek Coder
-  // Using environment variable OPENROUTER_API_KEY by default
+  // Hardcoded: Only Groq — API key from environment variable GROQ_API_KEY
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -73,9 +70,7 @@ export default function ChatSettings({ isOpen, onClose }: ChatSettingsProps) {
           <div>
             <h2 className="text-white font-semibold text-lg">Chat Settings</h2>
             <p className="text-gray-400 text-xs mt-1">
-              {typeof window !== 'undefined' && localStorage.getItem('azure_deepseek_enabled') === 'true'
-                ? 'Using Azure DeepSeek (Self-Hosted)'
-                : 'Using OpenRouter + DeepSeek Chat'}
+              Using Groq
             </p>
           </div>
           <button
@@ -99,14 +94,10 @@ export default function ChatSettings({ isOpen, onClose }: ChatSettingsProps) {
               </svg>
               <div className="flex-1">
                 <p className="text-emerald-200 text-xs font-medium mb-1">
-                  {typeof window !== 'undefined' && localStorage.getItem('azure_deepseek_enabled') === 'true'
-                    ? '🚀 Azure DeepSeek - Self-Hosted (Best for App Generation)'
-                    : '🚀 DeepSeek Chat - Best Analysis Quality'}
+                  Llama 3.3 70B – Best analysis quality
                 </p>
                 <p className="text-emerald-300/80 text-xs leading-relaxed">
-                  {typeof window !== 'undefined' && localStorage.getItem('azure_deepseek_enabled') === 'true'
-                    ? 'Using your <strong>Azure-hosted DeepSeek</strong> model - optimized for app generation and code creation. Configured via <code className="text-emerald-200">AZURE_DEEPSEEK_URL</code> environment variable.'
-                    : 'Using <strong>OpenRouter</strong> with <strong>DeepSeek Chat</strong> - excellent for comprehensive resource analysis and detailed answers. API key is configured from environment variable (<code className="text-emerald-200">OPENROUTER_API_KEY</code>).'}
+                  Using <strong>Groq</strong> with <strong>Llama 3.3 70B Versatile</strong> – fast inference and strong answers for resource analysis. API key is configured from environment variable (<code className="text-emerald-200">GROQ_API_KEY</code>).
                 </p>
               </div>
             </div>
@@ -118,14 +109,10 @@ export default function ChatSettings({ isOpen, onClose }: ChatSettingsProps) {
               AI Provider
             </label>
             <div className="w-full px-4 py-2.5 bg-[#0a0a0a] border border-white/10 rounded-lg text-gray-300 text-sm">
-              {typeof window !== 'undefined' && localStorage.getItem('azure_deepseek_enabled') === 'true'
-                ? '☁️ Azure DeepSeek (Self-Hosted)'
-                : '🌐 OpenRouter + DeepSeek Chat'}
+              Groq
             </div>
             <p className="text-gray-500 text-xs mt-2">
-              {typeof window !== 'undefined' && localStorage.getItem('azure_deepseek_enabled') === 'true'
-                ? 'Using Azure-hosted model (no API key required)'
-                : 'Using API key from environment variable'}
+              Using API key from environment variable
             </p>
           </div>
 
@@ -135,7 +122,7 @@ export default function ChatSettings({ isOpen, onClose }: ChatSettingsProps) {
               Model
             </label>
             <div className="w-full px-4 py-2.5 bg-[#0a0a0a] border border-white/10 rounded-lg text-gray-300 text-sm">
-              💬 DeepSeek Chat (Best for Resource Analysis)
+              Llama 3.3 70B Versatile (Best for Resource Analysis)
             </div>
             <p className="text-gray-500 text-xs mt-2">
               Optimized for comprehensive analysis, detailed answers, and resource understanding.
