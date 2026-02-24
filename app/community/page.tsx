@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import { Container } from '../components/ui/Container';
@@ -9,9 +10,22 @@ import CommunityGroups from '../components/community/CommunityGroups';
 import EventsList from '../components/community/EventsList';
 import ChallengesList from '../components/community/ChallengesList';
 import ActivityFeed from '../components/community/ActivityFeed';
+import BarterList from '../components/community/BarterList';
+import ShowcaseProjects from '../components/community/ShowcaseProjects';
+
+type CommunityTab = 'groups' | 'events' | 'challenges' | 'barter' | 'activity' | 'showcase';
 
 export default function CommunityPage() {
-  const [activeTab, setActiveTab] = useState<'groups' | 'events' | 'challenges' | 'activity'>('groups');
+  const searchParams = useSearchParams();
+  const initialTab = useMemo<CommunityTab>(() => {
+    const fromQuery = searchParams.get('tab');
+    if (fromQuery === 'events' || fromQuery === 'challenges' || fromQuery === 'barter' || fromQuery === 'activity' || fromQuery === 'showcase') {
+      return fromQuery;
+    }
+    return 'groups';
+  }, [searchParams]);
+
+  const [activeTab, setActiveTab] = useState<CommunityTab>(initialTab);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -75,6 +89,16 @@ export default function CommunityPage() {
                     Challenges
                   </button>
                   <button
+                    onClick={() => setActiveTab('barter')}
+                    className={`px-6 py-3 font-semibold transition ${
+                      activeTab === 'barter'
+                        ? 'text-amber-300 border-b-2 border-amber-400'
+                        : 'text-teal-100/60 hover:text-amber-300'
+                    }`}
+                  >
+                    Barter
+                  </button>
+                  <button
                     onClick={() => setActiveTab('activity')}
                     className={`px-6 py-3 font-semibold transition ${
                       activeTab === 'activity'
@@ -84,6 +108,16 @@ export default function CommunityPage() {
                   >
                     Activity Feed
                   </button>
+                  <button
+                    onClick={() => setActiveTab('showcase')}
+                    className={`px-6 py-3 font-semibold transition ${
+                      activeTab === 'showcase'
+                        ? 'text-emerald-300 border-b-2 border-emerald-400'
+                        : 'text-teal-100/60 hover:text-emerald-300'
+                    }`}
+                  >
+                    Showcase
+                  </button>
                 </div>
 
                 {/* Tab Content */}
@@ -91,7 +125,9 @@ export default function CommunityPage() {
                   {activeTab === 'groups' && <CommunityGroups />}
                   {activeTab === 'events' && <EventsList />}
                   {activeTab === 'challenges' && <ChallengesList />}
+                  {activeTab === 'barter' && <BarterList />}
                   {activeTab === 'activity' && <ActivityFeed />}
+                  {activeTab === 'showcase' && <ShowcaseProjects />}
                 </div>
               </div>
             </div>

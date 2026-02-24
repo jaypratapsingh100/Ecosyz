@@ -41,6 +41,8 @@ export const CreateAppProject = z.object({
   previewVersion: z.enum(["v1", "v2"]).optional(),
   workspaceId: z.string().optional(),
   config: z.any().optional(),
+  thumbnailUrl: z.string().url().optional(),
+  isPublic: z.boolean().default(false),
   // Questionnaire fields
   questionnaireData: z.any().optional(),
   appType: z.string().optional(),
@@ -57,6 +59,8 @@ export const CreateAppProject = z.object({
 export const UpdateAppProject = z.object({
   title: z.string().min(1).optional(),
   description: z.string().optional(),
+  thumbnailUrl: z.string().url().optional(),
+  isPublic: z.boolean().optional(),
   config: z.any().optional(),
 });
 
@@ -117,6 +121,32 @@ export const CreateDiscussionReply = z.object({
 
 export const UpdateDiscussionReply = z.object({
   content: z.string().min(1),
+});
+
+export const CreateBarterAsk = z.object({
+  title: z.string().min(1).max(200),
+  description: z.string().min(1),
+  whatINeed: z.string().max(2000).optional(),
+  whatIOffer: z.string().max(2000).optional(),
+  attachments: z
+    .array(
+      z.object({
+        url: z.string().url(),
+        name: z.string().min(1),
+        type: z.string().min(1),
+        size: z.number().int().nonnegative().optional(),
+      })
+    )
+    .max(6)
+    .optional(),
+});
+
+export const CreateBarterPitch = z.object({
+  content: z.string().min(1).max(2000),
+});
+
+export const UpdateBarterStatus = z.object({
+  status: z.enum(['open', 'closed']),
 });
 
 export const CreateEvent = z.object({
