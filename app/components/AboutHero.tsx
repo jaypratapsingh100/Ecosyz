@@ -118,14 +118,14 @@ export default function AboutHero() {
         </div>
         <div className="w-full h-[2px] bg-gradient-to-r from-transparent via-emerald-400 to-transparent opacity-60 absolute bottom-0 left-0" />
         
-        {/* Whitepaper Link - Bottom Right */}
+        {/* Research Whitepaper Link - Bottom Right */}
         <div className="absolute bottom-20 right-4 sm:right-8 z-20">
           <Link
-            href="/whitepaper"
+            href="/researchwhitepaper"
             className="flex items-center gap-2 px-4 py-2 bg-black/40 backdrop-blur-sm border border-emerald-400/30 rounded-lg text-teal-200 hover:text-emerald-300 hover:border-emerald-400/50 transition-all duration-300 hover:scale-105"
           >
             <i className="fas fa-file-alt" />
-            <span className="text-sm font-medium">Whitepaper</span>
+            <span className="text-sm font-medium">Research Whitepaper</span>
           </Link>
         </div>
       </section>

@@ -182,7 +182,7 @@ public/               # Static assets
 - `/pricing` - View pricing plans
 - `/contact` - Contact form
 - `/feedback` - Submit feedback
-- `/whitepaper` - Project whitepaper
+- `/researchwhitepaper` - Research whitepaper
 - `/community` - Community page
 
 ## 📚 Documentation
