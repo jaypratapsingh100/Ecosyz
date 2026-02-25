@@ -51,6 +51,7 @@ export default function GigsList() {
   const [submittingRequest, setSubmittingRequest] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
+  const [openingConversationId, setOpeningConversationId] = useState<string | null>(null);
 
   const [formTitle, setFormTitle] = useState('');
   const [formDescription, setFormDescription] = useState('');
@@ -210,6 +211,45 @@ export default function GigsList() {
       toast.error(err instanceof Error ? err.message : 'Failed to send request');
     } finally {
       setSubmittingRequest(null);
+    }
+  };
+
+  const handleMessageSeller = async (gig: Gig) => {
+    try {
+      setOpeningConversationId(gig.id);
+      const res = await fetch('/api/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          otherUserId: gig.author.id,
+          gigId: gig.id,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (res.status === 401) {
+          toast.error('Please log in to send a message');
+          return;
+        }
+        toast.error(data?.error || 'Failed to open conversation');
+        return;
+      }
+      if (typeof window !== 'undefined') {
+        const workspaceLink = document.querySelector<HTMLAnchorElement>('a[href^="/workspaces/"]');
+        if (workspaceLink?.href) {
+          const url = new URL(workspaceLink.href);
+          url.searchParams.set('conversationId', data.id);
+          window.location.href = url.toString();
+        } else {
+          toast.success('Conversation started. Open your workspace inbox to continue chatting.');
+        }
+      }
+    } catch (error) {
+      console.error('Failed to open conversation:', error);
+      toast.error('Failed to open conversation');
+    } finally {
+      setOpeningConversationId(null);
     }
   };
 
@@ -593,6 +633,16 @@ export default function GigsList() {
                       </div>
                     </div>
                   )}
+                  <div className="flex justify-end pt-2">
+                    <button
+                      type="button"
+                      onClick={() => handleMessageSeller(gig)}
+                      disabled={openingConversationId === gig.id}
+                      className="px-4 py-2 bg-emerald-500/90 text-gray-900 text-xs font-semibold rounded-lg hover:bg-emerald-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {openingConversationId === gig.id ? 'Opening chat…' : 'Message seller'}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

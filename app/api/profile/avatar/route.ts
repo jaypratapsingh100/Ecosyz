@@ -108,6 +108,31 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Sync Supabase auth user metadata so session/header avatar matches profile.
+    try {
+      const { data: authUser, error: getUserError } =
+        await supabaseServer.auth.admin.getUserById(user.id);
+
+      if (getUserError) {
+        console.error('Failed to fetch auth user for avatar sync:', getUserError);
+      } else if (authUser?.user) {
+        const existingMetadata = authUser.user.user_metadata || {};
+        const { error: updateError } =
+          await supabaseServer.auth.admin.updateUserById(user.id, {
+            user_metadata: {
+              ...existingMetadata,
+              avatar_url: avatarUrl,
+            },
+          });
+
+        if (updateError) {
+          console.error('Failed to update auth user avatar metadata:', updateError);
+        }
+      }
+    } catch (syncError) {
+      console.error('Error syncing avatar to auth metadata:', syncError);
+    }
+
     return NextResponse.json({
       avatarUrl,
       profile: {

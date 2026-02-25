@@ -1,5 +1,8 @@
 import type { NextConfig } from 'next';
 
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseHostname = supabaseUrl ? new URL(supabaseUrl).hostname : 'ltenyoiaydemsnrvdbpc.supabase.co';
+
 const nextConfig: NextConfig = {
   async redirects() {
     return [
@@ -36,13 +39,13 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: 'https',
-        hostname: 'your-supabase-project.supabase.co',
+        hostname: supabaseHostname,
         port: '',
         pathname: '/storage/v1/object/public/avatars/**',
       },
       {
         protocol: 'https',
-        hostname: 'your-supabase-project.supabase.co',
+        hostname: supabaseHostname,
         port: '',
         pathname: '/storage/v1/object/public/problem-idea-images/**',
       },

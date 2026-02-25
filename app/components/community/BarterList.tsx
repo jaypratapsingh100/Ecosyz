@@ -52,6 +52,7 @@ export default function BarterList() {
   const [submittingPitch, setSubmittingPitch] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
+  const [openingConversationId, setOpeningConversationId] = useState<string | null>(null);
 
   const [formTitle, setFormTitle] = useState('');
   const [formDescription, setFormDescription] = useState('');
@@ -223,6 +224,45 @@ export default function BarterList() {
     }
   };
 
+  const handleMessageAuthor = async (ask: BarterAsk) => {
+    try {
+      setOpeningConversationId(ask.id);
+      const res = await fetch('/api/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          otherUserId: ask.author.id,
+          barterAskId: ask.id,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (res.status === 401) {
+          toast.error('Please log in to send a message');
+          return;
+        }
+        toast.error(data?.error || 'Failed to open conversation');
+        return;
+      }
+      if (typeof window !== 'undefined') {
+        const workspaceLink = document.querySelector<HTMLAnchorElement>('a[href^="/workspaces/"]');
+        if (workspaceLink?.href) {
+          const url = new URL(workspaceLink.href);
+          url.searchParams.set('conversationId', data.id);
+          window.location.href = url.toString();
+        } else {
+          toast.success('Conversation started. Open your workspace inbox to continue chatting.');
+        }
+      }
+    } catch (error) {
+      console.error('Failed to open conversation:', error);
+      toast.error('Failed to open conversation');
+    } finally {
+      setOpeningConversationId(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {requiresAuth && !loading && (
@@ -358,16 +398,6 @@ export default function BarterList() {
                     </span>
                   </div>
                   <p className="text-teal-100/80 text-sm line-clamp-2">{ask.description}</p>
-                  <div className="flex items-center gap-3 mt-2 text-sm text-teal-100/60">
-                    <Link
-                      href={`/community/users/${ask.author.id}`}
-                      className="hover:text-amber-300 transition-colors"
-                    >
-                      {ask.author.name || ask.author.email?.split('@')[0] || 'Anonymous'}
-                    </Link>
-                    <span>·</span>
-                    <span>{ask._count?.pitches ?? ask.pitches?.length ?? 0} pitches</span>
-                  </div>
                 </div>
                 <svg
                   className={`w-5 h-5 text-teal-100/60 shrink-0 transition-transform ${
@@ -380,6 +410,26 @@ export default function BarterList() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
               </button>
+
+              <div className="flex items-center gap-3 px-6 pb-4 text-sm text-teal-100/60 border-t border-teal-400/10">
+                <Link
+                  href={`/community/users/${ask.author.id}`}
+                  className="hover:text-amber-300 transition-colors"
+                >
+                  {ask.author.name || ask.author.email?.split('@')[0] || 'Anonymous'}
+                </Link>
+                <span>·</span>
+                <span>{ask._count?.pitches ?? ask.pitches?.length ?? 0} pitches</span>
+                <span>·</span>
+                <button
+                  type="button"
+                  onClick={() => handleMessageAuthor(ask)}
+                  disabled={openingConversationId === ask.id}
+                  className="text-xs px-3 py-1 rounded-full border border-emerald-400/40 text-emerald-200 hover:bg-emerald-400/10 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {openingConversationId === ask.id ? 'Opening chat…' : 'Message author'}
+                </button>
+              </div>
 
               {expandedId === ask.id && (
                 <div className="border-t border-teal-400/20 p-6 space-y-4 bg-[#0c2321]/50">

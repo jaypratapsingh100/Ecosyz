@@ -8,6 +8,7 @@ import ResourceCard from './ResourceCard'
 import AddResourceForm from './AddResourceForm'
 import ShareLinksPanel from './ShareLinksPanel'
 import WorkspaceDiscussions from './WorkspaceDiscussions'
+import Inbox from '../messaging/Inbox'
 import ToastProvider from '../ui/ToastProvider'
 
 interface Resource {
@@ -33,7 +34,7 @@ interface WorkspacePageClientProps {
 }
 
 export default function WorkspacePageClient({ workspaceData }: WorkspacePageClientProps) {
-  const [activeTab, setActiveTab] = useState<'resources' | 'discussions'>('resources')
+  const [activeTab, setActiveTab] = useState<'resources' | 'discussions' | 'inbox'>('resources')
 
   return (
     <div className="relative bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 min-h-screen">
@@ -84,6 +85,16 @@ export default function WorkspacePageClient({ workspaceData }: WorkspacePageClie
                 }`}
               >
                 Discussions
+              </button>
+              <button
+                onClick={() => setActiveTab('inbox')}
+                className={`px-6 py-3 font-semibold transition ${
+                  activeTab === 'inbox'
+                    ? 'text-cyan-400 border-b-2 border-cyan-400'
+                    : 'text-zinc-400 hover:text-zinc-300'
+                }`}
+              >
+                Inbox
               </button>
             </div>
             {activeTab === 'resources' ? (
@@ -160,8 +171,12 @@ export default function WorkspacePageClient({ workspaceData }: WorkspacePageClie
               </motion.div>
             )}
               </>
-            ) : (
+            ) : activeTab === 'discussions' ? (
               <WorkspaceDiscussions workspaceId={workspaceData.id} />
+            ) : (
+              <div className="mt-6">
+                <Inbox />
+              </div>
             )}
           </div>
 

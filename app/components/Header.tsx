@@ -104,6 +104,27 @@ export default function Header() {
     checkAuth();
   }, []);
 
+  // Listen for avatar updates from the profile page so the header
+  // avatar reflects changes immediately without a full reload.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleAvatarUpdated = (event: Event) => {
+      const customEvent = event as CustomEvent<{ avatarUrl: string }>;
+      const newAvatarUrl = customEvent.detail?.avatarUrl;
+      if (!newAvatarUrl) return;
+
+      setUserData(prev =>
+        prev ? { ...prev, avatarUrl: newAvatarUrl } : prev
+      );
+    };
+
+    window.addEventListener('profile-avatar-updated', handleAvatarUpdated as EventListener);
+    return () => {
+      window.removeEventListener('profile-avatar-updated', handleAvatarUpdated as EventListener);
+    };
+  }, []);
+
   // Trap focus in mobile nav
   useEffect(() => {
     if (!mobileOpen) return;

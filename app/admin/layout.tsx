@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { BarChart3, Mail, LayoutDashboard, Activity } from 'lucide-react';
+import { BarChart3, Mail, LayoutDashboard, Activity, Search } from 'lucide-react';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 
@@ -27,6 +27,13 @@ export default function AdminLayout({
             >
               <BarChart3 className="w-5 h-5" />
               <span>Analytics</span>
+            </Link>
+            <Link
+              href="/admin/searches"
+              className="flex items-center gap-2 text-slate-400 hover:text-cyan-400 transition-colors"
+            >
+              <Search className="w-5 h-5" />
+              <span>Searches</span>
             </Link>
             <Link
               href="/admin/newsletter"

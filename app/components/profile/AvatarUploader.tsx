@@ -61,6 +61,17 @@ export default function AvatarUploader({ currentAvatarUrl, onAvatarUpdate }: Ava
       const avatarUrl = data.avatarUrl as string;
       onAvatarUpdate(avatarUrl);
       setPreviewUrl(avatarUrl);
+
+      // Broadcast avatar change so other parts of the app (e.g. header)
+      // can update immediately without a full page reload.
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('profile-avatar-updated', {
+            detail: { avatarUrl },
+          })
+        );
+      }
+
       toast.success('Avatar updated successfully!');
     } catch (error) {
       console.error('Avatar upload error:', error);
