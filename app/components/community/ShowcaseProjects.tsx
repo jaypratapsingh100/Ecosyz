@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-
+import { Loader2 } from 'lucide-react';
 interface PublicProject {
   id: string;
   title: string;
@@ -36,6 +36,7 @@ export default function ShowcaseProjects() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [upvoteLoadingId, setUpvoteLoadingId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchProjects = async () => {
@@ -173,7 +174,10 @@ export default function ShowcaseProjects() {
                     )}
                     <button
                       type="button"
+                      disabled={upvoteLoadingId === project.id}
                       onClick={async () => {
+                        if (upvoteLoadingId === project.id) return;
+                        setUpvoteLoadingId(project.id);
                         try {
                           const method = project.userHasUpvoted ? 'DELETE' : 'POST';
                           const res = await fetch(`/api/app-projects/${project.id}/upvote`, {
@@ -200,15 +204,27 @@ export default function ShowcaseProjects() {
                           );
                         } catch (error) {
                           console.error('Error toggling upvote', error);
+                        } finally {
+                          setUpvoteLoadingId((current) => (current === project.id ? null : current));
                         }
                       }}
-                      className={`w-full inline-flex items-center justify-center px-3 py-1.5 text-[11px] rounded-md border transition ${
+                      className={`w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] rounded-md border transition ${
                         project.userHasUpvoted
                           ? 'border-amber-400 bg-amber-400/10 text-amber-200'
                           : 'border-emerald-400/40 text-emerald-200 hover:bg-emerald-500/10'
-                      }`}
+                      } disabled:opacity-60 disabled:cursor-not-allowed`}
                     >
-                      ▲ Upvote{typeof project.upvoteCount === 'number' ? ` (${project.upvoteCount})` : ''}
+                      {upvoteLoadingId === project.id ? (
+                        <>
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          Updating...
+                        </>
+                      ) : (
+                        <>
+                          ▲ Upvote
+                          {typeof project.upvoteCount === 'number' ? ` (${project.upvoteCount})` : ''}
+                        </>
+                      )}
                     </button>
                   </div>
                 </div>
