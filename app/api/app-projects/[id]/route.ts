@@ -82,7 +82,7 @@ export async function PATCH(
     }
 
     const body = await req.json();
-    const { title, description, questionnaireData } = body;
+    const { title, description, questionnaireData, isPublic } = body;
 
     const updateData: Record<string, unknown> = {};
     if (title !== undefined) {
@@ -94,6 +94,9 @@ export async function PATCH(
     if (questionnaireData !== undefined && typeof questionnaireData === 'object') {
       updateData.questionnaireData = questionnaireData;
     }
+    if (isPublic !== undefined) {
+      updateData.isPublic = !!isPublic;
+    }
 
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json(
@@ -104,7 +107,12 @@ export async function PATCH(
 
     const updatedProject = await prisma.appProject.update({
       where: { id },
-      data: updateData as { title?: string; description?: string | null; questionnaireData?: object },
+      data: updateData as {
+        title?: string;
+        description?: string | null;
+        questionnaireData?: object;
+        isPublic?: boolean;
+      },
     });
 
     return NextResponse.json(updatedProject);

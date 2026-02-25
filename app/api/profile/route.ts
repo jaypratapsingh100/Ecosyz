@@ -51,12 +51,43 @@ export async function GET() {
     }
 
     return NextResponse.json({
+      userId: prismaUser.id,
       profile: {
         id: profile.id,
         displayName: profile.displayName,
         bio: profile.bio,
         avatarUrl: profile.avatarUrl,
+        // Extended basics
+        location: profile.location,
+        affiliation: profile.affiliation,
+        website: profile.website,
+        // Roles & expertise
+        primaryRole: profile.primaryRole,
+        roles: profile.roles,
+        expertiseTags: profile.expertiseTags,
+        // Deeper about
+        headline: profile.headline,
+        currentFocus: profile.currentFocus,
+        lookingFor: profile.lookingFor,
+        canHelpWith: profile.canHelpWith,
+        // Founder
+        startupName: profile.startupName,
+        startupStage: profile.startupStage,
+        startupSector: profile.startupSector,
+        startupDescription: profile.startupDescription,
+        // Researcher
+        researchField: profile.researchField,
+        researchInstitution: profile.researchInstitution,
+        researchSummary: profile.researchSummary,
+        selectedPublications: profile.selectedPublications,
+        // Social / external
+        orcidId: profile.orcidId,
+        githubUsername: profile.githubUsername,
+        linkedinUrl: profile.linkedinUrl,
+        twitterHandle: profile.twitterHandle,
+        // Preferences & meta
         preferences: profile.preferences,
+        profileCompleted: profile.profileCompleted,
         createdAt: profile.createdAt,
         updatedAt: profile.updatedAt,
       },
@@ -107,7 +138,39 @@ export async function PUT(req: NextRequest) {
       );
     }
 
-    const { displayName, bio, preferences } = validationResult.data;
+    const {
+      displayName,
+      bio,
+      location,
+      affiliation,
+      website,
+      primaryRole,
+      roles,
+      expertiseTags,
+      headline,
+      currentFocus,
+      lookingFor,
+      canHelpWith,
+      startupName,
+      startupStage,
+      startupSector,
+      startupDescription,
+      researchField,
+      researchInstitution,
+      researchSummary,
+      selectedPublications,
+      orcidId,
+      githubUsername,
+      linkedinUrl,
+      twitterHandle,
+      preferences,
+    } = validationResult.data;
+
+    const profileCompleted =
+      !!displayName?.trim() &&
+      !!bio?.trim() &&
+      !!primaryRole?.trim() &&
+      !!(location?.trim() || affiliation?.trim());
 
     // Upsert profile
     const profile = await prisma.profile.upsert({
@@ -115,24 +178,101 @@ export async function PUT(req: NextRequest) {
       update: {
         displayName,
         bio,
+        location,
+        affiliation,
+        website,
+        primaryRole,
+        roles,
+        expertiseTags,
+        headline,
+        currentFocus,
+        lookingFor,
+        canHelpWith,
+        startupName,
+        startupStage,
+        startupSector,
+        startupDescription,
+        researchField,
+        researchInstitution,
+        researchSummary,
+        selectedPublications,
+        orcidId,
+        githubUsername,
+        linkedinUrl,
+        twitterHandle,
         preferences,
+        profileCompleted,
         updatedAt: new Date(),
       },
       create: {
         userId: prismaUser.id,
         displayName,
         bio,
+        location,
+        affiliation,
+        website,
+        primaryRole,
+        roles: roles ?? [],
+        expertiseTags: expertiseTags ?? [],
+        headline,
+        currentFocus,
+        lookingFor,
+        canHelpWith,
+        startupName,
+        startupStage,
+        startupSector,
+        startupDescription,
+        researchField,
+        researchInstitution,
+        researchSummary,
+        selectedPublications,
+        orcidId,
+        githubUsername,
+        linkedinUrl,
+        twitterHandle,
         preferences,
+        profileCompleted,
       },
     });
 
     return NextResponse.json({
+      userId: prismaUser.id,
       profile: {
         id: profile.id,
         displayName: profile.displayName,
         bio: profile.bio,
         avatarUrl: profile.avatarUrl,
+        // Extended basics
+        location: profile.location,
+        affiliation: profile.affiliation,
+        website: profile.website,
+        // Roles & expertise
+        primaryRole: profile.primaryRole,
+        roles: profile.roles,
+        expertiseTags: profile.expertiseTags,
+        // Deeper about
+        headline: profile.headline,
+        currentFocus: profile.currentFocus,
+        lookingFor: profile.lookingFor,
+        canHelpWith: profile.canHelpWith,
+        // Founder
+        startupName: profile.startupName,
+        startupStage: profile.startupStage,
+        startupSector: profile.startupSector,
+        startupDescription: profile.startupDescription,
+        // Researcher
+        researchField: profile.researchField,
+        researchInstitution: profile.researchInstitution,
+        researchSummary: profile.researchSummary,
+        selectedPublications: profile.selectedPublications,
+        // Social / external
+        orcidId: profile.orcidId,
+        githubUsername: profile.githubUsername,
+        linkedinUrl: profile.linkedinUrl,
+        twitterHandle: profile.twitterHandle,
+        // Preferences & meta
         preferences: profile.preferences,
+        profileCompleted: profile.profileCompleted,
         createdAt: profile.createdAt,
         updatedAt: profile.updatedAt,
       },

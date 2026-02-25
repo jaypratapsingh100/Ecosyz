@@ -23,14 +23,83 @@ export const CreateShare = z.object({
 });
 
 export const UpdateProfile = z.object({
-  displayName: z.string().min(1, "Display name is required").max(50, "Display name must be less than 50 characters"),
-  bio: z.string().max(500, "Bio must be less than 500 characters").optional(),
-  preferences: z.object({
-    theme: z.enum(["system", "light", "dark"]),
-    language: z.string().default("en-IN"),
-    emailNotifications: z.boolean().default(true),
-    marketingEmails: z.boolean().default(false),
-  }).optional(),
+  // Core identity
+  displayName: z
+    .string()
+    .min(1, 'Display name is required')
+    .max(50, 'Display name must be less than 50 characters'),
+  bio: z
+    .string()
+    .max(1000, 'Bio must be less than 1000 characters')
+    .optional(),
+
+  // Extended basics
+  location: z
+    .string()
+    .max(120, 'Location must be less than 120 characters')
+    .optional(),
+  affiliation: z
+    .string()
+    .max(160, 'Affiliation must be less than 160 characters')
+    .optional(),
+  website: z
+    .string()
+    .url('Website must be a valid URL')
+    .optional(),
+
+  // Roles and expertise
+  primaryRole: z
+    .string()
+    .max(50, 'Primary role must be less than 50 characters')
+    .optional(),
+  roles: z.array(z.string().max(50)).optional(),
+  expertiseTags: z.array(z.string().max(50)).optional(),
+
+  // Deeper about fields
+  headline: z
+    .string()
+    .max(160, 'Headline must be less than 160 characters')
+    .optional(),
+  currentFocus: z
+    .string()
+    .max(1000, 'Current focus must be less than 1000 characters')
+    .optional(),
+  lookingFor: z
+    .string()
+    .max(1000, 'Looking for must be less than 1000 characters')
+    .optional(),
+  canHelpWith: z
+    .string()
+    .max(1000, 'Can help with must be less than 1000 characters')
+    .optional(),
+
+  // Founder‑specific
+  startupName: z.string().max(160).optional(),
+  startupStage: z.string().max(50).optional(),
+  startupSector: z.string().max(80).optional(),
+  startupDescription: z.string().max(2000).optional(),
+
+  // Researcher‑specific
+  researchField: z.string().max(160).optional(),
+  researchInstitution: z.string().max(160).optional(),
+  researchSummary: z.string().max(2000).optional(),
+  selectedPublications: z.string().max(4000).optional(),
+
+  // Social / external
+  orcidId: z.string().max(100).optional(),
+  githubUsername: z.string().max(100).optional(),
+  linkedinUrl: z.string().url('LinkedIn URL must be valid').optional(),
+  twitterHandle: z.string().max(50).optional(),
+
+  // Preferences (unchanged)
+  preferences: z
+    .object({
+      theme: z.enum(['system', 'light', 'dark']),
+      language: z.string().default('en-IN'),
+      emailNotifications: z.boolean().default(true),
+      marketingEmails: z.boolean().default(false),
+    })
+    .optional(),
 });
 
 export const CreateAppProject = z.object({
@@ -147,6 +216,28 @@ export const CreateBarterPitch = z.object({
 
 export const UpdateBarterStatus = z.object({
   status: z.enum(['open', 'closed']),
+});
+
+// Community Gigs (Fiverr-style)
+
+export const CreateGig = z.object({
+  title: z.string().min(1).max(200),
+  description: z.string().min(1),
+  category: z.string().max(100).optional(),
+  priceFrom: z.number().int().nonnegative().optional(),
+  priceTo: z.number().int().nonnegative().optional(),
+  currency: z.string().max(10).optional(),
+  deliveryTimeDays: z.number().int().positive().max(365).optional(),
+  tags: z.array(z.string()).max(10).optional(),
+});
+
+export const CreateGigRequest = z.object({
+  message: z.string().min(1).max(2000),
+  budget: z.number().int().nonnegative().optional(),
+});
+
+export const UpdateGigStatus = z.object({
+  status: z.enum(['active', 'paused', 'closed']),
 });
 
 export const CreateEvent = z.object({

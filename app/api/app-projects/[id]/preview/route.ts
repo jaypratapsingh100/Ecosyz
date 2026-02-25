@@ -155,30 +155,56 @@ export async function POST(
                                (html.includes('type="text/babel"') && html.includes('function App'));
       
       // If index.html has React libs but missing component code, or has src/App.jsx file, inject it
-      // Prefer file with isMain; fallback to App.jsx/App.tsx by path so preview always renders when file exists
-      type FileWithMain = { path: string; content: string; language: string | null; isMain?: boolean | null };
-      const mainJsFile =
-        (project.files.find(
-          (f: FileWithMain) =>
-            (f.language === 'jsx' || f.language === 'tsx' || f.path.endsWith('.jsx') || f.path.endsWith('.tsx')) &&
-            f.isMain === true &&
-            f.path !== 'index.html' &&
-            (f.path === 'src/App.jsx' || f.path === 'src/App.tsx' || f.path.includes('App.jsx') || f.path.includes('App.tsx'))
-        ) as FileWithMain | undefined) ||
-        (project.files.find(
-          (f: FileWithMain) =>
-            (f.path === 'src/App.jsx' || f.path === 'src/App.tsx' || f.path.includes('App.jsx') || f.path.includes('App.tsx')) &&
-            (f.language === 'jsx' || f.language === 'tsx' || f.path.endsWith('.jsx') || f.path.endsWith('.tsx'))
-        ) as FileWithMain | undefined);
-      // Inject src/App.jsx and its component dependencies
+      // Prefer: isMain, then most recently updated App file so "generated" and "render" match
+      type FileWithMain = { path: string; content: string; language: string | null; isMain?: boolean | null; updatedAt?: Date };
+      const appCandidates = (project.files as FileWithMain[]).filter(
+        (f) =>
+          (f.language === 'jsx' || f.language === 'tsx' || f.path.endsWith('.jsx') || f.path.endsWith('.tsx')) &&
+          f.path !== 'index.html' &&
+          (f.path === 'src/App.jsx' || f.path === 'src/App.tsx' || f.path.includes('App.jsx') || f.path.includes('App.tsx'))
+      );
+      const mainJsFile = appCandidates.length === 0
+        ? undefined
+        : [...appCandidates].sort((a, b) => {
+            if (a.isMain === true && b.isMain !== true) return -1;
+            if (a.isMain !== true && b.isMain === true) return 1;
+            const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+            const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+            return bTime - aTime;
+          })[0];
+
+      // Helper: ensure React + root + Babel so we can inject App
+      const ensureReactAndRoot = () => {
+        const reactScripts = `
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>`;
+        if (!html.includes('react@18') && !html.includes('react.development.js')) {
+          if (html.includes('</head>')) {
+            html = html.replace('</head>', `${reactScripts}\n</head>`);
+          } else if (html.includes('<body>')) {
+            html = html.replace('<body>', `<head>${reactScripts}</head>\n<body>`);
+          } else {
+            html = reactScripts + '\n' + html;
+          }
+        }
+        if (!html.includes('<div id="root">') && !html.includes('<div id=\'root\'>')) {
+          if (html.includes('</body>')) {
+            html = html.replace('</body>', '  <div id="root"></div>\n</body>');
+          } else {
+            html = html + '\n<div id="root"></div>';
+          }
+        }
+      };
+
+      // Inject src/App.jsx and its component dependencies when we have a main App file
       if (mainJsFile && !html.includes(mainJsFile.content) && (!hasComponentCode || !hasReactLibs)) {
         // Component files (ToDoList, ToDoForm, etc.) - inject before App so they're in scope
         const componentFiles = project.files.filter(
-          (f: { path: string; language: string | null }) =>
+        (f: { path: string; language: string | null }) =>
             (f.language === 'jsx' || f.language === 'tsx' || f.path.endsWith('.jsx') || f.path.endsWith('.tsx')) &&
             f.path !== mainJsFile.path &&
-            !f.path.match(/^src\/main\.(jsx|tsx)$/) && // Exclude entry - we inject App directly
-            (f.path.includes('components/') || f.path.startsWith('src/'))
+            !f.path.match(/^src\/main\.(jsx|tsx)$/) // Exclude entry - we inject App directly
         );
         const stripForBrowser = (code: string) => {
           let c = (code || '')
@@ -212,52 +238,62 @@ export async function POST(
     (function() {
       var R = window.React;
       if (R && R.createElement) {
-        window.Link = function Link(props) {
-          var href = props.href, children = props.children, rest = {};
-          for (var k in props) { if (k !== 'href' && k !== 'children' && props.hasOwnProperty(k)) rest[k] = props[k]; }
-          return R.createElement('a', Object.assign({ href: href || '#' }, rest), children);
-        };
+        // Basic Link stub so Next.js style <Link> components don't break the preview
+        if (typeof window.Link === 'undefined') {
+          window.Link = function Link(props) {
+            var href = props.href, children = props.children, rest = {};
+            for (var k in props) { if (k !== 'href' && k !== 'children' && Object.prototype.hasOwnProperty.call(props, k)) rest[k] = props[k]; }
+            return R.createElement('a', Object.assign({ href: href || '#' }, rest), children);
+          };
+        }
+
+        // Global React Router stubs so code using <Router>, <Routes>, <Route> or Router
+        // identifiers doesn't crash the preview when imports are stripped.
+        if (typeof window.Router === 'undefined') {
+          window.Router = function Router(props) {
+            return R.createElement(R.Fragment, null, props && props.children);
+          };
+        }
+        if (typeof window.Routes === 'undefined') {
+          window.Routes = function Routes(props) {
+            return R.createElement(R.Fragment, null, props && props.children);
+          };
+        }
+        if (typeof window.Route === 'undefined') {
+          window.Route = function Route(props) {
+            return props && props.element ? props.element : null;
+          };
+        }
+
+        // Minimal "Home" stub: avoid runtime ReferenceError without rendering a fallback page
+        if (typeof window.Home === 'undefined') {
+          window.Home = function Home(props) {
+            return R.createElement(R.Fragment, null, props && props.children ? props.children : null);
+          };
+        }
       }
     })();
   </script>`;
 
-        // Ensure React, ReactDOM, and Babel are loaded
-        const reactScripts = `
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>`;
-        
-        // Add React scripts if not present
-        if (!hasReactLibs) {
-          if (html.includes('</head>')) {
-            html = html.replace('</head>', `${reactScripts}\n</head>`);
-          } else if (html.includes('<body>')) {
-            html = html.replace('<body>', `<head>${reactScripts}</head>\n<body>`);
-          } else {
-            html = reactScripts + '\n' + html;
-          }
-        }
-        
-        // Ensure root div exists
-        if (!html.includes('<div id="root">') && !html.includes('<div id=\'root\'>')) {
-          if (html.includes('</body>')) {
-            html = html.replace('</body>', '  <div id="root"></div>\n</body>');
-          } else {
-            html = html + '\n<div id="root"></div>';
-          }
-        }
-        
+        ensureReactAndRoot();
+
         // Inject the App.jsx component with proper React rendering
         let appContent = mainJsFile.content
           .replace(/export\s+default\s+/g, '')
           .replace(/import\s+[\s\S]*?from\s+['"][^'"]*['"]\s*;?\s*/g, ''); // Remove imports (components injected above)
         appContent = appContent.trim();
-
-        // Only replace for severe corruption: gradient/style string broken by JSX (e.g. "100% <App />")
-        // Narrow check to avoid swapping valid user code with scaffold
-        const hasSevereCorruption = /background:\s*['"][^'"]*\d+%[\s]*<\s*[A-Z][a-zA-Z0-9]*/.test(appContent);
-        if (hasSevereCorruption) {
-          appContent = DEFAULT_APP_CONTENT.replace(/export\s+default\s+\w+\s*;?/g, '').trim();
+        // Ensure React hooks are in scope in iframe (same as component files)
+        if ((appContent.includes('useState(') || appContent.includes('useEffect(')) && !appContent.includes('React.useState') && !appContent.includes('const { useState')) {
+          appContent = 'const { useState, useEffect, useCallback, useMemo } = React;\n' + appContent;
+        }
+        // If app uses React Router but imports were stripped, provide Router/Routes/Route stubs so "Router is not defined" doesn't occur
+        const usesReactRouter = /<Router[\s>]|<Routes[\s>]|<Route\s/.test(appContent);
+        if (usesReactRouter) {
+          const routerStub = `const Router = function Router(props) { return React.createElement(React.Fragment, null, props.children); };
+const Routes = function Routes(props) { return React.createElement(React.Fragment, null, props.children); };
+const Route = function Route(props) { return props.element ?? null; };
+`;
+          appContent = routerStub + appContent;
         }
 
         // CRITICAL: Escape </script> so HTML parser doesn't close script tag early
@@ -266,6 +302,10 @@ export async function POST(
         appContent = appContent.replace(/\$\{/g, '\\${');
         
         // Wrap app in an error boundary so runtime errors (e.g. .map on undefined) show a message instead of blank preview
+        // When router stubs are active, render a small banner so the fix is visible; also highlight "Router is not defined" in errors
+        const renderAppWithOptionalBanner = usesReactRouter
+          ? 'React.createElement(React.Fragment, null, React.createElement("div", { style: { padding: "6px 12px", fontSize: 11, background: "#fef3c7", color: "#92400e", borderBottom: "1px solid #fcd34d", fontFamily: "system-ui,sans-serif" } }, "Preview: React Router stubs active — routing is simplified. Your app should render below."), React.createElement(App))'
+          : 'React.createElement(App)';
         const errorBoundaryScript = [
           '  <script type="text/babel">',
           '    class PreviewErrorBoundary extends React.Component {',
@@ -275,12 +315,14 @@ export async function POST(
           '        if (this.state.hasError) {',
           '          const msg = this.state.error && this.state.error.message ? this.state.error.message : String(this.state.error);',
           '          const isMapError = /undefined.*\\.map|\\.map.*undefined/i.test(msg);',
+          '          const isRouterError = /Router is not defined|Routes is not defined|Route is not defined/i.test(msg);',
           '          const tip = isMapError ? "\\n\\nTip: Use (items || []).map(...) or useState([]) so the list is never undefined." : "";',
           '          return React.createElement("div", {',
           '            style: { padding: 20, fontFamily: "system-ui,sans-serif", color: "#1a1a1a", fontSize: 14, maxWidth: "100%", overflow: "auto" }',
           '          },',
           '            React.createElement("h2", { style: { margin: "0 0 12px 0", fontSize: 16 } }, "Preview error"),',
           '            React.createElement("pre", { style: { margin: 0, padding: 12, background: "#f5f5f5", borderRadius: 8, whiteSpace: "pre-wrap", wordBreak: "break-word" } }, msg + tip),',
+          '            isRouterError ? React.createElement("div", { style: { marginTop: 12, padding: 12, background: "#fef3c7", border: "1px solid #f59e0b", borderRadius: 8, fontSize: 13 } }, React.createElement("strong", null, "Router/Routes/Route not defined"), React.createElement("p", { style: { margin: "8px 0 0 0" } }, "The preview now injects stubs for these. Refresh the preview to apply the fix and render your app.")) : null,',
           '            React.createElement("p", { style: { margin: "12px 0 0 0", fontSize: 12, color: "#6b7280" } }, "Copy this error and ask the AI in Chat to fix it.")',
           '          );',
           '        }',
@@ -290,7 +332,7 @@ export async function POST(
           '    const { createRoot } = ReactDOM;',
           appContent,
           '    const root = createRoot(document.getElementById("root"));',
-          '    root.render(React.createElement(PreviewErrorBoundary, null, React.createElement(App)));',
+          `    root.render(React.createElement(PreviewErrorBoundary, null, ${renderAppWithOptionalBanner}));`,
           '  </script>',
         ].join('\n');
         const appComponentScript = errorBoundaryScript;
@@ -355,6 +397,7 @@ export async function POST(
       ok: true,
       status: 'success',
       output: html,
+      preview: html, // alias for clients that expect preview key
     });
   } catch (error) {
     console.error('Error generating preview:', error);

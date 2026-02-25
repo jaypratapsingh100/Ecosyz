@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
-import { useFileExtraction } from './chat/hooks/useFileExtraction';
 import ChatQuestionnaire from './ChatQuestionnaire';
 import { SUGGESTED_PROMPTS } from '@/lib/app-builder/businessWebsitePrompts';
 import { extractAgentResponse } from '@/lib/app-builder/agentSchema';
@@ -15,6 +14,17 @@ interface ChatMessage {
   timestamp: Date;
   provider?: string;
   model?: string;
+}
+
+interface AIOption {
+  id: string;
+  label: string;
+}
+
+interface AIOptionsState {
+  groqAvailable: boolean;
+  openRouterAvailable: boolean;
+  models: { groq: AIOption[]; openrouter: AIOption[] };
 }
 
 interface AppChatProps {
@@ -32,14 +42,57 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
-  const [extracting, setExtracting] = useState(false);
   const [questionnaireData, setQuestionnaireData] = useState<QuestionnaireData | null>(null);
   const [questionnaireDismissed, setQuestionnaireDismissed] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { handleExtractFiles } = useFileExtraction({ projectId, onFilesCreated });
+
+  const [aiOptions, setAiOptions] = useState<AIOptionsState | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<'groq' | 'openrouter'>('groq');
+  const [selectedModel, setSelectedModel] = useState<string>('');
 
   const hasNoFiles = projectFiles.length === 0;
   const canGenerate = projectId && message.trim() && !loading;
+
+  // Load available AI providers/models (Groq, OpenRouter DeepSeek Coder, etc.)
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch('/api/app-projects/ai-options', { credentials: 'include' });
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (cancelled) return;
+        setAiOptions({
+          groqAvailable: !!data.groqAvailable,
+          openRouterAvailable: !!data.openRouterAvailable,
+          models: data.models ?? { groq: [], openrouter: [] },
+        });
+        const groq = data.models?.groq ?? [];
+        const openrouter = data.models?.openrouter ?? [];
+        if (data.groqAvailable && groq.length > 0) {
+          setSelectedProvider('groq');
+          setSelectedModel((m) => m || groq[0].id);
+        } else if (data.openRouterAvailable && openrouter.length > 0) {
+          setSelectedProvider('openrouter');
+          setSelectedModel((m) => m || openrouter[0].id);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!aiOptions) return;
+    if (selectedProvider === 'groq' && aiOptions.models.groq?.length && !aiOptions.models.groq.some((m) => m.id === selectedModel)) {
+      setSelectedModel(aiOptions.models.groq[0].id);
+    }
+    if (selectedProvider === 'openrouter' && aiOptions.models.openrouter?.length && !aiOptions.models.openrouter.some((m) => m.id === selectedModel)) {
+      setSelectedModel(aiOptions.models.openrouter[0].id);
+    }
+  }, [aiOptions, selectedProvider, selectedModel]);
 
   // Load chat history when projectId changes
   useEffect(() => {
@@ -117,7 +170,11 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ message: description }),
+        body: JSON.stringify({
+          message: description,
+          userProvider: selectedProvider,
+          userModel: selectedModel || undefined,
+        }),
       });
       
       const data = await res.json().catch(() => ({}));
@@ -154,6 +211,13 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
         : [];
       let responseContent = data.response || data.message || 'Response received';
       if (successfulPaths.length > 0) {
+        toast.success('Files extracted', {
+          description:
+            successfulPaths.length === 1
+              ? `Created file: ${successfulPaths[0]}`
+              : `Created ${successfulPaths.length} files: ${successfulPaths.join(', ')}`,
+          duration: 4000,
+        });
         responseContent += `\n\n**Added ${successfulPaths.length} file(s):** ${successfulPaths.join(', ')}`;
       }
 
@@ -169,9 +233,12 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
       setMessages((prev) => [...prev, assistantMessage]);
       onFilesCreated?.();
 
-      if (typeof window !== 'undefined') {
+      if (typeof window !== 'undefined' && successfulPaths.length > 0) {
         window.dispatchEvent(new CustomEvent('files-updated', { detail: { projectId } }));
-        window.dispatchEvent(new CustomEvent('auto-refresh-preview', { detail: { projectId } }));
+        // Delay so DB writes are visible to preview API (avoids "generated vs render" mismatch)
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('auto-refresh-preview', { detail: { projectId } }));
+        }, 400);
       }
     } catch (err) {
       const errorMessage = err instanceof Error 
@@ -189,106 +256,10 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
     }
   };
 
-  const getStructuredFilesFromContent = (text: string) => {
-    const parsed = extractAgentResponse(text);
-    if (parsed?.files?.length) return parsed.files;
-    if (!hasExtractableContent(text)) return [];
-    const loose = parseFilesLoosely(text);
-    return loose.map((f) => ({
-      path: f.path,
-      name: f.name,
-      content: f.content,
-      language: f.language || (f.path.endsWith('.tsx') ? 'tsx' : f.path.endsWith('.jsx') ? 'jsx' : f.path.endsWith('.css') ? 'css' : 'html'),
-      isMain: f.isMain === true || f.path === 'src/App.jsx' || f.path === 'src/App.tsx',
-    }));
-  };
-
-  const onExtractFromMessage = async (
-    content: string,
-    displayedFiles?: Array<{ path: string; name: string; content: string; language?: string; isMain?: boolean }>
-  ) => {
-    if (!content?.trim()) return;
-    setExtracting(true);
-    try {
-      // Prefer the exact files we're showing in the chat so "extract" saves what you see (no re-parse mismatch)
-      const preParsed =
-        displayedFiles && displayedFiles.length > 0
-          ? displayedFiles
-          : getStructuredFilesFromContent(content);
-      const result = await handleExtractFiles(content, preParsed.length > 0 ? preParsed : undefined);
-      if (result.ok && result.createdCount > 0) {
-        toast.success('Files extracted', { description: result.message });
-      } else if (!result.ok) {
-        toast.error('Extract failed', { description: result.message });
-      } else {
-        toast.info(result.message);
-      }
-    } finally {
-      setExtracting(false);
-    }
-  };
-
-  const hasExtractableContent = (content: string) =>
-    (content.includes('```') || content.includes('"files"')) &&
-    (content.includes('.jsx') || content.includes('.tsx') || content.includes('.css') || content.includes('App'));
-
-  // Fallback parser for loosely formatted JSON-like responses (e.g. unescaped newlines in "content")
-  const parseFilesLoosely = (text: string) => {
-    const files: Array<{
-      path: string;
-      name: string;
-      content: string;
-      language?: string;
-      isMain?: boolean;
-    }> = [];
-
-    const filesIndex = text.indexOf('"files"');
-    if (filesIndex === -1) return files;
-
-    const slice = text.slice(filesIndex);
-    // Content may contain \" so capture until closing " before "language" (same as agentSchema)
-    const fileRegex =
-      /\{\s*"path":\s*"([^"]+)"[\s\S]*?"name":\s*"([^"]+)"[\s\S]*?"content":\s*"((?:[^"\\]|\\.)*)"\s*,\s*[\s\n]*"language":\s*"([^"]+)"[\s\S]*?"isMain":\s*(true|false)/g;
-
-    let match: RegExpExecArray | null;
-    while ((match = fileRegex.exec(slice)) !== null) {
-      const [, path, name, rawContent, language, isMainRaw] = match;
-      const content = rawContent
-        .replace(/\\n/g, '\n')
-        .replace(/\\t/g, '\t')
-        .replace(/\\"/g, '"');
-
-      files.push({
-        path,
-        name,
-        content,
-        language,
-        isMain: isMainRaw === 'true',
-      });
-    }
-
-    return files;
-  };
-
   const renderMessage = (msg: ChatMessage) => {
     const isUser = msg.role === 'user';
-    const showExtract = !isUser && hasExtractableContent(msg.content);
     const parsedAgent = !isUser ? extractAgentResponse(msg.content) : null;
-    let structuredFiles = parsedAgent?.files ?? [];
-
-    // If strict parser fails but the message clearly contains files JSON, try a loose fallback parser
-    if (!isUser && structuredFiles.length === 0 && hasExtractableContent(msg.content)) {
-      const loose = parseFilesLoosely(msg.content);
-      if (loose.length > 0) {
-        structuredFiles = loose.map((f) => ({
-          path: f.path,
-          name: f.name,
-          content: f.content,
-          language: f.language || (f.path.endsWith('.tsx') ? 'tsx' : f.path.endsWith('.jsx') ? 'jsx' : f.path.endsWith('.css') ? 'css' : 'html'),
-          isMain: f.isMain === true || f.path === 'src/App.jsx' || f.path === 'src/App.tsx',
-        }));
-      }
-    }
+    const structuredFiles = parsedAgent?.files ?? [];
     return (
       <div key={msg.id} className={`flex gap-3 items-start ${isUser ? 'flex-row-reverse' : ''}`}>
         <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1 ${
@@ -309,17 +280,6 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
         <div className={`flex-1 ${isUser ? 'text-right' : ''}`}>
           <div className={`text-sm font-semibold mb-1 flex items-center gap-2 ${isUser ? 'text-blue-400' : 'text-white'}`}>
             {isUser ? 'You' : 'Assistant'}
-            {showExtract && (
-              <button
-                type="button"
-                onClick={() => onExtractFromMessage(msg.content, structuredFiles.length > 0 ? structuredFiles : undefined)}
-                disabled={extracting || !projectId}
-                className="ml-1 px-2 py-0.5 text-xs font-medium rounded-md bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                title="Extract files from this response and add to project"
-              >
-                {extracting ? 'Extracting…' : 'Extract files'}
-              </button>
-            )}
           </div>
           <div className={`rounded-2xl px-4 py-3 shadow-lg ${
             isUser
@@ -483,6 +443,39 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
       </div>
 
       <div className="border-t border-white/10 p-4 flex-shrink-0 bg-[#0a0a0a] z-10">
+        {aiOptions && (aiOptions.groqAvailable || aiOptions.openRouterAvailable) && (
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <span className="text-xs text-gray-500">Model:</span>
+            <select
+              value={selectedProvider}
+              onChange={(e) => setSelectedProvider(e.target.value as 'groq' | 'openrouter')}
+              className="bg-[#1a1a1a] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
+              aria-label="AI Provider"
+            >
+              {aiOptions.groqAvailable && <option value="groq">Groq (Llama)</option>}
+              {aiOptions.openRouterAvailable && <option value="openrouter">OpenRouter (DeepSeek)</option>}
+            </select>
+            <select
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              className="bg-[#1a1a1a] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 min-w-[180px]"
+              aria-label="AI Model"
+            >
+              {selectedProvider === 'groq' &&
+                aiOptions.models.groq?.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
+                ))}
+              {selectedProvider === 'openrouter' &&
+                aiOptions.models.openrouter?.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
+                ))}
+            </select>
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="relative">
           <div className="flex items-center gap-0 w-full">
             <div className="flex-1 flex items-center gap-3 bg-[#1a1a1a] rounded-l-full border border-gray-500/30 focus-within:border-gray-400/50 transition-all px-4 py-3.5">

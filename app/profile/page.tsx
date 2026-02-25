@@ -29,10 +29,20 @@ async function getProfileData() {
       // Return default profile if user not in DB yet
       return {
         user,
+        communityUserId: null as string | null,
         profile: {
           displayName: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
           bio: '',
           avatarUrl: undefined,
+          location: '',
+          affiliation: '',
+          website: '',
+          primaryRole: '',
+          headline: '',
+          currentFocus: '',
+          lookingFor: '',
+          canHelpWith: '',
+          expertiseTags: [] as string[],
           preferences: {
             theme: 'system' as const,
             language: 'en-IN',
@@ -67,6 +77,15 @@ async function getProfileData() {
       displayName: profile.displayName || 'User',
       bio: profile.bio ?? undefined,
       avatarUrl: (profile.avatarUrl === null ? undefined : profile.avatarUrl) as string | undefined,
+      location: profile.location ?? '',
+      affiliation: profile.affiliation ?? '',
+      website: profile.website ?? '',
+      primaryRole: profile.primaryRole ?? '',
+      headline: profile.headline ?? '',
+      currentFocus: profile.currentFocus ?? '',
+      lookingFor: profile.lookingFor ?? '',
+      canHelpWith: profile.canHelpWith ?? '',
+      expertiseTags: profile.expertiseTags ?? [],
       preferences: {
         theme: ((profile.preferences as any)?.theme || 'system') as 'system' | 'light' | 'dark',
         language: (profile.preferences as any)?.language || 'en-IN',
@@ -77,6 +96,7 @@ async function getProfileData() {
 
     return {
       user,
+      communityUserId: prismaUser.id,
       profile: profileData,
     };
   } catch (error: any) {
@@ -93,10 +113,20 @@ async function getProfileData() {
     // Return default profile data on error so page doesn't crash
     return {
       user,
+      communityUserId: null as string | null,
       profile: {
         displayName: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
         bio: '',
         avatarUrl: undefined,
+        location: '',
+        affiliation: '',
+        website: '',
+        primaryRole: '',
+        headline: '',
+        currentFocus: '',
+        lookingFor: '',
+        canHelpWith: '',
+        expertiseTags: [] as string[],
         preferences: {
           theme: 'system' as const,
           language: 'en-IN',
@@ -109,7 +139,7 @@ async function getProfileData() {
 }
 
 export default async function ProfilePage() {
-  const { user, profile } = await getProfileData();
+  const { user, profile, communityUserId } = await getProfileData();
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -126,8 +156,24 @@ export default async function ProfilePage() {
               </p>
             </div>
 
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 space-y-6">
               <ProfileForm initialData={profile} />
+
+              {communityUserId && (
+                <div className="pt-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    This is your account profile. Your public community profile is visible to others.
+                  </p>
+                  <a
+                    href={`/community/users/${communityUserId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
+                  >
+                    View public profile
+                  </a>
+                </div>
+              )}
             </div>
           </div>
         </Container>

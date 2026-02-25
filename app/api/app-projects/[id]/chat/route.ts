@@ -4,10 +4,19 @@ import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
 import { getScaffoldFiles, DEFAULT_APP_CONTENT } from '@/app/lib/app-builder/scaffolds';
 import { createAIClient, hasAIClient } from '@/lib/ai/provider';
 import { trackApiRequest } from '@/lib/api-usage';
-import { extractAgentResponse } from '@/lib/app-builder/agentSchema';
+import {
+  extractAgentResponse,
+  ALLOWED_PATHS,
+  COMPONENT_PATH_PATTERN,
+  SRC_ROOT_COMPONENT_PATTERN,
+  CSS_PATH_PATTERN,
+} from '@/lib/app-builder/agentSchema';
 import { buildSystemPrompt, buildUserPrompt, buildFixPrompt } from '@/lib/app-builder/promptBuilder';
-import { validateProjectFiles } from '../../../../../src/lib/utils/validateJSX';
+import { buildPlannerPrompt, parsePlannerResponse } from '@/lib/app-builder/agents/planner';
+import { buildArchitectPrompt, parseArchitectResponse } from '@/lib/app-builder/agents/architect';
+import { validateProjectFiles, checkComponentStructureAndStyling } from '../../../../../src/lib/utils/validateJSX';
 import type { ChatMessage, ChatRequestBody, DatabaseError, QuestionnaireData, ProjectFile } from '@/app/types/app-builder';
+import type { PlannerPlan, ArchitectTaskPlan, AppProjectState } from '@/app/types/app-builder';
 
 type FileCreationResult = { path: string; success: boolean; error?: string; validated?: boolean; validationError?: string; sandboxIssues?: string[] };
 
@@ -200,6 +209,7 @@ export async function POST(
           brandName: true,
           tagline: true,
           keyPoints: true,
+          generationState: true,
           files: {
             orderBy: { path: 'asc' },
           },
@@ -273,7 +283,7 @@ export async function POST(
       );
     }
     
-    let { message } = body;
+    let { message, userProvider, userModel } = body;
     const currentFile = body.currentFile;
     
     // Validate message
@@ -286,7 +296,7 @@ export async function POST(
     
     // currentFile is a path string or undefined
     const currentFilePath = currentFile;
-    // Note: userApiKey, userModel, userProvider are ignored - Groq only
+    // userProvider / userModel: user can select OpenRouter + DeepSeek Coder from chat UI
 
     if (!message || typeof message !== 'string') {
       return NextResponse.json(
@@ -315,8 +325,9 @@ export async function POST(
     const hasAppTsx = existingFiles.some((f: ProjectFile) => f.path.includes('App.tsx'));
     const hasIndexJs = existingFiles.some((f: ProjectFile) => f.path.includes('index.js'));
     const hasIndexTs = existingFiles.some((f: ProjectFile) => f.path.includes('index.ts'));
+    const hasIndexHtml = existingFiles.some((f: ProjectFile) => f.path === 'index.html' || f.name === 'index.html');
     
-    const hasScaffoldFiles = hasAppJsx || hasAppTsx || hasIndexJs || hasIndexTs || 
+    const hasScaffoldFiles = hasAppJsx || hasAppTsx || hasIndexJs || hasIndexTs || hasIndexHtml ||
       project.files?.some((f: ProjectFile) => f.path.includes('App.css')) || false;
     const frameworkPreference = questionnaireData?.frameworkPreference;
     const frameworkForScaffold = (frameworkPreference && frameworkPreference !== 'auto')
@@ -469,10 +480,13 @@ export async function POST(
       });
     }
     
-    // Step 6: Create AI client (Groq only)
+    // Step 6: Create AI client (Groq or OpenRouter; user can select via userProvider/userModel)
     let client;
     try {
-      const clientResult = createAIClient();
+      const clientResult = createAIClient({
+        userProvider: userProvider === 'openrouter' || userProvider === 'groq' ? userProvider : undefined,
+        userModel: typeof userModel === 'string' ? userModel : undefined,
+      });
       client = clientResult.client;
       model = clientResult.model;
       provider = clientResult.provider;
@@ -513,17 +527,68 @@ export async function POST(
     });
     
     const existingFilePaths = project.files?.map((f: { path: string }) => f.path) || [];
-    
-    // Token-optimized system prompt (Lovable/Replit style, DeepSeek V3 0324)
-    const systemPrompt = buildSystemPrompt({
+    let plan: PlannerPlan | null = null;
+    let taskPlan: ArchitectTaskPlan | null = null;
+
+    // Optional: run Planner + Architect for new projects (agentic pipeline)
+    if (existingFilePaths.length === 0) {
+      try {
+        const plannerUserPrompt = buildPlannerPrompt(message, questionnaireData);
+        const plannerRes = await client.chat.completions.create({
+          model,
+          messages: [
+            { role: 'system', content: 'You are a product planner. Output valid JSON only: {"name":"","description":"","techstack":"","features":[],"files":[{"path":"","purpose":""}]}' },
+            { role: 'user', content: plannerUserPrompt },
+          ],
+          temperature: 0.4,
+          max_tokens: 1024,
+          stream: false,
+        });
+        const plannerText = plannerRes.choices[0]?.message?.content || '';
+        plan = parsePlannerResponse(plannerText);
+        if (plan && plan.files?.length) {
+          const architectUserPrompt = buildArchitectPrompt(plan, existingFilePaths);
+          const architectRes = await client.chat.completions.create({
+            model,
+            messages: [
+              { role: 'system', content: 'You are a software architect. Output valid JSON only: {"implementationSteps":[{"filepath":"","taskDescription":"","priority":"high|medium|low"}]}' },
+              { role: 'user', content: architectUserPrompt },
+            ],
+            temperature: 0.4,
+            max_tokens: 1024,
+            stream: false,
+          });
+          const architectText = architectRes.choices[0]?.message?.content || '';
+          taskPlan = parseArchitectResponse(architectText);
+        }
+      } catch (agentErr) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('Planner/Architect step failed (continuing with direct coder):', agentErr);
+        }
+      }
+    }
+
+    // Token-optimized system prompt (Lovable/Replit style) with scaffold structure for correct rendering
+    let systemPrompt = buildSystemPrompt({
       framework: frameworkForScaffold,
       language: useTypeScript ? 'typescript' : 'javascript',
       fileCount: existingFilePaths.length,
       filePaths: existingFilePaths,
     });
+    // When project has scaffold files, add explicit entry/file list so LLM aligns output with preview
+    if (existingFilePaths.length > 0) {
+      systemPrompt += buildScaffoldContext(frameworkForScaffold);
+      systemPrompt += `\nCurrent project files (preview uses these): ${existingFilePaths.join(', ')}. Main entry for preview: src/App.${fileExtension}.`;
+    }
     
-    // Token-optimized user prompt (questionnaire + message + existing paths)
+    // Token-optimized user prompt (questionnaire + message + existing paths; optional plan/taskPlan from agents)
     let userMessage = buildUserPrompt(message, questionnaireData, existingFilePaths);
+    if (plan) {
+      userMessage += `\n\nSTRUCTURED PLAN (implement this):\n${JSON.stringify(plan, null, 2)}`;
+    }
+    if (taskPlan?.implementationSteps?.length) {
+      userMessage += `\n\nIMPLEMENTATION STEPS (follow in order):\n${JSON.stringify(taskPlan.implementationSteps, null, 2)}`;
+    }
     if (hasScaffoldFiles && existingFilePaths.length > 0) {
       userMessage += `\n\nEXTEND existing files. Add imports and render new components in App.${fileExtension}.`;
     }
@@ -1152,6 +1217,22 @@ export async function POST(
               path: filePath, 
               success: false, 
               error: 'Invalid file path' 
+            });
+            continue;
+          }
+
+          // Sandbox: only allow paths that match scaffold + components (no arbitrary paths)
+          const pathAllowed =
+            ALLOWED_PATHS.includes(normalizedPath as (typeof ALLOWED_PATHS)[number]) ||
+            COMPONENT_PATH_PATTERN.test(normalizedPath) ||
+            SRC_ROOT_COMPONENT_PATTERN.test(normalizedPath) ||
+            CSS_PATH_PATTERN.test(normalizedPath);
+          if (!pathAllowed) {
+            console.log(`  ❌ SANDBOX: path not allowed - skipping: ${normalizedPath}`);
+            createdFiles.push({
+              path: filePath,
+              success: false,
+              error: `Path not allowed. Use src/App.jsx, src/components/*.jsx, or src/*.css.`,
             });
             continue;
           }
@@ -2318,6 +2399,32 @@ root.render(
     if (successfulFiles.length === 0 && response.length > 0) {
       suggestions.push(`💡 No files were extracted from the response. Make sure code uses \`\`\`file:path/to/file.jsx format.`);
     }
+
+    // Agent check: component structure and styling (so preview renders something with CSS)
+    try {
+      const projectForCheck = await prisma.appProject.findUnique({
+        where: { id },
+        include: { files: { orderBy: { path: 'asc' } } },
+      });
+      if (projectForCheck?.files?.length) {
+        const structureCheck = checkComponentStructureAndStyling(
+          projectForCheck.files.map((f: { path: string; content: string }) => ({ path: f.path, content: f.content }))
+        );
+        if (!structureCheck.componentsValid) {
+          suggestions.push(`⚠️ Component check: App may not return JSX. Preview might be blank.`);
+        }
+        if (!structureCheck.hasStyling) {
+          suggestions.push(`💡 Add className or style (or CSS) to your components so the preview shows visible styling.`);
+        }
+        if (structureCheck.issues.length > 0) {
+          structureCheck.issues.slice(0, 3).forEach((issue: string) => {
+            suggestions.push(`📋 ${issue}`);
+          });
+        }
+      }
+    } catch (structureErr) {
+      // Non-blocking; don't fail response
+    }
     
     // CRITICAL: Ensure filesCreated is always an array and properly formatted
     const finalFilesCreated = Array.isArray(filesCreatedResult) ? filesCreatedResult : [];
@@ -2373,7 +2480,26 @@ root.render(
       filesCreatedLength: responseData.filesCreated.length,
       hasSummary: !!responseData.summary
     });
-    
+
+    // Persist agentic pipeline state (plan, taskPlan, status) when we have it
+    if (plan || taskPlan) {
+      try {
+        const generationState: AppProjectState = {
+          userPrompt: message,
+          plan: plan ?? null,
+          taskPlan: taskPlan ?? null,
+          status: 'done',
+          lastError: failedFiles.length > 0 ? `Failed files: ${failedFiles.map((f: FileCreationResult) => f.path).join(', ')}` : null,
+        };
+        await prisma.appProject.update({
+          where: { id },
+          data: { generationState: generationState as object },
+        });
+      } catch (stateErr) {
+        if (process.env.NODE_ENV === 'development') console.warn('Failed to persist generationState:', stateErr);
+      }
+    }
+
     return NextResponse.json(responseData);
   } catch (error: unknown) {
     const err = error as Error & { code?: string; status?: number; type?: string };

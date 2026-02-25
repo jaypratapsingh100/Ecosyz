@@ -13,11 +13,56 @@ export interface ChatMessage {
 export interface ChatRequestBody {
   message: string;
   currentFile?: string;
-  // Additional fields are ignored by older routes but kept for compatibility.
-  userApiKey?: string;
+  /** User-selected AI provider: groq | openrouter (enables OpenRouter DeepSeek Coder, etc.) */
+  userProvider?: 'groq' | 'openrouter';
+  /** User-selected model id (e.g. deepseek/deepseek-coder-v2, llama-3.3-70b-versatile) */
   userModel?: string;
-  userProvider?: string;
+  userApiKey?: string;
   questionnaireData?: unknown;
+}
+
+/** Planner agent output: high-level project plan */
+export interface PlannerPlan {
+  name: string;
+  description: string;
+  techstack: string;
+  features: string[];
+  files: { path: string; purpose: string }[];
+}
+
+/** Architect agent output: implementation steps per file */
+export interface ArchitectTaskPlan {
+  implementationSteps: {
+    filepath: string;
+    taskDescription: string;
+    priority?: 'high' | 'medium' | 'low';
+  }[];
+}
+
+/** Coder agent state (per-step progress) */
+export interface CoderState {
+  currentStepIndex: number;
+  completedSteps: string[];
+  lastError?: string;
+}
+
+/** Central state for the Planner → Architect → Coder pipeline */
+export type GenerationStatus =
+  | 'idle'
+  | 'planning'
+  | 'architecting'
+  | 'coding'
+  | 'validating'
+  | 'done'
+  | 'error';
+
+export interface AppProjectState {
+  userPrompt: string;
+  plan?: PlannerPlan | null;
+  taskPlan?: ArchitectTaskPlan | null;
+  coderState?: CoderState | null;
+  status: GenerationStatus;
+  lastError?: string | null;
 }
 
 export interface DatabaseError extends Error {

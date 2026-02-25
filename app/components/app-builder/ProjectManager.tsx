@@ -8,6 +8,7 @@ export interface ProjectListItem {
   description?: string | null;
   framework?: string | null;
   createdAt?: string;
+  isPublic?: boolean;
 }
 
 interface ProjectManagerProps {
@@ -16,6 +17,7 @@ interface ProjectManagerProps {
   showActionButtons?: boolean;
   projects?: ProjectListItem[];
   onDeleteProject?: (projectId: string) => void;
+  onDeleteMultipleProjects?: (projectIds: string[]) => void;
   onCreateNewProject?: () => void;
   isCreatingNewProject?: boolean;
   onProjectUpdated?: () => void;
@@ -27,6 +29,7 @@ export default function ProjectManager({
   showActionButtons = true,
   projects = [],
   onDeleteProject,
+  onDeleteMultipleProjects,
   onCreateNewProject,
   isCreatingNewProject = false,
   onProjectUpdated,
@@ -36,6 +39,9 @@ export default function ProjectManager({
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState<string>('');
   const [isUpdating, setIsUpdating] = useState(false);
+  const [updatingVisibilityId, setUpdatingVisibilityId] = useState<string | null>(null);
+  const [isBulkDeleteMode, setIsBulkDeleteMode] = useState(false);
+  const [bulkSelectedIds, setBulkSelectedIds] = useState<string[]>([]);
 
   const sortedProjects = useMemo(
     () => [...projects],
@@ -99,6 +105,37 @@ export default function ProjectManager({
     }
   };
 
+  const handleToggleVisibility = async (project: ProjectListItem, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!project) return;
+
+    const nextIsPublic = !project.isPublic;
+    setUpdatingVisibilityId(project.id);
+
+    try {
+      const res = await fetch(`/api/app-projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ isPublic: nextIsPublic }),
+      });
+
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ error: 'Failed to update visibility' }));
+        console.error('Failed to update visibility:', error);
+        alert(error.error || 'Failed to update project visibility');
+        return;
+      }
+
+      onProjectUpdated?.();
+    } catch (error) {
+      console.error('Error updating visibility:', error);
+      alert('Failed to update project visibility');
+    } finally {
+      setUpdatingVisibilityId(null);
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent, projectId: string) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -109,33 +146,129 @@ export default function ProjectManager({
     }
   };
 
+  const toggleBulkSelect = (projectId: string) => {
+    setBulkSelectedIds((prev) =>
+      prev.includes(projectId) ? prev.filter((id) => id !== projectId) : [...prev, projectId],
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (!hasProjects) return;
+    if (bulkSelectedIds.length === sortedProjects.length) {
+      setBulkSelectedIds([]);
+    } else {
+      setBulkSelectedIds(sortedProjects.map((p) => p.id));
+    }
+  };
+
+  const handleBulkDelete = () => {
+    if (!onDeleteMultipleProjects || bulkSelectedIds.length === 0) return;
+    onDeleteMultipleProjects(bulkSelectedIds);
+    setIsBulkDeleteMode(false);
+    setBulkSelectedIds([]);
+  };
+
   return (
     <div className="h-full flex flex-col bg-[#0a0a0a]">
       <div className="p-4 border-b border-white/10 flex-shrink-0">
         {showActionButtons && (
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-3 gap-2">
             <h2 className="text-white font-semibold text-sm">Projects</h2>
-            <button
-              type="button"
-              onClick={() => onCreateNewProject && onCreateNewProject()}
-              disabled={isCreatingNewProject || !onCreateNewProject}
-              className="px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 rounded-lg text-white text-xs font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Create
-            </button>
+            <div className="flex items-center gap-2">
+              {onDeleteMultipleProjects && hasProjects && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsBulkDeleteMode((prev) => !prev);
+                    setBulkSelectedIds([]);
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all flex items-center gap-1.5 ${
+                    isBulkDeleteMode
+                      ? 'border-red-400/70 bg-red-500/10 text-red-200 hover:bg-red-500/20'
+                      : 'border-white/15 text-gray-200 hover:bg-white/10'
+                  }`}
+                >
+                  <svg
+                    className="w-3.5 h-3.5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <rect x="3" y="4" width="7" height="7" rx="1.5" />
+                    <rect x="14" y="4" width="7" height="7" rx="1.5" />
+                    <rect x="3" y="13" width="7" height="7" rx="1.5" />
+                    <rect x="14" y="13" width="7" height="7" rx="1.5" />
+                  </svg>
+                  {isBulkDeleteMode ? 'Done' : 'Select'}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => onCreateNewProject && onCreateNewProject()}
+                disabled={isCreatingNewProject || !onCreateNewProject}
+                className="px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 rounded-lg text-white text-xs font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Create
+              </button>
+            </div>
           </div>
         )}
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto p-4">
+        {isBulkDeleteMode && onDeleteMultipleProjects && hasProjects && (
+          <div className="mb-3 flex items-center justify-between gap-3 text-[11px]">
+            <div className="flex items-center gap-2 text-gray-300">
+              <button
+                type="button"
+                onClick={handleSelectAll}
+                className="px-2 py-1 rounded border border-white/15 hover:bg-white/10 transition-colors"
+              >
+                {bulkSelectedIds.length === sortedProjects.length ? 'Clear all' : 'Select all'}
+              </button>
+              <span className="text-gray-400">
+                {bulkSelectedIds.length > 0
+                  ? `${bulkSelectedIds.length} selected`
+                  : 'Select projects to delete'}
+              </span>
+            </div>
+            <button
+              type="button"
+              disabled={bulkSelectedIds.length === 0}
+              onClick={handleBulkDelete}
+              className="px-3 py-1.5 rounded-lg text-[11px] font-medium border border-red-500/60 text-red-200 bg-red-500/5 hover:bg-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+            >
+              <svg
+                className="h-3.5 w-3.5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M3 6h18" />
+                <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                <path d="M10 11v6" />
+                <path d="M14 11v6" />
+              </svg>
+              Delete selected
+            </button>
+          </div>
+        )}
         {hasProjects ? (
           <ul className="space-y-2">
             {sortedProjects.map((project) => {
               const isSelected = selectedProjectId === project.id;
               const isExpanded = expandedProjectId === project.id;
+              const isBulkSelected = bulkSelectedIds.includes(project.id);
 
               return (
                 <li key={project.id}>
@@ -146,46 +279,105 @@ export default function ProjectManager({
                         : 'bg-[#050505] border-white/5 hover:border-white/15'
                     }`}
                   >
-                    <button
-                      type="button"
+                    <div
+                      role="button"
+                      tabIndex={0}
                       onClick={() => {
                         if (editingProjectId !== project.id) {
                           onSelectProject(project.id);
                           setExpandedProjectId((prev) => (prev === project.id ? null : project.id));
                         }
                       }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          if (editingProjectId !== project.id) {
+                            onSelectProject(project.id);
+                            setExpandedProjectId((prev) => (prev === project.id ? null : project.id));
+                          }
+                        }
+                      }}
                       className="w-full px-3 py-2.5 flex items-center justify-between gap-2 text-left"
                     >
-                      <div className="min-w-0 flex-1">
-                        {editingProjectId === project.id ? (
-                          <input
-                            type="text"
-                            value={editingTitle}
-                            onChange={(e) => setEditingTitle(e.target.value)}
-                            onKeyDown={(e) => handleKeyDown(e, project.id)}
-                            onBlur={() => handleSaveEdit(project.id)}
-                            onClick={(e) => e.stopPropagation()}
-                            disabled={isUpdating}
-                            className="w-full bg-[#1a1a1a] border border-emerald-500/50 rounded px-2 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50 disabled:opacity-50"
-                            autoFocus
-                            maxLength={100}
-                          />
-                        ) : (
-                          <>
-                            <p className="text-sm font-medium text-gray-100 truncate">
-                              {project.title || 'Untitled project'}
-                            </p>
-                            {(project.framework || project.createdAt) && (
-                              <p className="text-[11px] text-gray-500 mt-0.5 truncate">
-                                {project.framework && <span className="uppercase">{project.framework}</span>}
-                                {project.framework && project.createdAt && <span className="mx-1">•</span>}
-                                {project.createdAt && <span>{formatCreatedAt(project.createdAt)}</span>}
-                              </p>
-                            )}
-                          </>
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        {isBulkDeleteMode && onDeleteMultipleProjects && (
+                          <div
+                            role="button"
+                            tabIndex={0}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleBulkSelect(project.id);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                toggleBulkSelect(project.id);
+                              }
+                            }}
+                            className={`h-4 w-4 flex items-center justify-center rounded border text-[10px] transition-colors cursor-pointer ${
+                              isBulkSelected
+                                ? 'border-emerald-400 bg-emerald-500/20 text-emerald-200'
+                                : 'border-white/20 text-transparent bg-transparent'
+                            }`}
+                            aria-pressed={isBulkSelected}
+                            aria-label={isBulkSelected ? 'Deselect project' : 'Select project'}
+                          >
+                            ✓
+                          </div>
                         )}
+                        <div className="min-w-0 flex-1">
+                          {editingProjectId === project.id ? (
+                            <input
+                              type="text"
+                              value={editingTitle}
+                              onChange={(e) => setEditingTitle(e.target.value)}
+                              onKeyDown={(e) => handleKeyDown(e, project.id)}
+                              onBlur={() => handleSaveEdit(project.id)}
+                              onClick={(e) => e.stopPropagation()}
+                              disabled={isUpdating}
+                              className="w-full bg-[#1a1a1a] border border-emerald-500/50 rounded px-2 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50 disabled:opacity-50"
+                              autoFocus
+                              maxLength={100}
+                            />
+                          ) : (
+                            <>
+                              <p className="text-sm font-medium text-gray-100 truncate">
+                                {project.title || 'Untitled project'}
+                              </p>
+                              {(project.framework || project.createdAt) && (
+                                <p className="text-[11px] text-gray-500 mt-0.5 truncate">
+                                  {project.framework && <span className="uppercase">{project.framework}</span>}
+                                  {project.framework && project.createdAt && <span className="mx-1">•</span>}
+                                  {project.createdAt && <span>{formatCreatedAt(project.createdAt)}</span>}
+                                </p>
+                              )}
+                            </>
+                          )}
+                        </div>
                       </div>
                       <div className="flex items-center gap-2 ml-2">
+                        {/* Public / Private toggle */}
+                        <div
+                          role="button"
+                          tabIndex={updatingVisibilityId === project.id ? -1 : 0}
+                          onClick={(e) => handleToggleVisibility(project, e)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              if (updatingVisibilityId !== project.id) handleToggleVisibility(project, e as React.MouseEvent);
+                            }
+                          }}
+                          className={`px-2 py-1 rounded-full text-[10px] font-medium border transition-colors cursor-pointer ${
+                            project.isPublic
+                              ? 'border-emerald-400/70 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20'
+                              : 'border-white/20 bg-white/5 text-gray-300 hover:bg-white/10'
+                          } ${updatingVisibilityId === project.id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          title={project.isPublic ? 'Make project private' : 'Make project public'}
+                          aria-disabled={updatingVisibilityId === project.id}
+                        >
+                          {updatingVisibilityId === project.id ? 'Saving…' : project.isPublic ? 'Public' : 'Private'}
+                        </div>
                         {/* Edit button */}
                         {editingProjectId !== project.id && (
                           <div
@@ -365,7 +557,7 @@ export default function ProjectManager({
                           ▸
                         </span>
                       </div>
-                    </button>
+                    </div>
 
                     {isExpanded && (
                       <div className="px-3 pb-3 pt-1 border-t border-white/10 text-xs text-gray-300 space-y-2">

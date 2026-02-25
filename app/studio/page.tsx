@@ -40,14 +40,17 @@ function AppBuilderPageContent() {
   const [showTabMenu, setShowTabMenu] = useState(false);
   const [isCreatingReactSample, setIsCreatingReactSample] = useState(false);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
+  const [isCreatingLinkedInPortfolio, setIsCreatingLinkedInPortfolio] = useState(false);
+  const [isCreatingInstagramStore, setIsCreatingInstagramStore] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [isLoadingProject, setIsLoadingProject] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
-  const [projectToDelete, setProjectToDelete] = useState<{ id: string; title: string } | null>(null);
+  const [projectToDelete, setProjectToDelete] = useState<{ ids: string[]; title: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [projectFiles, setProjectFiles] = useState<{ id: string; path: string; name: string; content: string; language?: string; isMain?: boolean }[]>([]);
   const [selectedFile, setSelectedFile] = useState<{ id: string; path: string; name: string; content: string; language?: string; isMain?: boolean } | null>(null);
+  const linkedInFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const fetchProjects = useCallback(async () => {
     try {
@@ -62,12 +65,14 @@ function AppBuilderPageContent() {
             description?: string | null;
             framework?: string | null;
             createdAt?: string;
+            isPublic?: boolean;
           }) => ({
             id: p.id,
             title: p.title,
             description: p.description ?? null,
             framework: p.framework ?? null,
             createdAt: p.createdAt,
+            isPublic: p.isPublic ?? false,
           }),
         ),
       );
@@ -152,6 +157,144 @@ function AppBuilderPageContent() {
     return () => { if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
   }, [saveFileContent]);
 
+  const handleLinkedInPortfolioClick = useCallback(() => {
+    if (!isAuthenticated) {
+      toast.error('Please sign in to create a portfolio from LinkedIn.', {
+        description: 'Sign in to upload your LinkedIn document and generate a portfolio project.',
+        duration: 4000,
+      });
+      router.push('/auth');
+      return;
+    }
+    if (linkedInFileInputRef.current) {
+      linkedInFileInputRef.current.click();
+    }
+  }, [isAuthenticated, router]);
+
+  const handleInstagramStoreCreate = useCallback(async () => {
+    if (!isAuthenticated) {
+      toast.error('Please sign in to create an e‑store from Instagram.', {
+        description: 'Sign in to link your Instagram and generate an e‑store project.',
+        duration: 4000,
+      });
+      router.push('/auth');
+      return;
+    }
+
+    const url = typeof window !== 'undefined'
+      ? window.prompt('Paste your Instagram profile or product link:')
+      : null;
+
+    if (!url) return;
+
+    setIsCreatingInstagramStore(true);
+    try {
+      const projectRes = await fetch('/api/app-projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: 'Instagram E‑Store',
+          description: 'Starter e‑store generated from an Instagram link. Use the Chat tab to pull in products and customize pages.',
+          type: 'web',
+          framework: 'react',
+          appType: 'estore',
+          previewVersion: 'v2',
+          questionnaireData: {
+            source: 'instagram-link',
+            instagramUrl: url,
+          },
+        }),
+        credentials: 'include',
+      });
+
+      if (!projectRes.ok) {
+        const errBody = await projectRes.json().catch(() => ({}));
+        const errMsg =
+          (errBody as { error?: string; details?: string })?.error ||
+          (errBody as { message?: string })?.message ||
+          projectRes.statusText ||
+          'Failed to create Instagram e‑store';
+        const details = (errBody as { details?: string })?.details;
+        throw new Error(details ? `${errMsg}: ${details}` : errMsg);
+      }
+
+      const project = await projectRes.json();
+      const projectId = project.id as string;
+
+      setSelectedProjectId(projectId);
+      await fetchProjects();
+
+      toast.success('Instagram E‑Store Created', {
+        description: 'We created a new e‑store project from your Instagram link.',
+        duration: 4000,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error creating Instagram e‑store project:', error);
+      toast.error('Failed to Create E‑Store', {
+        description: message,
+        duration: 5000,
+      });
+    } finally {
+      setIsCreatingInstagramStore(false);
+    }
+  }, [isAuthenticated, router, fetchProjects]);
+
+  const handleLinkedInFileChange = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      setIsCreatingLinkedInPortfolio(true);
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('fileName', file.name);
+        const baseTitle = file.name.replace(/\.[^.]+$/, '').trim() || 'LinkedIn Portfolio';
+        formData.append('projectTitle', `${baseTitle} Portfolio`);
+
+        const res = await fetch('/api/linkedin-portfolio', {
+          method: 'POST',
+          body: formData,
+          credentials: 'include',
+        });
+
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({}));
+          const errMsg =
+            (errBody as { error?: string; details?: string })?.error ||
+            (errBody as { message?: string })?.message ||
+            res.statusText ||
+            'Failed to create portfolio from LinkedIn';
+          const details = (errBody as { details?: string })?.details;
+          throw new Error(details ? `${errMsg}: ${details}` : errMsg);
+        }
+
+        const project = await res.json();
+        const projectId = project.id as string;
+
+        setSelectedProjectId(projectId);
+        await fetchProjects();
+
+        toast.success('Portfolio Created from LinkedIn', {
+          description: 'We created a new portfolio project from your LinkedIn document.',
+          duration: 4000,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error('Error creating LinkedIn portfolio project:', error);
+        toast.error('Failed to Create Portfolio', {
+          description: message,
+          duration: 5000,
+        });
+      } finally {
+        setIsCreatingLinkedInPortfolio(false);
+        event.target.value = '';
+      }
+    },
+    [fetchProjects],
+  );
+
   const handleEditorChange = useCallback(
     (newContent: string) => {
       if (!selectedFile) return;
@@ -222,9 +365,23 @@ function AppBuilderPageContent() {
     (projectId: string) => {
       const project = projects.find((p) => p.id === projectId);
       if (project) {
-        setProjectToDelete({ id: projectId, title: project.title || 'Untitled project' });
+        setProjectToDelete({ ids: [projectId], title: project.title || 'Untitled project' });
         setDeleteModalOpen(true);
       }
+    },
+    [projects],
+  );
+
+  const handleDeleteMultipleProjects = useCallback(
+    (projectIds: string[]) => {
+      if (projectIds.length === 0) return;
+      const matchedProjects = projects.filter((p) => projectIds.includes(p.id));
+      const title =
+        projectIds.length === 1 && matchedProjects[0]
+          ? matchedProjects[0].title || 'Untitled project'
+          : `${projectIds.length} projects`;
+      setProjectToDelete({ ids: projectIds, title });
+      setDeleteModalOpen(true);
     },
     [projects],
   );
@@ -235,26 +392,32 @@ function AppBuilderPageContent() {
 
       setIsDeleting(true);
       try {
-        const res = await fetch(`/api/app-projects?id=${encodeURIComponent(projectToDelete.id)}`, {
-          method: 'DELETE',
-        });
+        const ids = projectToDelete.ids;
+        let hadError = false;
+        for (const id of ids) {
+          const res = await fetch(`/api/app-projects?id=${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+          });
 
-        if (!res.ok) {
-          console.error('Failed to delete project', await res.text());
-          alert('Failed to delete project. Please try again.');
-          setIsDeleting(false);
-          return;
-        }
+          if (!res.ok) {
+            console.error('Failed to delete project', id, await res.text());
+            hadError = true;
+            continue;
+          }
 
-        if (selectedProjectId === projectToDelete.id) {
-          setSelectedProjectId('');
-          setProjectFiles([]);
-          setSelectedFile(null);
+          if (selectedProjectId === id) {
+            setSelectedProjectId('');
+            setProjectFiles([]);
+            setSelectedFile(null);
+          }
         }
 
         setDeleteModalOpen(false);
         setProjectToDelete(null);
         await fetchProjects();
+        if (hadError) {
+          alert('Some projects could not be deleted. Please try again.');
+        }
       } catch (error) {
         console.error('Error deleting project:', error);
         alert('Failed to delete project. Please try again.');
@@ -450,6 +613,7 @@ function AppBuilderPageContent() {
                       selectedProjectId={selectedProjectId}
                       projects={projects}
                       onDeleteProject={handleDeleteProject}
+                      onDeleteMultipleProjects={handleDeleteMultipleProjects}
                       onCreateNewProject={handleCreateNewProject}
                       isCreatingNewProject={isCreatingNew}
                       onProjectUpdated={fetchProjects}
@@ -640,6 +804,7 @@ function AppBuilderPageContent() {
                 showActionButtons={false}
                 projects={projects}
                 onDeleteProject={handleDeleteProject}
+                onDeleteMultipleProjects={handleDeleteMultipleProjects}
                 onProjectUpdated={fetchProjects}
               />
             </div>
@@ -735,6 +900,17 @@ function AppBuilderPageContent() {
               isCreatingReactSample={isCreatingReactSample}
               isCreatingNew={isCreatingNew}
               isAuthenticated={isAuthenticated === true}
+              onCreateLinkedInPortfolio={handleLinkedInPortfolioClick}
+              isCreatingLinkedInPortfolio={isCreatingLinkedInPortfolio}
+              onCreateInstagramStore={handleInstagramStoreCreate}
+              isCreatingInstagramStore={isCreatingInstagramStore}
+            />
+            <input
+              ref={linkedInFileInputRef}
+              type="file"
+              accept=".pdf,.doc,.docx,.txt,.html"
+              className="hidden"
+              onChange={handleLinkedInFileChange}
             />
             </div>
           </div>

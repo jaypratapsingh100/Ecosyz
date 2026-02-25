@@ -11,15 +11,23 @@ import EventsList from '../components/community/EventsList';
 import ChallengesList from '../components/community/ChallengesList';
 import ActivityFeed from '../components/community/ActivityFeed';
 import BarterList from '../components/community/BarterList';
+import GigsList from '../components/community/GigsList';
 import ShowcaseProjects from '../components/community/ShowcaseProjects';
 
-type CommunityTab = 'groups' | 'events' | 'challenges' | 'barter' | 'activity' | 'showcase';
+type CommunityTab = 'groups' | 'events' | 'challenges' | 'barter' | 'gigs' | 'activity' | 'showcase';
 
 export default function CommunityPage() {
   const searchParams = useSearchParams();
   const initialTab = useMemo<CommunityTab>(() => {
     const fromQuery = searchParams.get('tab');
-    if (fromQuery === 'events' || fromQuery === 'challenges' || fromQuery === 'barter' || fromQuery === 'activity' || fromQuery === 'showcase') {
+    if (
+      fromQuery === 'events' ||
+      fromQuery === 'challenges' ||
+      fromQuery === 'barter' ||
+      fromQuery === 'gigs' ||
+      fromQuery === 'activity' ||
+      fromQuery === 'showcase'
+    ) {
       return fromQuery;
     }
     return 'groups';
@@ -99,6 +107,16 @@ export default function CommunityPage() {
                     Barter
                   </button>
                   <button
+                    onClick={() => setActiveTab('gigs')}
+                    className={`px-6 py-3 font-semibold transition ${
+                      activeTab === 'gigs'
+                        ? 'text-emerald-300 border-b-2 border-emerald-400'
+                        : 'text-teal-100/60 hover:text-emerald-300'
+                    }`}
+                  >
+                    Gigs
+                  </button>
+                  <button
                     onClick={() => setActiveTab('activity')}
                     className={`px-6 py-3 font-semibold transition ${
                       activeTab === 'activity'
@@ -126,6 +144,7 @@ export default function CommunityPage() {
                   {activeTab === 'events' && <EventsList />}
                   {activeTab === 'challenges' && <ChallengesList />}
                   {activeTab === 'barter' && <BarterList />}
+                  {activeTab === 'gigs' && <GigsList />}
                   {activeTab === 'activity' && <ActivityFeed />}
                   {activeTab === 'showcase' && <ShowcaseProjects />}
                 </div>

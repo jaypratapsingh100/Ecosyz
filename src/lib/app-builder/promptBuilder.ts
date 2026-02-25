@@ -1,13 +1,38 @@
 /**
- * Intelligent prompt builder for app generation.
+ * Intelligent prompt builder for app generation (Lovable/Replit-style).
  * Converts questionnaire + user message into structured LLM prompts.
+ * Includes explicit scaffold structure and preview constraints so generated apps render in iframe.
  */
 
 import type { QuestionnaireData } from '@/app/types/app-builder';
 
 const SCAFFOLD_HINT = 'Paths: package.json, vite.config.js, index.html, src/main.jsx, src/App.jsx, src/index.css, src/components/*.jsx';
 
-/** Build system prompt with scaffold context */
+/** App structure for preview — how the app is rendered (Lovable-style) */
+const APP_STRUCTURE = `
+APP STRUCTURE (preview renders in iframe from these files):
+- index.html: has <div id="root"></div>; no Vite script in preview (we inject React + App).
+- Entry: src/App.jsx (or src/App.tsx). This file MUST export default App and is the main entry. Set isMain: true.
+- Styles: src/index.css (global). Component-specific: src/components/*.css or inline.
+- New components: src/components/ComponentName.jsx. Import in App and render inside App.
+- No Next.js, no React Router in preview. For links use <a href="..."> or window.Link (stub provided).
+`;
+
+/** File tree template so LLM outputs correct paths and types */
+function getScaffoldFileTree(ext: string): string {
+  return `
+SCAFFOLD FILE TREE (create/update only these paths; use correct extension .${ext}):
+  index.html
+  src/
+    main.${ext === 'tsx' ? 'tsx' : 'jsx'}
+    App.${ext}
+    index.css
+    components/
+      (e.g. Header.jsx, Hero.jsx, Footer.jsx)
+Output files with path exactly as above (e.g. "src/App.${ext}", "src/components/Header.${ext}").`;
+}
+
+/** Build system prompt with scaffold context and Lovable-style rendering rules */
 export function buildSystemPrompt(options: {
   framework: string;
   language: 'javascript' | 'typescript';
@@ -17,15 +42,24 @@ export function buildSystemPrompt(options: {
   const ext = options.language === 'typescript' ? 'tsx' : 'jsx';
   const paths =
     options.filePaths.length > 0
-      ? options.filePaths.slice(0, 15).join(', ')
+      ? options.filePaths.slice(0, 20).join(', ')
       : SCAFFOLD_HINT;
 
-  return `Senior React developer. Build production-ready, professional sites. Framework: ${options.framework}, Language: ${options.language}.
-Allowed paths: ${paths}
-OUTPUT: Valid JSON only: {"files":[{"path":"src/App.${ext}","name":"App.${ext}","content":"...","language":"${ext.slice(0, 2)}x","isMain":true},...],"summary":"..."}
-Rules: JSON only. One response. Semantic HTML, responsive, accessible. Components in src/components/.
-Use CSS classes in styles.css; avoid inline styles except for dynamic values.
-CRITICAL: For any list/array used in .map(): always guard against undefined. Use useState([]) for list state; for props use (items || []).map(...) or (tasks ?? []).map(...). Never call .map() on a value that might be undefined.`;
+  return `You are a senior React developer. Build production-ready, professional sites that render in our in-browser preview (Lovable-style). Framework: ${options.framework}, Language: ${options.language}.
+
+${APP_STRUCTURE}
+${getScaffoldFileTree(ext)}
+
+Allowed paths (use these exactly): ${paths}
+
+OUTPUT: Valid JSON only, one response:
+{"files":[{"path":"src/App.${ext}","name":"App.${ext}","content":"...","language":"${ext.slice(0, 2)}x","isMain":true},...],"summary":"..."}
+
+RULES:
+- JSON only. One response. Semantic HTML, responsive, accessible.
+- Main entry: src/App.${ext} with export default App. New components in src/components/.
+- Use CSS in src/index.css or component-level; avoid inline styles except for dynamic values.
+- CRITICAL for preview: (1) For any .map() always guard: (items || []).map(...) or useState([]). Never .map() on undefined. (2) Valid JSX only; no Node/require. (3) For navigation use <a href="..."> or Link (stub provided in preview).`;
 }
 
 /** Business website requirements - injected when app type is business-like */

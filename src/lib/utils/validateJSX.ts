@@ -121,10 +121,95 @@ export function validateJSXCode(code: string, filename: string): ValidationResul
     });
   }
 
+  // Check 8: Component returns renderable content (JSX)
+  const hasReturnWithJSX =
+    /return\s*\(\s*</.test(code) ||
+    /return\s+</.test(code) ||
+    /return\s+React\.createElement\s*\(/.test(code) ||
+    /return\s+[\w.]+\s*;?\s*\/\*.*\*\/\s*$/.test(code);
+  const hasComponent = /(?:function|const|class)\s+[A-Z][a-zA-Z0-9]*\s*[=(]/.test(code);
+  if (hasComponent && code.includes('return') && !hasReturnWithJSX && (code.includes('<') || code.includes('createElement'))) {
+    warnings.push({
+      type: 'structure',
+      message: 'Component may not return JSX (expected return (<...>) or return React.createElement(...))',
+      suggestion: 'Ensure your component returns a single JSX element or fragment: return (<div>...</div>);',
+    });
+  }
+  if (hasComponent && !code.includes('return') && (code.includes('<') || code.includes('createElement'))) {
+    warnings.push({
+      type: 'structure',
+      message: 'Component has no return statement; nothing will render',
+      suggestion: 'Add return (<div>...</div>) or return null;',
+    });
+  }
+
+  // Check 9: Styling present (so preview renders something visible)
+  const hasClassName = /\bclassName\s*=\s*[\{'"`]/.test(code) || /\.css['"]\s*\)?\s*;?\s*$/.test(code);
+  const hasStyleAttr = /\bstyle\s*=\s*\{\s*\{/.test(code) || /\bstyle\s*=\s*\{[^}]*\}/.test(code);
+  const hasCssImport = /import\s+['"].*\.css['"]/.test(code);
+  const hasStyling = hasClassName || hasStyleAttr || hasCssImport;
+  if (hasComponent && (filename.includes('App.') || filename.includes('app.')) && !hasStyling) {
+    warnings.push({
+      type: 'style',
+      message: 'App component has no styling (no className, style, or CSS import); preview may look plain',
+      suggestion: 'Add className="..." or style={{ }} or import "./index.css" so the app renders with visible styling.',
+    });
+  }
+  if (hasComponent && !filename.includes('App.') && !hasStyling && (code.includes('<div') || code.includes('<section'))) {
+    warnings.push({
+      type: 'style',
+      message: 'Component has no className or style; consider adding classes or inline styles for visible rendering',
+    });
+  }
+
   return {
     valid: errors.length === 0,
     errors,
     warnings,
+  };
+}
+
+/** Check if file content looks like a valid React component that would render with styling (for agent feedback) */
+export function checkComponentStructureAndStyling(
+  files: Array<{ path: string; content: string }>
+): { componentsValid: boolean; hasStyling: boolean; issues: string[] } {
+  const issues: string[] = [];
+  let hasAppWithJSX = false;
+  let hasAppWithStyling = false;
+  let hasAnyStyling = false;
+
+  for (const file of files) {
+    if (!file.path.endsWith('.jsx') && !file.path.endsWith('.tsx') && !file.path.endsWith('.js')) continue;
+    const code = file.content || '';
+    const isApp = file.path.includes('App.');
+    const hasComponent = /(?:function|const|class)\s+[A-Z][a-zA-Z0-9]*\s*[=(]/.test(code);
+    const hasReturnJSX = /return\s*\(\s*</.test(code) || /return\s+</.test(code) || /return\s+React\.createElement\s*\(/.test(code);
+    const hasStyling = /\bclassName\s*=/.test(code) || /\bstyle\s*=\s*\{/.test(code) || /import\s+['"].*\.css['"]/.test(code);
+
+    if (isApp && hasComponent) {
+      hasAppWithJSX = hasReturnJSX;
+      if (hasStyling) hasAppWithStyling = true;
+    }
+    if (hasStyling) hasAnyStyling = true;
+
+    if (hasComponent && !hasReturnJSX && code.includes('return')) {
+      issues.push(`${file.path}: component may not return JSX`);
+    }
+    if (isApp && hasComponent && !hasStyling) {
+      issues.push(`${file.path}: App has no className/style/CSS import`);
+    }
+  }
+
+  const cssFiles = files.filter(f => f.path.endsWith('.css'));
+  if (cssFiles.length > 0) {
+    const nonEmpty = cssFiles.some(f => (f.content || '').trim().length > 0);
+    if (nonEmpty) hasAnyStyling = true;
+  }
+
+  return {
+    componentsValid: hasAppWithJSX,
+    hasStyling: hasAppWithStyling || hasAnyStyling,
+    issues,
   };
 }
 

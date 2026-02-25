@@ -5,16 +5,24 @@ import Image from 'next/image';
 interface WelcomeScreenProps {
   onCreateReactSample?: () => void;
   onCreateNew?: () => void;
+  onCreateLinkedInPortfolio?: () => void;
+  onCreateInstagramStore?: () => void;
   isCreatingReactSample?: boolean;
   isCreatingNew?: boolean;
+  isCreatingLinkedInPortfolio?: boolean;
+  isCreatingInstagramStore?: boolean;
   isAuthenticated?: boolean;
 }
 
 export default function WelcomeScreen({
   onCreateReactSample,
   onCreateNew,
+  onCreateLinkedInPortfolio,
+  onCreateInstagramStore,
   isCreatingReactSample = false,
   isCreatingNew = false,
+  isCreatingLinkedInPortfolio = false,
+  isCreatingInstagramStore = false,
   isAuthenticated = true,
 }: WelcomeScreenProps) {
   return (
@@ -83,6 +91,61 @@ export default function WelcomeScreen({
             </button>
           )}
         </div>
+        {(onCreateLinkedInPortfolio || onCreateInstagramStore) && (
+          <div className="mt-6">
+            <p className="text-gray-400 text-xs uppercase tracking-wide mb-3">
+              Or start from your existing profiles
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              {onCreateLinkedInPortfolio && (
+                <button
+                  onClick={onCreateLinkedInPortfolio}
+                  disabled={
+                    isCreatingLinkedInPortfolio ||
+                    isCreatingReactSample ||
+                    isCreatingNew ||
+                    !isAuthenticated
+                  }
+                  className="px-6 py-2.5 rounded-lg border border-sky-400/40 bg-sky-500/10 hover:bg-sky-500/20 text-sky-100 text-sm font-medium flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={!isAuthenticated ? 'Please sign in to create a portfolio from LinkedIn' : undefined}
+                >
+                  <svg
+                    className="w-4 h-4"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path d="M4.98 3.5C4.98 4.88 3.88 6 2.5 6S0 4.88 0 3.5 1.12 1 2.5 1 4.98 2.12 4.98 3.5zM.24 8.25h4.52V24H.24V8.25zM8.34 8.25h4.33v2.13h.06c.6-1.14 2.07-2.34 4.26-2.34 4.55 0 5.39 2.99 5.39 6.88V24h-4.52v-7.42c0-1.77-.03-4.05-2.47-4.05-2.47 0-2.85 1.93-2.85 3.92V24H8.34V8.25z" />
+                  </svg>
+                  {isCreatingLinkedInPortfolio ? 'Creating portfolio…' : 'LinkedIn → Portfolio'}
+                </button>
+              )}
+              {onCreateInstagramStore && (
+                <button
+                  onClick={onCreateInstagramStore}
+                  disabled={
+                    isCreatingInstagramStore ||
+                    isCreatingReactSample ||
+                    isCreatingNew ||
+                    !isAuthenticated
+                  }
+                  className="px-6 py-2.5 rounded-lg border border-pink-400/40 bg-pink-500/10 hover:bg-pink-500/20 text-pink-100 text-sm font-medium flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={!isAuthenticated ? 'Please sign in to create an e‑store from Instagram' : undefined}
+                >
+                  <svg
+                    className="w-4 h-4"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path d="M7.5 2h9A5.5 5.5 0 0 1 22 7.5v9A5.5 5.5 0 0 1 16.5 22h-9A5.5 5.5 0 0 1 2 16.5v-9A5.5 5.5 0 0 1 7.5 2zm0 2A3.5 3.5 0 0 0 4 7.5v9A3.5 3.5 0 0 0 7.5 20h9a3.5 3.5 0 0 0 3.5-3.5v-9A3.5 3.5 0 0 0 16.5 4h-9zm4.5 2.5a5 5 0 1 1 0 10 5 5 0 0 1 0-10zm0 2A3 3 0 1 0 12 15a3 3 0 0 0 0-6zm5.25-2.75a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5z" />
+                  </svg>
+                  {isCreatingInstagramStore ? 'Creating store…' : 'Instagram → E‑Store'}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

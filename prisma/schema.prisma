@@ -49,6 +49,8 @@ model User {
   savedNews             SavedNews[]
   barterAsks            BarterAsk[]
   barterPitches         BarterPitch[]
+  gigs                  Gig[]
+  gigRequests           GigRequest[]
   appProjectUpvotes     AppProjectUpvote[]
 }
 
@@ -60,13 +62,33 @@ model Profile {
   bio         String?  @db.Text
   avatarUrl   String?
   preferences Json? // { theme: "system"|"light"|"dark", language: "en-IN", emailNotifications: boolean, marketingEmails: boolean }
-  
+
   // Enhanced Profile Fields
-  location        String?  // City, Country
-  affiliation     String?  // University, Company, Organization
-  website         String?  // Personal website URL
-  expertiseTags   String[] // Array of expertise areas (e.g., ["machine-learning", "climate-science", "open-source"])
-  
+  location        String?   // City, Country
+  affiliation     String?   // University, Company, Organization
+  website         String?   // Personal website URL
+  expertiseTags   String[]  // Array of expertise areas (e.g., ["machine-learning", "climate-science", "open-source"])
+  primaryRole     String?   // founder, researcher, student, operator, investor, etc.
+  roles           String[]  // Additional role tags if the user wears multiple hats
+
+  // Deeper "about" fields shown on profile
+  headline        String?   @db.Text // 1–2 line summary shown under name
+  currentFocus    String?   @db.Text // What I am working on now
+  lookingFor      String?   @db.Text // What I am looking for here (co-founder, funding, collaborators, etc.)
+  canHelpWith     String?   @db.Text // Areas where I can help others
+
+  // Founder-specific fields
+  startupName        String?
+  startupStage       String? // idea, prototype, mvp, revenue, scaling
+  startupSector      String? // ai, climate, fintech, health, etc.
+  startupDescription String? @db.Text
+
+  // Researcher-specific fields
+  researchField        String?
+  researchInstitution  String?
+  researchSummary      String? @db.Text
+  selectedPublications String? @db.Text
+
   // External Integrations
   orcidId         String?  @unique // ORCID identifier for researchers
   githubUsername  String?  // GitHub username
@@ -613,6 +635,44 @@ model BarterPitch {
   createdAt DateTime  @default(now())
 
   @@index([askId])
+  @@index([authorId])
+}
+
+// Community Gigs: offer services (Fiverr-style)
+model Gig {
+  id               String        @id @default(cuid())
+  title            String
+  description      String        @db.Text
+  category         String?
+  priceFrom        Int?
+  priceTo          Int?
+  currency         String?       @default("USD")
+  deliveryTimeDays Int?
+  tags             String[]
+  status           String        @default("active") // active, paused, closed
+  authorId         String
+  author           User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  requests         GigRequest[]
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([authorId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model GigRequest {
+  id        String   @id @default(cuid())
+  gigId     String
+  gig       Gig      @relation(fields: [gigId], references: [id], onDelete: Cascade)
+  message   String   @db.Text
+  budget    Int?
+  status    String   @default("open") // open, accepted, rejected
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([gigId])
   @@index([authorId])
 }
 

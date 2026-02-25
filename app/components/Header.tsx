@@ -19,6 +19,7 @@ export default function Header() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userData, setUserData] = useState<{ name?: string; email?: string; avatarUrl?: string } | null>(null);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  const [communityUserId, setCommunityUserId] = useState<string | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const mobileNavRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -50,6 +51,21 @@ export default function Header() {
           setIsAuthenticated(true);
           setUserData(data.user);
           
+          // Fetch community user id and extended profile metadata
+          try {
+            const profileRes = await fetch('/api/profile', {
+              signal: controller.signal,
+            });
+            if (profileRes.ok) {
+              const profileData = await profileRes.json();
+              if (profileData?.userId) {
+                setCommunityUserId(profileData.userId);
+              }
+            }
+          } catch (error) {
+            console.error('Failed to fetch profile metadata:', error);
+          }
+
           // Fetch workspace ID
           try {
             const workspaceRes = await fetch('/api/workspaces', {
@@ -180,6 +196,8 @@ export default function Header() {
     }
   }
 
+  const profileHref = communityUserId ? `/community/users/${communityUserId}` : '/profile';
+
   return (
     <header className="sticky top-0 z-50 glass h-14 border-b glass-border">
       <Container>
@@ -290,12 +308,20 @@ export default function Header() {
                     >
                       <div className="py-1">
                         <Link
-                          href="/profile"
+                          href={profileHref}
                           role="menuitem"
                           className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
                           onClick={() => setDropdownOpen(false)}
                         >
                           Profile
+                        </Link>
+                        <Link
+                          href="/profile"
+                          role="menuitem"
+                          className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                          onClick={() => setDropdownOpen(false)}
+                        >
+                          Profile settings
                         </Link>
                         {workspaceId ? (
                           <Link
@@ -349,7 +375,7 @@ export default function Header() {
                   </Link>
                 )
               )}
-              
+
               {/* Feedback and BETA - Always visible on md+ */}
               <Link href="/feedback" className="focus:outline-none focus:ring-2 focus:ring-emerald-400/60 px-2 py-1 rounded transition hover:text-emerald-400 font-medium text-white text-sm whitespace-nowrap">
                 Feedback
@@ -428,12 +454,20 @@ export default function Header() {
           {isAuthenticated ? (
             <>
               <Link
-                href="/profile"
+                href={profileHref}
                 className="w-full flex items-center justify-center gap-2 p-3 rounded focus:outline-none focus:ring-2 focus:ring-emerald-400/60 hover:bg-white/10 text-white font-medium"
                 onClick={() => setMobileOpen(false)}
                 tabIndex={mobileOpen ? 0 : -1}
               >
                 Profile
+              </Link>
+              <Link
+                href="/profile"
+                className="w-full flex items-center justify-center gap-2 p-3 rounded focus:outline-none focus:ring-2 focus:ring-emerald-400/60 hover:bg-white/10 text-white font-medium"
+                onClick={() => setMobileOpen(false)}
+                tabIndex={mobileOpen ? 0 : -1}
+              >
+                Profile settings
               </Link>
               {workspaceId ? (
                 <Link

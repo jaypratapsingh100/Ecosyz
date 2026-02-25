@@ -84,13 +84,10 @@ export async function POST(req: NextRequest) {
       if (error) {
         console.error('Upload error:', error);
         const isDev = process.env.NODE_ENV === 'development';
-        const baseMessage = error.message.includes('Bucket')
-          ? 'Storage bucket not found. Check your Supabase Storage configuration.'
-          : 'Image upload failed. Please try again.';
 
         return NextResponse.json(
           {
-            error: baseMessage,
+            error: 'Image upload failed. Please try again.',
             ...(isDev && { details: error.message }),
           },
           { status: 500 }
