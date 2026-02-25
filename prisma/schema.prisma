@@ -52,6 +52,8 @@ model User {
   gigs                  Gig[]
   gigRequests           GigRequest[]
   appProjectUpvotes     AppProjectUpvote[]
+  conversationParticipants ConversationParticipant[] @relation("UserConversationParticipants")
+  conversationMessages     ConversationMessage[]     @relation("UserConversationMessages")
 }
 
 model Profile {
@@ -145,6 +147,11 @@ model Resource {
   createdAt   DateTime     @default(now())
   annotations Annotation[]
   views       ResourceView[]
+
+  // Plagiarism check fields
+  plagiarismScore  Float?  // 0–100 or provider-specific score
+  plagiarismStatus String? // not_checked | clean | flagged | error
+  plagiarismMeta   Json?   // Raw provider response or matches
 }
 
 model Annotation {
@@ -620,6 +627,8 @@ model BarterAsk {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
+  conversations Conversation[] @relation("BarterAskConversations")
+
   @@index([authorId])
   @@index([status])
   @@index([createdAt])
@@ -656,6 +665,8 @@ model Gig {
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
+  conversations Conversation[] @relation("GigConversations")
+
   @@index([authorId])
   @@index([status])
   @@index([createdAt])
@@ -681,9 +692,9 @@ model Conversation {
   id          String                   @id @default(cuid())
   // Optional links to a specific Gig or BarterAsk context
   gigId       String?
-  gig         Gig?                     @relation(fields: [gigId], references: [id], onDelete: Cascade)
+  gig         Gig?                     @relation("GigConversations", fields: [gigId], references: [id], onDelete: Cascade)
   barterAskId String?
-  barterAsk   BarterAsk?               @relation(fields: [barterAskId], references: [id], onDelete: Cascade)
+  barterAsk   BarterAsk?               @relation("BarterAskConversations", fields: [barterAskId], references: [id], onDelete: Cascade)
 
   participants ConversationParticipant[]
   messages     ConversationMessage[]
@@ -702,7 +713,7 @@ model ConversationParticipant {
   conversationId String
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   userId         String
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User         @relation("UserConversationParticipants", fields: [userId], references: [id], onDelete: Cascade)
   // When this user last read the conversation (for unread counts)
   readAt         DateTime?
   createdAt      DateTime     @default(now())
@@ -717,7 +728,7 @@ model ConversationMessage {
   conversationId String
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   senderId       String
-  sender         User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  sender         User         @relation("UserConversationMessages", fields: [senderId], references: [id], onDelete: Cascade)
   content        String       @db.Text
   createdAt      DateTime     @default(now())
 

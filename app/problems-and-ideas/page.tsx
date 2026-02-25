@@ -589,11 +589,14 @@ export default function ProblemsAndIdeasPage() {
               <li key={post.id} className="hover:bg-white/[0.02] transition-colors">
                 <article className="p-4">
                   <div className="flex gap-3">
-                    <div className="w-10 h-10 rounded-full bg-[#38bdf8]/20 flex-shrink-0 overflow-hidden">
+                    <Link
+                      href={`/community/users/${post.author.id}`}
+                      className="w-10 h-10 rounded-full bg-[#38bdf8]/20 flex-shrink-0 overflow-hidden focus:outline-none focus:ring-2 focus:ring-[#38bdf8]/60"
+                    >
                       {post.author.avatarUrl ? (
                         <Image
                           src={post.author.avatarUrl}
-                          alt=""
+                          alt={post.author.name || post.author.email || 'User avatar'}
                           width={40}
                           height={40}
                           className="w-full h-full object-cover"
@@ -603,12 +606,15 @@ export default function ProblemsAndIdeasPage() {
                           {(post.author.name || post.author.email || '?').charAt(0).toUpperCase()}
                         </span>
                       )}
-                    </div>
+                    </Link>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-white text-[15px]">
+                        <Link
+                          href={`/community/users/${post.author.id}`}
+                          className="font-semibold text-white text-[15px] hover:text-[#38bdf8] transition-colors focus:outline-none focus:ring-2 focus:ring-[#38bdf8]/60 rounded"
+                        >
                           {post.author.name || post.author.email || 'Anonymous'}
-                        </span>
+                        </Link>
                         <span
                           className={`text-[11px] px-1.5 py-0.5 rounded ${
                             post.type === 'problem'
@@ -734,13 +740,22 @@ export default function ProblemsAndIdeasPage() {
                     <div className="mt-4 ml-12 pl-4 border-l-2 border-white/10 space-y-3">
                       {(commentsByPost[post.id] || []).map((c) => (
                         <div key={c.id} className="flex gap-2">
-                          <div className="w-7 h-7 rounded-full bg-[#38bdf8]/10 flex-shrink-0 flex items-center justify-center text-[#38bdf8] text-xs font-medium">
+                          <Link
+                            href={`/community/users/${c.author.id}`}
+                            className="w-7 h-7 rounded-full bg-[#38bdf8]/10 flex-shrink-0 flex items-center justify-center text-[#38bdf8] text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#38bdf8]/60"
+                          >
                             {(c.author.name || c.author.email || '?').charAt(0).toUpperCase()}
-                          </div>
+                          </Link>
                           <div className="flex-1 min-w-0">
-                            <span className="text-xs text-teal-100/60">
-                              {c.author.name || c.author.email} · {formatDate(c.createdAt)}
-                            </span>
+                            <p className="text-xs text-teal-100/60">
+                              <Link
+                                href={`/community/users/${c.author.id}`}
+                                className="hover:text-[#38bdf8] transition-colors focus:outline-none focus:ring-2 focus:ring-[#38bdf8]/60 rounded"
+                              >
+                                {c.author.name || c.author.email}
+                              </Link>{' '}
+                              · {formatDate(c.createdAt)}
+                            </p>
                             <p className="text-[14px] text-teal-100/90 mt-0.5">{c.content}</p>
                             <button
                               type="button"
