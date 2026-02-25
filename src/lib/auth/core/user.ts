@@ -14,10 +14,6 @@ async function ensureUserWorkspace(userId: string): Promise<void> {
   const workspaces = await prisma.workspace.findMany({
     where: { ownerId: userId },
     orderBy: { createdAt: 'asc' }, // Oldest first
-    include: {
-      resources: true,
-      shares: true,
-    },
   });
 
   if (workspaces.length === 0) {
@@ -33,24 +29,27 @@ async function ensureUserWorkspace(userId: string): Promise<void> {
     const primaryWorkspace = workspaces[0];
     const extraWorkspaces = workspaces.slice(1);
 
-    console.log(`User ${userId} has ${workspaces.length} workspaces. Consolidating into workspace ${primaryWorkspace.id}`);
+    console.log(
+      `User ${userId} has ${workspaces.length} workspaces. Consolidating into workspace ${primaryWorkspace.id}`
+    );
 
     // Move all resources from extra workspaces to the primary workspace
     for (const extraWorkspace of extraWorkspaces) {
-      if (extraWorkspace.resources.length > 0) {
+      const resourceCount = await prisma.resource.count({
+        where: { workspaceId: extraWorkspace.id },
+      });
+
+      if (resourceCount > 0) {
         await prisma.resource.updateMany({
           where: { workspaceId: extraWorkspace.id },
           data: { workspaceId: primaryWorkspace.id },
         });
       }
 
-      // Move share links (but keep only one active share link)
-      if (extraWorkspace.shares.length > 0) {
-        // Delete extra share links (keep only the primary workspace's share link)
-        await prisma.shareLink.deleteMany({
-          where: { workspaceId: extraWorkspace.id },
-        });
-      }
+      // Delete share links from extra workspaces (keep only primary workspace's share link)
+      await prisma.shareLink.deleteMany({
+        where: { workspaceId: extraWorkspace.id },
+      });
 
       // Delete the extra workspace
       await prisma.workspace.delete({
@@ -58,7 +57,9 @@ async function ensureUserWorkspace(userId: string): Promise<void> {
       });
     }
 
-    console.log(`Consolidated ${extraWorkspaces.length} extra workspaces into primary workspace ${primaryWorkspace.id}`);
+    console.log(
+      `Consolidated ${extraWorkspaces.length} extra workspaces into primary workspace ${primaryWorkspace.id}`
+    );
   }
   // If workspaces.length === 1, user already has exactly one workspace - nothing to do
 }

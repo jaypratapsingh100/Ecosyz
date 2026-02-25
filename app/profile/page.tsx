@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import Image from 'next/image';
 import { getCurrentUser } from '../../src/lib/auth';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
@@ -144,39 +145,54 @@ export default async function ProfilePage() {
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
-      <main className="flex-grow py-12">
-        <Container>
-          <div className="max-w-2xl mx-auto">
-            <div className="mb-8">
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-                Profile Settings
-              </h1>
-              <p className="text-gray-600 dark:text-gray-400">
-                Manage your account settings and preferences.
-              </p>
-            </div>
-
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 space-y-6">
-              <ProfileForm initialData={profile} />
-
-              {communityUserId && (
-                <div className="pt-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    This is your account profile. Your public community profile is visible to others.
-                  </p>
-                  <a
-                    href={`/community/users/${communityUserId}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
-                  >
-                    View public profile
-                  </a>
-                </div>
-              )}
-            </div>
+      <main className="flex-grow">
+        <section className="relative overflow-hidden bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016] min-h-screen">
+          <div className="pointer-events-none absolute inset-0 z-0">
+            <Image
+              src="/hero-globe.png"
+              alt="Digital globe background"
+              fill
+              className="object-cover object-right opacity-30"
+              quality={100}
+              priority
+            />
+            <div className="absolute left-1/2 top-1/3 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] bg-gradient-radial from-cyan-400/20 to-transparent opacity-80 blur-3xl" />
           </div>
-        </Container>
+          <Container>
+            <div className="relative z-10 py-12">
+              <div className="max-w-2xl mx-auto">
+                <div className="mb-8">
+                  <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+                    Profile Settings
+                  </h1>
+                  <p className="text-gray-600 dark:text-gray-400">
+                    Manage your account settings and preferences.
+                  </p>
+                </div>
+
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 space-y-6">
+                  <ProfileForm initialData={profile} />
+
+                  {communityUserId && (
+                    <div className="pt-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        This is your account profile. Your public community profile is visible to others.
+                      </p>
+                      <a
+                        href={`/community/users/${communityUserId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
+                      >
+                        View public profile
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </Container>
+        </section>
       </main>
       <Footer />
     </div>
