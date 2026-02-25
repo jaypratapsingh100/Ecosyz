@@ -156,6 +156,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Participants in this conversation (dedupe if user messages themselves)
+    const participantIds =
+      otherUserId === prismaUser.id
+        ? [prismaUser.id]
+        : [prismaUser.id, otherUserId];
+
     // Try to find an existing conversation with same context and participants
     const existing = await prisma.conversation.findFirst({
       where: {
@@ -163,7 +169,7 @@ export async function POST(req: NextRequest) {
         barterAskId: barterAskId ?? null,
         participants: {
           every: {
-            userId: { in: [prismaUser.id, otherUserId] },
+            userId: { in: participantIds },
           },
         },
       },
@@ -203,10 +209,7 @@ export async function POST(req: NextRequest) {
         gigId: gigId ?? null,
         barterAskId: barterAskId ?? null,
         participants: {
-          create: [
-            { userId: prismaUser.id },
-            { userId: otherUserId },
-          ],
+          create: participantIds.map((id) => ({ userId: id })),
         },
       },
       include: {

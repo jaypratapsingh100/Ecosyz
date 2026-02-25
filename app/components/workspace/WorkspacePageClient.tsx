@@ -20,6 +20,8 @@ interface Resource {
   tags?: string[]
   annotations: { id: string; body: string; createdAt: string }[]
   annotationCount?: number
+  plagiarismScore?: number
+  plagiarismStatus?: string
 }
 
 interface Workspace {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import type { Prisma } from '@prisma/client';
 import { getCurrentUser } from '@/lib/auth';
 import { isAdmin } from '@/lib/admin';
 
@@ -22,7 +23,7 @@ export async function GET(req: NextRequest) {
     const pageSize = Math.min(Math.max(pageSizeRaw, 1), 200);
     const queryFilter = searchParams.get('q')?.trim() || '';
 
-    const where: Parameters<typeof prisma.searchLog.findMany>[0]['where'] = {};
+    const where: Prisma.SearchLogWhereInput = {};
 
     if (queryFilter) {
       where.query = {

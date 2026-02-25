@@ -42,6 +42,9 @@ export default function AddResourceForm({ workspaceId, onCreated }: AddResourceF
           title: title.trim(),
           url: url.trim() || undefined,
           notes: notes.trim() || undefined,
+          data: {
+            notes: notes.trim() || undefined,
+          },
         }),
       }))
 

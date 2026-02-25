@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { ExternalLink, Trash2, Copy, MessageSquare } from 'lucide-react'
+import { ExternalLink, Trash2, Copy, MessageSquare, ShieldAlert, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '../../../src/lib/ui'
 import { json, copy } from '../../../src/lib/api'
@@ -16,6 +16,8 @@ interface Resource {
   createdAt: string
   tags?: string[]
   annotationCount?: number
+   plagiarismScore?: number
+   plagiarismStatus?: string
 }
 
 interface ResourceCardProps {
@@ -27,6 +29,9 @@ interface ResourceCardProps {
 export default function ResourceCard({ resource, onDeleted, onAnnotationCreated }: ResourceCardProps) {
   const [deleting, setDeleting] = useState(false)
   const [showAnnotationForm, setShowAnnotationForm] = useState(false)
+  const [checking, setChecking] = useState(false)
+  const [plagiarismStatus, setPlagiarismStatus] = useState<string | undefined>(resource.plagiarismStatus)
+  const [plagiarismScore, setPlagiarismScore] = useState<number | undefined>(resource.plagiarismScore)
 
   const handleDelete = async () => {
     if (!confirm('Are you sure you want to delete this resource?')) return
@@ -42,6 +47,28 @@ export default function ResourceCard({ resource, onDeleted, onAnnotationCreated 
       toast.error('Failed to delete resource')
       console.error('Delete error:', error)
       setDeleting(false)
+    }
+  }
+
+  const handlePlagiarismCheck = async () => {
+    setChecking(true)
+    try {
+      const updated = await json<Resource>(await fetch(`/api/resources/${resource.id}/plagiarism`, {
+        method: 'POST',
+      }))
+
+      const status: string | undefined = updated.plagiarismStatus
+      const score: number | undefined = updated.plagiarismScore
+
+      setPlagiarismStatus(status)
+      setPlagiarismScore(score)
+
+      toast.success('Plagiarism check completed')
+    } catch (error) {
+      toast.error('Failed to run plagiarism check')
+      console.error('Plagiarism check error:', error)
+    } finally {
+      setChecking(false)
     }
   }
 
@@ -84,6 +111,24 @@ export default function ResourceCard({ resource, onDeleted, onAnnotationCreated 
         </h3>
 
         <div className="flex gap-2">
+          <button
+            onClick={handlePlagiarismCheck}
+            disabled={checking}
+            className={cn(
+              "flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors",
+              "border border-cyan-500/40 text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20",
+              "disabled:opacity-60 disabled:cursor-not-allowed"
+            )}
+            title="Check plagiarism for this resource"
+          >
+            {checking ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <ShieldAlert className="w-3 h-3" />
+            )}
+            <span>Check</span>
+          </button>
+
           {resource.url && (
             <>
               <button
@@ -124,6 +169,30 @@ export default function ResourceCard({ resource, onDeleted, onAnnotationCreated 
           </button>
         </div>
       </div>
+
+      {(plagiarismStatus || plagiarismScore !== undefined) && (
+        <div className="mb-3 flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2">
+            <span
+              className={cn(
+                "inline-flex items-center px-2 py-0.5 rounded-full border text-[11px]",
+                plagiarismStatus === 'clean' && "border-emerald-500/40 text-emerald-300 bg-emerald-500/10",
+                plagiarismStatus === 'flagged' && "border-red-500/40 text-red-300 bg-red-500/10",
+                plagiarismStatus === 'error' && "border-amber-500/40 text-amber-300 bg-amber-500/10",
+                (!plagiarismStatus || plagiarismStatus === 'not_checked') &&
+                  "border-zinc-600 text-zinc-300 bg-zinc-800/60"
+              )}
+            >
+              Plagiarism: {plagiarismStatus || 'not_checked'}
+            </span>
+            {plagiarismScore !== undefined && (
+              <span className="text-zinc-400">
+                Score: {plagiarismScore.toFixed(1)}%
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       {resource.url && (
         <a

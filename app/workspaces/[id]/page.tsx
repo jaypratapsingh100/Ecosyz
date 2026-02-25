@@ -15,6 +15,8 @@ interface Resource {
   tags?: string[]
   annotations: { id: string; body: string; createdAt: string }[]
   annotationCount?: number
+  plagiarismScore?: number
+  plagiarismStatus?: string
 }
 
 interface Workspace {
@@ -134,6 +136,8 @@ export default async function WorkspacePage({
       })),
       annotationCount: resource.annotations.length,
       tags: Array.isArray(resource.tags) ? resource.tags.map(tag => String(tag)) : undefined,
+      plagiarismScore: resource.plagiarismScore ?? undefined,
+      plagiarismStatus: resource.plagiarismStatus ?? undefined,
     }
   })
 

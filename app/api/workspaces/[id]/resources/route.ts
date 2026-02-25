@@ -40,12 +40,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: parse.error.message }, { status: 400 });
     }
 
+    const baseData = (parse.data.data ?? {}) as any;
+    const mergedData = {
+      ...baseData,
+      ...(parse.data.notes ? { notes: parse.data.notes } : {}),
+    };
+
     const resourceData = {
       workspaceId: id,
       title: parse.data.title,
       type: parse.data.type,
       tags: parse.data.tags,
-      data: parse.data.data ?? {},
+      data: mergedData,
       ...(parse.data.url && { url: parse.data.url }),
     };
 
