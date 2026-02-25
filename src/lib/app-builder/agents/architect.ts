@@ -36,10 +36,12 @@ export function parseArchitectResponse(text: string): ArchitectTaskPlan | null {
     if (!Array.isArray(steps)) return null;
     const implementationSteps = steps.map((s: unknown) => {
       const x = s as { filepath?: string; taskDescription?: string; priority?: string };
+      const priority: 'low' | 'medium' | 'high' =
+        (x.priority === 'high' || x.priority === 'medium' || x.priority === 'low') ? x.priority : 'medium';
       return {
         filepath: typeof x.filepath === 'string' ? x.filepath : '',
         taskDescription: typeof x.taskDescription === 'string' ? x.taskDescription : '',
-        priority: (x.priority === 'high' || x.priority === 'medium' || x.priority === 'low') ? x.priority : 'medium' as const,
+        priority,
       };
     }).filter((s) => s.filepath);
     return { implementationSteps };

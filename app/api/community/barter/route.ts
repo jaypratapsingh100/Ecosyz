@@ -37,14 +37,6 @@ function elaborateServerError(
 
 export async function GET(req: NextRequest) {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
-      return NextResponse.json(
-        { error: 'Not authenticated' },
-        { status: 401 }
-      );
-    }
-
     const { searchParams } = new URL(req.url);
     const status = searchParams.get('status');
     const page = parseInt(searchParams.get('page') || '1');

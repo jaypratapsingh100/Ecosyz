@@ -15,9 +15,10 @@ export interface ValidationError {
 }
 
 export interface ValidationWarning {
-  type: 'style' | 'best-practice' | 'compatibility';
+  type: 'style' | 'best-practice' | 'compatibility' | 'structure';
   message: string;
   line?: number;
+  suggestion?: string;
 }
 
 export function validateJSXCode(code: string, filename: string): ValidationResult {

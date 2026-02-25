@@ -59,7 +59,7 @@ export default function ProjectManager({
     });
   };
 
-  const handleStartEdit = (project: ProjectListItem, e: React.MouseEvent) => {
+  const handleStartEdit = (project: ProjectListItem, e: React.SyntheticEvent) => {
     e.stopPropagation();
     setEditingProjectId(project.id);
     setEditingTitle(project.title || '');
@@ -105,7 +105,7 @@ export default function ProjectManager({
     }
   };
 
-  const handleToggleVisibility = async (project: ProjectListItem, e: React.MouseEvent) => {
+  const handleToggleVisibility = async (project: ProjectListItem, e: React.SyntheticEvent) => {
     e.stopPropagation();
     if (!project) return;
 
@@ -365,7 +365,7 @@ export default function ProjectManager({
                           onKeyDown={(e) => {
                             if (e.key === 'Enter' || e.key === ' ') {
                               e.preventDefault();
-                              if (updatingVisibilityId !== project.id) handleToggleVisibility(project, e as React.MouseEvent);
+                              if (updatingVisibilityId !== project.id) handleToggleVisibility(project, e);
                             }
                           }}
                           className={`px-2 py-1 rounded-full text-[10px] font-medium border transition-colors cursor-pointer ${
@@ -388,7 +388,7 @@ export default function ProjectManager({
                               if (e.key === 'Enter' || e.key === ' ') {
                                 e.stopPropagation();
                                 e.preventDefault();
-                                handleStartEdit(project, e as any);
+                                handleStartEdit(project, e);
                               }
                             }}
                             className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/15 text-gray-300 hover:bg-white/10 hover:text-white transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-400/50"
