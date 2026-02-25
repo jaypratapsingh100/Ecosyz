@@ -313,7 +313,7 @@ export default function Header() {
                           className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
                           onClick={() => setDropdownOpen(false)}
                         >
-                          Profile
+                          {communityUserId ? 'View profile' : 'Profile'}
                         </Link>
                         <Link
                           href="/profile"
@@ -459,7 +459,7 @@ export default function Header() {
                 onClick={() => setMobileOpen(false)}
                 tabIndex={mobileOpen ? 0 : -1}
               >
-                Profile
+                {communityUserId ? 'View profile' : 'Profile'}
               </Link>
               <Link
                 href="/profile"

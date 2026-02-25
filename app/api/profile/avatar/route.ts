@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { supabaseServer } from '@/lib/supabaseServer';
 
-export async function POST() {
+const BUCKET = 'avatars';
+const MAX_SIZE = 2 * 1024 * 1024; // 2MB
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
+export async function POST(req: NextRequest) {
   try {
     const user = await getCurrentUser();
 
@@ -13,34 +18,85 @@ export async function POST() {
       );
     }
 
-    // Ensure user exists in database
     const { ensureUserInDb } = await import('../../../../src/lib/auth');
     await ensureUserInDb(user);
 
-    // Get the Prisma user record
-    const postPrismaUser = await prisma.user.findUnique({
+    const prismaUser = await prisma.user.findUnique({
       where: { supabaseId: user.id },
     });
 
-    if (!postPrismaUser) {
+    if (!prismaUser) {
       return NextResponse.json(
         { error: 'User not found in database' },
         { status: 404 }
       );
     }
 
-    // For now, just generate a random avatar URL instead of actual file upload
-    const avatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${Date.now()}`;
+    if (!supabaseServer) {
+      return NextResponse.json(
+        {
+          error:
+            'Avatar upload not configured. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY and create a public bucket "avatars" in Supabase Storage.',
+        },
+        { status: 503 }
+      );
+    }
 
-    // Update profile with avatar URL
+    const formData = await req.formData();
+    const file = formData.get('avatar') as File | null;
+
+    if (!file || !(file instanceof File) || file.size === 0) {
+      return NextResponse.json(
+        { error: 'No image file provided. Use form field "avatar".' },
+        { status: 400 }
+      );
+    }
+
+    if (file.size > MAX_SIZE) {
+      return NextResponse.json(
+        { error: 'File too large. Max 2MB.' },
+        { status: 400 }
+      );
+    }
+
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      return NextResponse.json(
+        { error: 'Invalid file type. Use JPG, PNG or WebP.' },
+        { status: 400 }
+      );
+    }
+
+    const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+    const safeExt = ['jpg', 'jpeg', 'png', 'webp'].includes(ext) ? ext : 'jpg';
+    const path = `${prismaUser.id}/avatar.${safeExt}`;
+    const buf = await file.arrayBuffer();
+
+    const { error } = await supabaseServer.storage
+      .from(BUCKET)
+      .upload(path, buf, {
+        contentType: file.type,
+        upsert: true,
+      });
+
+    if (error) {
+      console.error('Avatar upload error:', error);
+      return NextResponse.json(
+        { error: 'Upload failed. Please try again.' },
+        { status: 500 }
+      );
+    }
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!.replace(/\/$/, '');
+    const avatarUrl = `${supabaseUrl}/storage/v1/object/public/${BUCKET}/${path}`;
+
     const profile = await prisma.profile.upsert({
-      where: { userId: postPrismaUser.id },
+      where: { userId: prismaUser.id },
       update: {
         avatarUrl,
         updatedAt: new Date(),
       },
       create: {
-        userId: postPrismaUser.id,
+        userId: prismaUser.id,
         displayName: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
         avatarUrl,
         preferences: {
@@ -82,11 +138,9 @@ export async function PUT(req: NextRequest) {
       );
     }
 
-    // Ensure user exists in database
     const { ensureUserInDb } = await import('../../../../src/lib/auth');
     await ensureUserInDb(user);
 
-    // Get the Prisma user record for PUT
     const putPrismaUser = await prisma.user.findUnique({
       where: { supabaseId: user.id },
     });
@@ -108,7 +162,6 @@ export async function PUT(req: NextRequest) {
       );
     }
 
-    // Update profile with avatar URL
     const profile = await prisma.profile.upsert({
       where: { userId: putPrismaUser.id },
       update: {

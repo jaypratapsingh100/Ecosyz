@@ -18,19 +18,18 @@ export default function FollowButton({ userId, onFollowChange }: FollowButtonPro
 
   const checkFollowStatus = async () => {
     try {
-      // Check if current user is following this user
-      // This would require getting current user ID, which we can do via session
-      const sessionRes = await fetch('/api/auth/session');
-      if (sessionRes.ok) {
-        const sessionData = await sessionRes.json();
-        if (sessionData.user) {
-          // Check follow status - we'd need an endpoint for this
-          // For now, we'll assume not following initially
-          setIsFollowing(false);
-        }
+      setLoading(true);
+      const res = await fetch(`/api/community/users/${userId}/follow-status`);
+      if (res.ok) {
+        const data = await res.json();
+        setIsFollowing(data.isFollowing === true);
+      } else {
+        // Not authenticated or error: treat as not following
+        setIsFollowing(false);
       }
     } catch (error) {
       console.error('Failed to check follow status:', error);
+      setIsFollowing(false);
     } finally {
       setLoading(false);
     }

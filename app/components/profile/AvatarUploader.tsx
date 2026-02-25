@@ -4,6 +4,9 @@ import { useState, useRef } from 'react';
 import Image from 'next/image';
 import { toast } from 'sonner';
 
+const ACCEPT = 'image/jpeg,image/png,image/webp';
+const MAX_SIZE = 2 * 1024 * 1024; // 2MB
+
 interface AvatarUploaderProps {
   currentAvatarUrl?: string;
   onAvatarUpdate: (avatarUrl: string) => void;
@@ -18,46 +21,50 @@ export default function AvatarUploader({ currentAvatarUrl, onAvatarUpdate }: Ava
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      toast.error('Please select an image file');
+    if (!file.type.match(/^image\/(jpeg|png|webp)$/)) {
+      toast.error('Please select a JPG, PNG or WebP image');
       return;
     }
 
-    // Validate file size (2MB)
-    if (file.size > 2 * 1024 * 1024) {
+    if (file.size > MAX_SIZE) {
       toast.error('File size must be less than 2MB');
       return;
     }
 
-    // Create preview
     const reader = new FileReader();
     reader.onload = (e) => {
       setPreviewUrl(e.target?.result as string);
     };
     reader.readAsDataURL(file);
 
-    // Upload immediately
     await handleUpload(file);
+    event.target.value = '';
   };
 
   const handleUpload = async (file: File) => {
     setUploading(true);
     try {
-      // For now, just use a placeholder URL since storage isn't set up
-      // In production, this would upload to Supabase Storage
-      const mockAvatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${Date.now()}`;
+      const formData = new FormData();
+      formData.append('avatar', file);
 
-      // Simulate upload delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const response = await fetch('/api/profile/avatar', {
+        method: 'POST',
+        body: formData,
+      });
 
-      onAvatarUpdate(mockAvatarUrl);
-      setPreviewUrl(mockAvatarUrl);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Upload failed');
+      }
+
+      const avatarUrl = data.avatarUrl as string;
+      onAvatarUpdate(avatarUrl);
+      setPreviewUrl(avatarUrl);
       toast.success('Avatar updated successfully!');
     } catch (error) {
       console.error('Avatar upload error:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to upload avatar');
-      // Reset preview on error
       setPreviewUrl(currentAvatarUrl || null);
     } finally {
       setUploading(false);
@@ -69,47 +76,44 @@ export default function AvatarUploader({ currentAvatarUrl, onAvatarUpdate }: Ava
   };
 
   return (
-    <div className="flex items-center space-x-4">
-      {/* Avatar Preview */}
-      <div className="relative">
-        <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-gray-300 dark:border-gray-600">
+    <div className="flex items-center gap-4">
+      <div className="relative shrink-0">
+        <div className="w-24 h-24 rounded-full overflow-hidden border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700/50 flex items-center justify-center">
           {previewUrl ? (
-            <Image
-              src={previewUrl}
-              alt="Profile avatar"
-              width={80}
-              height={80}
-              className="w-full h-full object-cover"
-            />
+            previewUrl.startsWith('data:') ? (
+              <img
+                src={previewUrl}
+                alt="Profile avatar"
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <Image
+                src={previewUrl}
+                alt="Profile avatar"
+                width={96}
+                height={96}
+                className="w-full h-full object-cover"
+                unoptimized={previewUrl.startsWith('blob:') || previewUrl.includes('/storage/')}
+              />
+            )
           ) : (
-            <div className="w-full h-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
-              <svg
-                className="w-8 h-8 text-gray-400"
-                fill="currentColor"
-                viewBox="0 0 20 20"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
-                  clipRule="evenodd"
-                />
-              </svg>
-            </div>
+            <span className="text-sm text-gray-500 dark:text-gray-400 text-center px-2">
+              Profile avatar
+            </span>
           )}
         </div>
         {uploading && (
-          <div className="absolute inset-0 bg-black bg-opacity-50 rounded-full flex items-center justify-center">
-            <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+          <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center">
+            <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
           </div>
         )}
       </div>
 
-      {/* Upload Button */}
       <div>
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept={ACCEPT}
           onChange={handleFileSelect}
           className="hidden"
           data-testid="avatar-input"
@@ -119,7 +123,7 @@ export default function AvatarUploader({ currentAvatarUrl, onAvatarUpdate }: Ava
           onClick={handleClick}
           disabled={uploading}
           data-testid="avatar-upload"
-          className="px-4 py-2 text-sm font-medium text-emerald-600 dark:text-emerald-400 border border-emerald-600 dark:border-emerald-400 rounded-md hover:bg-emerald-50 dark:hover:bg-emerald-900/20 focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="px-4 py-2 text-sm font-medium text-emerald-600 dark:text-emerald-400 border border-emerald-600 dark:border-emerald-400 rounded-md hover:bg-emerald-50 dark:hover:bg-emerald-900/20 focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {uploading ? 'Uploading...' : 'Change Avatar'}
         </button>
