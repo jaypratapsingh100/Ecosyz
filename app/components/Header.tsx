@@ -20,6 +20,7 @@ export default function Header() {
   const [userData, setUserData] = useState<{ name?: string; email?: string; avatarUrl?: string } | null>(null);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [communityUserId, setCommunityUserId] = useState<string | null>(null);
+  const [profileCompletion, setProfileCompletion] = useState<number | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const mobileNavRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -60,6 +61,26 @@ export default function Header() {
               const profileData = await profileRes.json();
               if (profileData?.userId) {
                 setCommunityUserId(profileData.userId);
+              }
+
+              const profile = profileData?.profile;
+              if (profile) {
+                const fieldsToCheck = [
+                  profile.displayName,
+                  profile.bio,
+                  profile.primaryRole,
+                  profile.location || profile.affiliation,
+                ];
+
+                const filledCount = fieldsToCheck.filter(
+                  (value) => typeof value === 'string' && value.trim().length > 0,
+                ).length;
+
+                const completionPercent = Math.round(
+                  (filledCount / fieldsToCheck.length) * 100,
+                );
+
+                setProfileCompletion(completionPercent);
               }
             }
           } catch (error) {
@@ -342,7 +363,20 @@ export default function Header() {
                           className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
                           onClick={() => setDropdownOpen(false)}
                         >
-                          Profile settings
+                          <div className="flex items-center justify-between gap-2">
+                            <span>Profile settings</span>
+                            {typeof profileCompletion === 'number' && (
+                              <span
+                                className={`ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                  profileCompletion === 100
+                                    ? 'bg-emerald-500/10 text-emerald-300'
+                                    : 'bg-amber-500/10 text-amber-300'
+                                }`}
+                              >
+                                {profileCompletion}%
+                              </span>
+                            )}
+                          </div>
                         </Link>
                         {workspaceId ? (
                           <Link
@@ -484,11 +518,22 @@ export default function Header() {
               </Link>
               <Link
                 href="/profile"
-                className="w-full flex items-center justify-center gap-2 p-3 rounded focus:outline-none focus:ring-2 focus:ring-emerald-400/60 hover:bg-white/10 text-white font-medium"
+                className="w-full flex items-center justify-between gap-2 p-3 rounded focus:outline-none focus:ring-2 focus:ring-emerald-400/60 hover:bg-white/10 text-white font-medium"
                 onClick={() => setMobileOpen(false)}
                 tabIndex={mobileOpen ? 0 : -1}
               >
-                Profile settings
+                <span>Profile settings</span>
+                {typeof profileCompletion === 'number' && (
+                  <span
+                    className={`ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                      profileCompletion === 100
+                        ? 'bg-emerald-500/10 text-emerald-300'
+                        : 'bg-amber-500/10 text-amber-300'
+                    }`}
+                  >
+                    {profileCompletion}%
+                  </span>
+                )}
               </Link>
               {workspaceId ? (
                 <Link
