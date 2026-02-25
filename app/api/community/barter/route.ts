@@ -37,6 +37,14 @@ function elaborateServerError(
 
 export async function GET(req: NextRequest) {
   try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Not authenticated' },
+        { status: 401 }
+      );
+    }
+
     const { searchParams } = new URL(req.url);
     const status = searchParams.get('status');
     const page = parseInt(searchParams.get('page') || '1');
@@ -119,7 +127,7 @@ export async function POST(req: NextRequest) {
         description: parse.data.description,
         whatINeed: parse.data.whatINeed ?? null,
         whatIOffer: parse.data.whatIOffer ?? null,
-        attachments: parse.data.attachments ?? null,
+        // Attachments are currently disabled in the UI; skip storing them
         authorId: prismaUser.id,
       },
       include: {

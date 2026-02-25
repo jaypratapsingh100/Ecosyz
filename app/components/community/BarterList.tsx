@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 
@@ -43,6 +44,7 @@ interface BarterAsk {
 export default function BarterList() {
   const [asks, setAsks] = useState<BarterAsk[]>([]);
   const [loading, setLoading] = useState(true);
+  const [requiresAuth, setRequiresAuth] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -61,6 +63,7 @@ export default function BarterList() {
     const requestId = ++fetchAsksIdRef.current;
     try {
       setLoading(true);
+      setRequiresAuth(false);
       const params = new URLSearchParams();
       if (statusFilter === 'open' || statusFilter === 'closed') params.set('status', statusFilter);
       const res = await fetch(`/api/community/barter?${params}`);
@@ -69,6 +72,11 @@ export default function BarterList() {
       if (res.ok) {
         setAsks(data.asks || []);
       } else {
+        if (res.status === 401) {
+          setRequiresAuth(true);
+          setAsks([]);
+          return;
+        }
         const detailsStr = typeof data?.details === 'string' ? data.details.trim() : '';
         const hintStr = typeof data?.hint === 'string' ? data.hint.trim() : '';
         if (detailsStr || hintStr) {
@@ -135,6 +143,9 @@ export default function BarterList() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
+        if (res.status === 401) {
+          throw new Error('Please log in to post asks in the barter marketplace.');
+        }
         throw new Error(data.error || 'Failed to create ask');
       }
       toast.success('Ask posted');
@@ -167,6 +178,9 @@ export default function BarterList() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
+        if (res.status === 401) {
+          throw new Error('Please log in to pitch on barter asks.');
+        }
         throw new Error(data.error || 'Failed to pitch');
       }
       setPitchContent((prev) => ({ ...prev, [askId]: '' }));
@@ -190,6 +204,10 @@ export default function BarterList() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        if (res.status === 401) {
+          toast.error('Please log in to manage your barter asks.');
+          return;
+        }
         toast.error(data?.error || 'Failed to close ask');
         return;
       }
@@ -207,88 +225,112 @@ export default function BarterList() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-4 py-2 bg-[#172421]/90 border border-teal-400/20 rounded-lg text-white focus:outline-none focus:border-amber-400"
-          >
-            <option value="">All</option>
-            <option value="open">Open</option>
-            <option value="closed">Closed</option>
-          </select>
-        </div>
-        <button
-          type="button"
-          onClick={() => setShowCreateForm(!showCreateForm)}
-          className="px-6 py-2 bg-gradient-to-r from-amber-400 to-orange-400 text-gray-900 font-semibold rounded-lg hover:scale-105 transition shadow-lg shadow-amber-400/20"
-        >
-          {showCreateForm ? 'Cancel' : '+ Post an ask'}
-        </button>
-      </div>
-
-      {showCreateForm && (
-        <form
-          onSubmit={handleCreateAsk}
-          className="glass-card glass-border p-6 rounded-xl space-y-4"
-        >
-          <h3 className="text-lg font-semibold text-amber-300">Post your ask</h3>
-          <input
-            type="text"
-            value={formTitle}
-            onChange={(e) => setFormTitle(e.target.value)}
-            placeholder="Title"
-            className="w-full px-4 py-2 bg-[#172421]/90 border border-teal-400/20 rounded-lg text-white placeholder-teal-100/50 focus:outline-none focus:border-amber-400"
-            required
-          />
-          <textarea
-            value={formDescription}
-            onChange={(e) => setFormDescription(e.target.value)}
-            placeholder="Description"
-            rows={3}
-            className="w-full px-4 py-2 bg-[#172421]/90 border border-teal-400/20 rounded-lg text-white placeholder-teal-100/50 focus:outline-none focus:border-amber-400 resize-none"
-            required
-          />
-          <textarea
-            value={formWhatINeed}
-            onChange={(e) => setFormWhatINeed(e.target.value)}
-            placeholder="What I need (optional)"
-            rows={2}
-            className="w-full px-4 py-2 bg-[#172421]/90 border border-teal-400/20 rounded-lg text-white placeholder-teal-100/50 focus:outline-none focus:border-amber-400 resize-none"
-          />
-          <textarea
-            value={formWhatIOffer}
-            onChange={(e) => setFormWhatIOffer(e.target.value)}
-            placeholder="What I offer (optional)"
-            rows={2}
-            className="w-full px-4 py-2 bg-[#172421]/90 border border-teal-400/20 rounded-lg text-white placeholder-teal-100/50 focus:outline-none focus:border-amber-400 resize-none"
-          />
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              disabled={creating}
-              className="px-4 py-2 bg-amber-400 text-gray-900 font-medium rounded-lg hover:bg-amber-300 disabled:opacity-50"
+      {requiresAuth && !loading && (
+        <div className="glass-card glass-border rounded-xl p-8 text-center space-y-4">
+          <h3 className="text-xl font-semibold text-amber-300">
+            Log in to access the barter marketplace
+          </h3>
+          <p className="text-teal-100/80 text-sm max-w-md mx-auto">
+            Barter asks and pitches are only visible to community members. Sign in to
+            see active barters and post your own.
+          </p>
+          <div className="flex justify-center gap-3">
+            <Link
+              href="/auth"
+              className="px-6 py-2 bg-gradient-to-r from-amber-400 to-orange-400 text-gray-900 font-semibold rounded-lg hover:scale-105 transition shadow-lg shadow-amber-400/20"
             >
-              {creating ? 'Posting...' : 'Post ask'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowCreateForm(false)}
-              className="px-4 py-2 border border-teal-400/30 text-teal-100 rounded-lg hover:bg-white/5"
-            >
-              Cancel
-            </button>
+              Log in / Sign up
+            </Link>
           </div>
-        </form>
+        </div>
       )}
 
-      {loading ? (
-        <div className="text-center py-12 text-teal-100/80">Loading asks...</div>
-      ) : asks.length === 0 ? (
-        <div className="text-center py-12 text-teal-100/80">No barter asks yet. Post one to get started!</div>
-      ) : (
-        <div className="space-y-4">
+      {!requiresAuth && (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="px-4 py-2 bg-[#172421]/90 border border-teal-400/20 rounded-lg text-white focus:outline-none focus:border-amber-400"
+              >
+                <option value="">All</option>
+                <option value="open">Open</option>
+                <option value="closed">Closed</option>
+              </select>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowCreateForm(!showCreateForm)}
+              className="px-6 py-2 bg-gradient-to-r from-amber-400 to-orange-400 text-gray-900 font-semibold rounded-lg hover:scale-105 transition shadow-lg shadow-amber-400/20"
+            >
+              {showCreateForm ? 'Cancel' : '+ Post an ask'}
+            </button>
+          </div>
+
+          {showCreateForm && (
+            <form
+              onSubmit={handleCreateAsk}
+              className="glass-card glass-border p-6 rounded-xl space-y-4"
+            >
+              <h3 className="text-lg font-semibold text-amber-300">Post your ask</h3>
+              <input
+                type="text"
+                value={formTitle}
+                onChange={(e) => setFormTitle(e.target.value)}
+                placeholder="Title"
+                className="w-full px-4 py-2 bg-[#172421]/90 border border-teal-400/20 rounded-lg text-white placeholder-teal-100/50 focus:outline-none focus:border-amber-400"
+                required
+              />
+              <textarea
+                value={formDescription}
+                onChange={(e) => setFormDescription(e.target.value)}
+                placeholder="Description"
+                rows={3}
+                className="w-full px-4 py-2 bg-[#172421]/90 border border-teal-400/20 rounded-lg text-white placeholder-teal-100/50 focus:outline-none focus:border-amber-400 resize-none"
+                required
+              />
+              <textarea
+                value={formWhatINeed}
+                onChange={(e) => setFormWhatINeed(e.target.value)}
+                placeholder="What I need (optional)"
+                rows={2}
+                className="w-full px-4 py-2 bg-[#172421]/90 border border-teal-400/20 rounded-lg text-white placeholder-teal-100/50 focus:outline-none focus:border-amber-400 resize-none"
+              />
+              <textarea
+                value={formWhatIOffer}
+                onChange={(e) => setFormWhatIOffer(e.target.value)}
+                placeholder="What I offer (optional)"
+                rows={2}
+                className="w-full px-4 py-2 bg-[#172421]/90 border border-teal-400/20 rounded-lg text-white placeholder-teal-100/50 focus:outline-none focus:border-amber-400 resize-none"
+              />
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  disabled={creating}
+                  className="px-4 py-2 bg-amber-400 text-gray-900 font-medium rounded-lg hover:bg-amber-300 disabled:opacity-50"
+                >
+                  {creating ? 'Posting...' : 'Post ask'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateForm(false)}
+                  className="px-4 py-2 border border-teal-400/30 text-teal-100 rounded-lg hover:bg-white/5"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+
+          {loading ? (
+            <div className="text-center py-12 text-teal-100/80">Loading asks...</div>
+          ) : asks.length === 0 ? (
+            <div className="text-center py-12 text-teal-100/80">
+              No barter asks yet. Post one to get started!
+            </div>
+          ) : (
+            <div className="space-y-4">
           {asks.map((ask) => (
             <div
               key={ask.id}
@@ -317,9 +359,12 @@ export default function BarterList() {
                   </div>
                   <p className="text-teal-100/80 text-sm line-clamp-2">{ask.description}</p>
                   <div className="flex items-center gap-3 mt-2 text-sm text-teal-100/60">
-                    <span>
+                    <Link
+                      href={`/community/users/${ask.author.id}`}
+                      className="hover:text-amber-300 transition-colors"
+                    >
                       {ask.author.name || ask.author.email?.split('@')[0] || 'Anonymous'}
-                    </span>
+                    </Link>
                     <span>·</span>
                     <span>{ask._count?.pitches ?? ask.pitches?.length ?? 0} pitches</span>
                   </div>
@@ -424,23 +469,35 @@ export default function BarterList() {
                             key={pitch.id}
                             className="flex gap-3 p-3 rounded-lg bg-[#172421]/80 border border-teal-400/10"
                           >
-                            {pitch.author.avatarUrl ? (
-                              <Image
-                                src={pitch.author.avatarUrl}
-                                alt=""
-                                width={32}
-                                height={32}
-                                className="rounded-full shrink-0"
-                              />
-                            ) : (
-                              <div className="w-8 h-8 rounded-full bg-amber-400/20 flex items-center justify-center text-amber-300 text-sm shrink-0">
-                                {(pitch.author.name || pitch.author.email || '?').charAt(0).toUpperCase()}
-                              </div>
-                            )}
+                            <Link
+                              href={`/community/users/${pitch.author.id}`}
+                              className="shrink-0"
+                            >
+                              {pitch.author.avatarUrl ? (
+                                <Image
+                                  src={pitch.author.avatarUrl}
+                                  alt={pitch.author.name || pitch.author.email || 'User avatar'}
+                                  width={32}
+                                  height={32}
+                                  className="rounded-full"
+                                />
+                              ) : (
+                                <div className="w-8 h-8 rounded-full bg-amber-400/20 flex items-center justify-center text-amber-300 text-sm">
+                                  {(pitch.author.name || pitch.author.email || '?')
+                                    .charAt(0)
+                                    .toUpperCase()}
+                                </div>
+                              )}
+                            </Link>
                             <div className="min-w-0 flex-1">
                               <p className="text-xs text-teal-100/60 mb-1">
-                                {pitch.author.name || pitch.author.email} ·{' '}
-                                {new Date(pitch.createdAt).toLocaleDateString()}
+                                <Link
+                                  href={`/community/users/${pitch.author.id}`}
+                                  className="hover:text-amber-300 transition-colors"
+                                >
+                                  {pitch.author.name || pitch.author.email}
+                                </Link>{' '}
+                                · {new Date(pitch.createdAt).toLocaleDateString()}
                               </p>
                               <p className="text-teal-100/90 text-sm whitespace-pre-wrap">{pitch.content}</p>
                             </div>
@@ -476,7 +533,9 @@ export default function BarterList() {
               )}
             </div>
           ))}
-        </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
