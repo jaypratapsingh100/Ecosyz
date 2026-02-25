@@ -315,6 +315,7 @@ export default function AdminApiUsagePage() {
                 const meta = CATEGORY_META[cat];
                 const Icon = meta?.icon ?? Activity;
                 const totalInCat = rows.reduce((s, r) => s + r.countToday, 0);
+                const totalLimitInCat = rows.reduce((s, r) => s + (r.dailyLimit ?? 0), 0);
                 const maxInCat = Math.max(
                   ...rows.map((r) => r.countToday),
                   ...rows.map((r) => r.dailyLimit ?? 0).filter((l) => l > 0),
@@ -356,7 +357,15 @@ export default function AdminApiUsagePage() {
                           <PieChart data={pieData} size={100} strokeWidth={14} />
                         </div>
                         <div>
-                          <h3 className="text-xs font-medium text-slate-400 mb-2">Usage vs limit</h3>
+                          <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-xs font-medium text-slate-400">Usage vs limit</h3>
+                            <span className="text-[11px] text-slate-400 tabular-nums">
+                              {totalInCat.toLocaleString()}
+                              {totalLimitInCat > 0 && (
+                                <span className="text-slate-500">/ {totalLimitInCat.toLocaleString()}</span>
+                              )}
+                            </span>
+                          </div>
                           <BarChart data={barData} maxVal={maxInCat} barColor={meta?.barClass} />
                         </div>
                       </div>

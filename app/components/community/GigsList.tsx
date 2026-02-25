@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { toast } from 'sonner';
 
 interface Author {
@@ -485,21 +486,6 @@ export default function GigsList() {
                     )}
                   </div>
                   <p className="text-teal-100/80 text-sm line-clamp-2">{gig.description}</p>
-                  <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-teal-100/60">
-                    <span>
-                      {gig.author.name || gig.author.email?.split('@')[0] || 'Anonymous'}
-                    </span>
-                    <span>·</span>
-                    <span>{formatPrice(gig)}</span>
-                    {gig.deliveryTimeDays && (
-                      <>
-                        <span>·</span>
-                        <span>Delivery in {gig.deliveryTimeDays} days</span>
-                      </>
-                    )}
-                    <span>·</span>
-                    <span>{gig._count?.requests ?? gig.requests?.length ?? 0} requests</span>
-                  </div>
                 </div>
                 <svg
                   className={`w-5 h-5 text-teal-100/60 shrink-0 transition-transform ${
@@ -512,6 +498,25 @@ export default function GigsList() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
               </button>
+
+              <div className="flex flex-wrap items-center gap-3 px-6 pb-4 text-xs text-teal-100/60 border-t border-teal-400/10">
+                <Link
+                  href={`/community/users/${gig.author.id}`}
+                  className="hover:text-emerald-300 transition-colors"
+                >
+                  {gig.author.name || gig.author.email?.split('@')[0] || 'Anonymous'}
+                </Link>
+                <span>·</span>
+                <span>{formatPrice(gig)}</span>
+                {gig.deliveryTimeDays && (
+                  <>
+                    <span>·</span>
+                    <span>Delivery in {gig.deliveryTimeDays} days</span>
+                  </>
+                )}
+                <span>·</span>
+                <span>{gig._count?.requests ?? gig.requests?.length ?? 0} requests</span>
+              </div>
 
               {expandedId === gig.id && (
                 <div className="border-t border-teal-400/20 p-6 space-y-4 bg-[#061a18]/70">
@@ -563,23 +568,35 @@ export default function GigsList() {
                             key={req.id}
                             className="flex gap-3 p-3 rounded-lg bg-[#172421]/80 border border-teal-400/10"
                           >
-                            {req.author.avatarUrl ? (
-                              <Image
-                                src={req.author.avatarUrl}
-                                alt=""
-                                width={32}
-                                height={32}
-                                className="rounded-full shrink-0"
-                              />
-                            ) : (
-                              <div className="w-8 h-8 rounded-full bg-emerald-400/20 flex items-center justify-center text-emerald-300 text-sm shrink-0">
-                                {(req.author.name || req.author.email || '?').charAt(0).toUpperCase()}
-                              </div>
-                            )}
+                            <Link
+                              href={`/community/users/${req.author.id}`}
+                              className="shrink-0"
+                            >
+                              {req.author.avatarUrl ? (
+                                <Image
+                                  src={req.author.avatarUrl}
+                                  alt={req.author.name || req.author.email || 'User avatar'}
+                                  width={32}
+                                  height={32}
+                                  className="rounded-full"
+                                />
+                              ) : (
+                                <div className="w-8 h-8 rounded-full bg-emerald-400/20 flex items-center justify-center text-emerald-300 text-sm">
+                                  {(req.author.name || req.author.email || '?')
+                                    .charAt(0)
+                                    .toUpperCase()}
+                                </div>
+                              )}
+                            </Link>
                             <div className="min-w-0 flex-1">
                               <p className="text-xs text-teal-100/60 mb-1">
-                                {req.author.name || req.author.email} ·{' '}
-                                {new Date(req.createdAt).toLocaleDateString()}
+                                <Link
+                                  href={`/community/users/${req.author.id}`}
+                                  className="hover:text-emerald-300 transition-colors"
+                                >
+                                  {req.author.name || req.author.email}
+                                </Link>{' '}
+                                · {new Date(req.createdAt).toLocaleDateString()}
                                 {req.budget != null && (
                                   <>
                                     {' '}

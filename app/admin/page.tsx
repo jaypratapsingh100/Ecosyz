@@ -62,7 +62,7 @@ export default function AdminPage() {
     <div className="relative z-10 max-w-7xl mx-auto p-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-white">Admin Dashboard</h1>
-        <p className="text-slate-300 mt-1">Manage analytics, searches, and newsletters</p>
+        <p className="text-slate-300 mt-1">Manage analytics, searches, newsletters, API usage, and architecture docs</p>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Link
@@ -118,6 +118,20 @@ export default function AdminPage() {
             <div>
               <h2 className="text-xl font-semibold text-white">API Usage</h2>
               <p className="text-slate-400 text-sm mt-1">Track requests and daily limits for news, search, and LLM APIs</p>
+            </div>
+          </div>
+        </Link>
+        <Link
+          href="/admin/architecture"
+          className="group block p-6 bg-slate-900/90 backdrop-blur-sm rounded-xl border border-slate-700/50 hover:border-cyan-500/50 transition-colors"
+        >
+          <div className="flex items-center gap-4">
+            <div className="p-3 rounded-lg bg-cyan-500/20 text-cyan-400 group-hover:bg-cyan-500/30 transition-colors">
+              <Activity className="w-8 h-8" />
+            </div>
+            <div>
+              <h2 className="text-xl font-semibold text-white">Architecture</h2>
+              <p className="text-slate-400 text-sm mt-1">View the system architecture and C4 model docs</p>
             </div>
           </div>
         </Link>
