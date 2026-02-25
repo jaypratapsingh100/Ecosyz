@@ -49,6 +49,13 @@ export default function AdminLayout({
               <Activity className="w-5 h-5" />
               <span>API Usage</span>
             </Link>
+            <Link
+              href="/admin/architecture"
+              className="flex items-center gap-2 text-slate-400 hover:text-cyan-400 transition-colors"
+            >
+              <Activity className="w-5 h-5" />
+              <span>Architecture</span>
+            </Link>
           </div>
         </div>
       </nav>

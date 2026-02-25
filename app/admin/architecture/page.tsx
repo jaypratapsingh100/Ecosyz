@@ -1,4 +1,7 @@
 import type { Metadata } from 'next';
+import { redirect } from 'next/navigation';
+import { getCurrentUser } from '@/lib/auth';
+import { isAdmin } from '@/lib/admin';
 
 export const metadata: Metadata = {
   title: 'System Architecture | Admin | Ecosyz',
@@ -6,7 +9,16 @@ export const metadata: Metadata = {
     'System architecture, C4 model, key flows, and deployment overview of the Ecosyz platform for admins, developers, and interns.',
 };
 
-export default function AdminArchitecturePage() {
+export default async function AdminArchitecturePage() {
+  const user = await getCurrentUser();
+  if (!user?.email) {
+    redirect('/auth');
+  }
+  const userIsAdmin = await isAdmin();
+  if (!userIsAdmin) {
+    redirect('/');
+  }
+
   return (
     <div className="relative z-10 max-w-7xl mx-auto p-8 space-y-10">
       {/* Overview */}
