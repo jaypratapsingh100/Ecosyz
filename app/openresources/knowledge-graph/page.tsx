@@ -93,7 +93,7 @@ function KnowledgeGraphPage() {
               </div>
             </div>
           ) : results.length > 0 ? (
-            <div className="h-[60vh] sm:h-[70vh] md:h-[calc(100vh-260px)] min-h-[360px] sm:min-h-[480px] md:min-h-[560px] rounded-xl overflow-y-auto md:overflow-hidden bg-gradient-to-br from-gray-900/95 via-gray-800/90 to-gray-900/95 border border-purple-500/30 shadow-2xl shadow-purple-500/20 backdrop-blur-xl">
+            <div className="h-[70vh] min-h-[420px] sm:h-[70vh] md:h-[calc(100vh-260px)] sm:min-h-[480px] md:min-h-[560px] rounded-xl overflow-y-auto md:overflow-hidden bg-gradient-to-br from-gray-900/95 via-gray-800/90 to-gray-900/95 border border-purple-500/30 shadow-2xl shadow-purple-500/20 backdrop-blur-xl">
               <KnowledgeGraph
                 resources={results.map((r) => ({
                   id: r.id,

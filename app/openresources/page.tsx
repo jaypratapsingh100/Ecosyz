@@ -530,11 +530,11 @@ Output ONLY the JSON object, no markdown code fence, no extra text. Example shap
               </button>
             )}
 
-            {/* Chat Sidebar - Always mounted so session is preserved when closed (like ChatGPT) */}
+            {/* Chat Sidebar - Always mounted so session is preserved (like ChatGPT) */}
             <div
               className={`flex-shrink-0 transition-all duration-300 overflow-hidden border-r border-white/10 ${
                 chatCollapsed
-                  ? 'w-0 max-w-0 min-w-0 opacity-0 pointer-events-none md:h-full'
+                  ? 'w-0 max-w-0 min-w-0 h-0 md:h-full opacity-0 pointer-events-none'
                   : 'w-full md:w-[40%] h-[50vh] md:h-full'
               }`}
             >
@@ -576,7 +576,7 @@ Output ONLY the JSON object, no markdown code fence, no extra text. Example shap
                 }}
               />
             </div>
-            
+
             {/* Content - Right side (60%) */}
             <div className={`flex-1 flex flex-col px-2 sm:px-4 md:px-6 lg:px-8 transition-all duration-300 md:h-full md:overflow-y-auto hide-scrollbar ${chatCollapsed ? 'w-full' : 'w-full md:w-[60%]'}`}>
               {/* Chat Search Results - Horizontal Scrolling Cards */}
@@ -2013,7 +2013,10 @@ Output ONLY the JSON object, no markdown code fence, no extra text. Example shap
             year: resourceToSave.year,
             source: resourceToSave.source,
           }}
+          initiallyOpen
+          showTriggerButton={false}
           onSaved={handleSaveModalClose}
+          onClose={handleSaveModalClose}
         />
       )}
     </div>

@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, ZoomIn, ZoomOut, RotateCcw, Info, Eye, X, HelpCircle, Maximize2, Minimize2, Tag } from 'lucide-react';
+import { Search, ZoomIn, ZoomOut, RotateCcw, Info, Eye, X, HelpCircle, Maximize2, Minimize2, Tag, ChevronDown, ChevronUp } from 'lucide-react';
 import type { Resource } from '../../src/types/resource';
 import type { Core } from 'cytoscape';
 
@@ -81,6 +81,7 @@ export default function KnowledgeGraph({ resources, onSelect, onSave, onClose }:
   const [is3D, setIs3D] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showEdgeLabels, setShowEdgeLabels] = useState(false);
+  const [mobileHeaderExpanded, setMobileHeaderExpanded] = useState(false);
   const [stats, setStats] = useState<{
     nodes: number;
     edges: number;
@@ -96,6 +97,20 @@ export default function KnowledgeGraph({ resources, onSelect, onSave, onClose }:
       if (!done) setShowFirstTimeHint(true);
     }
   }, [resources.length]);
+
+  // Default: expand controls on desktop, collapse on small screens
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const isDesktop = window.innerWidth >= 640;
+    setMobileHeaderExpanded(isDesktop);
+  }, []);
+
+  // When entering fullscreen, start with controls collapsed; user can expand if needed
+  useEffect(() => {
+    if (isFullscreen) {
+      setMobileHeaderExpanded(false);
+    }
+  }, [isFullscreen]);
 
   const buildGraph = (resources: Resource[]) => {
     const nodes: KGNode[] = [];
@@ -466,25 +481,37 @@ export default function KnowledgeGraph({ resources, onSelect, onSave, onClose }:
           <motion.div 
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex items-center justify-between p-4 border-b border-emerald-500/20 bg-gray-800/60 backdrop-blur-sm"
+            className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 border-b border-emerald-500/20 bg-gray-800/60 backdrop-blur-sm gap-3"
           >
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-2">
-                <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                  <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
-                  Explore connections
-                </h3>
+            <div className="flex flex-col gap-1 min-w-0">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                    <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse flex-shrink-0"></div>
+                    Explore connections
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setShowHelp(true)}
+                    className="p-1 rounded-full text-slate-400 hover:text-white hover:bg-emerald-500/20 transition-colors flex-shrink-0"
+                    title="How to read this"
+                    aria-label="How to read this"
+                  >
+                    <HelpCircle className="h-4 w-4" />
+                  </button>
+                  <span className="text-xs text-slate-400 hidden sm:inline">Knowledge graph</span>
+                </div>
                 <button
                   type="button"
-                  onClick={() => setShowHelp(true)}
-                  className="p-1 rounded-full text-slate-400 hover:text-white hover:bg-emerald-500/20 transition-colors"
-                  title="How to read this"
-                  aria-label="How to read this"
+                  onClick={() => setMobileHeaderExpanded((v) => !v)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-200 text-xs font-medium"
+                  aria-expanded={mobileHeaderExpanded}
                 >
-                  <HelpCircle className="h-4 w-4" />
+                  {mobileHeaderExpanded ? 'Hide controls' : 'Stats & filters'}
+                  {mobileHeaderExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                 </button>
-                <span className="text-xs text-slate-400 hidden sm:inline">Knowledge graph</span>
               </div>
+              <div className={mobileHeaderExpanded ? 'block' : 'hidden'}>
               <p className="text-xs text-slate-400">A map of how your search results connect by topic, author, and source so you can spot clusters and key people fast. Click any item to see details; use search to focus.</p>
               {stats && (
                 <motion.div 
@@ -600,9 +627,10 @@ export default function KnowledgeGraph({ resources, onSelect, onSave, onClose }:
                   </button>
                 </div>
               </div>
+              </div>
             </div>
             
-            <div className="flex items-center gap-2">
+            <div className={`${mobileHeaderExpanded ? 'flex' : 'hidden'} items-center gap-2 flex-shrink-0`}>
               {/* Search */}
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -788,7 +816,7 @@ export default function KnowledgeGraph({ resources, onSelect, onSave, onClose }:
           </AnimatePresence>
 
           {/* Graph container */}
-          <div className="relative flex-1 min-h-[400px]">
+          <div className="relative flex-1 min-h-[50vh] sm:min-h-[400px]">
             {!is3D ? (
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -886,151 +914,173 @@ export default function KnowledgeGraph({ resources, onSelect, onSave, onClose }:
                   initial={{ opacity: 0, y: 20, scale: 0.95 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 20, scale: 0.95 }}
-                  className="absolute bottom-4 right-4 bg-gray-800/80 backdrop-blur-md rounded-xl p-4 border border-emerald-500/30 shadow-xl max-w-sm"
+                  className={
+                    expanded
+                      ? 'fixed inset-0 z-40 flex items-center justify-center p-4 bg-black/70'
+                      : 'absolute bottom-4 right-4 z-30'
+                  }
+                  onClick={() => expanded && setExpanded(false)}
                 >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <div 
-                        className="w-3 h-3 rounded" 
-                        style={{ 
-                          backgroundColor: 
-                            selectedNode.type === 'resource' ? '#8b5cf6' :
-                            selectedNode.type === 'author' ? '#3b82f6' :
-                            selectedNode.type === 'tag' ? '#10b981' :
-                            selectedNode.type === 'source' ? '#f97316' :
-                            selectedNode.type === 'type' ? '#eab308' : '#8b5cf6'
-                        }}
-                      ></div>
-                      <span className="text-xs px-2 py-1 bg-gray-700/60 border border-emerald-500/30 rounded text-slate-300 font-medium">
-                        {TYPE_LABELS[selectedNode.type] ?? selectedNode.type}
-                      </span>
+                  <div
+                    className={`bg-gray-800/90 backdrop-blur-md rounded-xl p-4 border border-emerald-500/30 shadow-xl ${
+                      expanded ? 'w-full max-w-2xl max-h-[80vh] overflow-y-auto' : 'max-w-sm'
+                    }`}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <div 
+                          className="w-3 h-3 rounded" 
+                          style={{ 
+                            backgroundColor: 
+                              selectedNode.type === 'resource' ? '#8b5cf6' :
+                              selectedNode.type === 'author' ? '#3b82f6' :
+                              selectedNode.type === 'tag' ? '#10b981' :
+                              selectedNode.type === 'source' ? '#f97316' :
+                              selectedNode.type === 'type' ? '#eab308' : '#8b5cf6'
+                          }}
+                        ></div>
+                        <span className="text-xs px-2 py-1 bg-gray-700/60 border border-emerald-500/30 rounded text-slate-300 font-medium">
+                          {TYPE_LABELS[selectedNode.type] ?? selectedNode.type}
+                        </span>
+                      </div>
+                      {expanded && (
+                        <button
+                          type="button"
+                          onClick={() => setExpanded(false)}
+                          className="p-1 rounded-full text-slate-400 hover:text-white hover:bg-emerald-500/20 transition-colors"
+                          aria-label="Close details"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
                     </div>
-                  </div>
-                  
-                  <h4 className="text-white font-semibold text-sm mb-1 leading-tight">
-                    {selectedNode.meta?.fullTitle || selectedNode.label}
-                  </h4>
-                  <p className="text-xs text-slate-400 mb-3">
-                    {NODE_TYPE_DESCRIPTIONS[selectedNode.type] ?? 'This node is connected to others in the graph.'}
-                  </p>
-                  
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    <motion.button
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      className="px-3 py-1.5 bg-blue-500/80 hover:bg-blue-500 text-white rounded-lg text-xs font-medium transition-all"
-                      onClick={() => setExpanded(!expanded)}
-                    >
-                      {expanded ? 'Collapse' : 'Details'}
-                    </motion.button>
-                    {!is3D && cy && (
+                    
+                    <h4 className={`text-white font-semibold mb-1 leading-tight ${expanded ? 'text-base' : 'text-sm'}`}>
+                      {selectedNode.meta?.fullTitle || selectedNode.label}
+                    </h4>
+                    <p className="text-xs text-slate-400 mb-3">
+                      {NODE_TYPE_DESCRIPTIONS[selectedNode.type] ?? 'This node is connected to others in the graph.'}
+                    </p>
+                    
+                    <div className="flex flex-wrap gap-2 mb-3">
                       <motion.button
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
-                        className="px-3 py-1.5 bg-gray-700/80 hover:bg-gray-700 text-white rounded-lg text-xs font-medium transition-all"
-                        onClick={focusSelectedNode}
+                        className="px-3 py-1.5 bg-blue-500/80 hover:bg-blue-500 text-white rounded-lg text-xs font-medium transition-all"
+                        onClick={() => setExpanded(!expanded)}
                       >
-                        Focus on this
+                        {expanded ? 'Collapse' : 'Details'}
                       </motion.button>
-                    )}
-                    {selectedNode.type === 'resource' && onSave && getResourceDetails() && (
-                      <motion.button
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        className="px-3 py-1.5 bg-emerald-500/80 hover:bg-emerald-500 text-white rounded-lg text-xs font-medium transition-all"
-                        onClick={() => onSave(getResourceDetails()!)}
-                      >
-                        Save to Workspace
-                      </motion.button>
-                    )}
-                  </div>
-                  
-                  <AnimatePresence>
-                    {expanded && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="space-y-3 text-xs overflow-hidden"
-                      >
-                        {selectedNode.type === 'resource' && getResourceDetails() && (
-                          <div className="space-y-2">
-                            {getResourceDetails()?.summary && (
-                              <div>
-                                <span className="font-medium text-slate-200">Summary:</span>
-                                <p className="text-slate-400 mt-1 leading-relaxed">
-                                  {(() => {
-                                    const summary = getResourceDetails()?.summary;
-                                    const summaryStr = typeof summary === 'string' ? summary : String(summary || '');
-                                    return summaryStr.substring(0, 200) + (summaryStr.length > 200 ? '...' : '');
-                                  })()}
-                                </p>
-                              </div>
-                            )}
-                            {getResourceDetails()?.url && (
-                              <div>
-                                <span className="font-medium text-slate-200">URL:</span>
-                                <a 
-                                  href={getResourceDetails()?.url} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  className="ml-2 text-blue-400 hover:text-blue-300 underline break-all"
-                                >
-                                  {(() => {
-                                    const url = getResourceDetails()?.url;
-                                    return url && url.length > 40 ? `${url.substring(0, 40)}...` : url;
-                                  })()}
-                                </a>
-                              </div>
-                            )}
-                            {getResourceDetails()?.license && (
-                              <div>
-                                <span className="font-medium text-slate-200">License:</span>
-                                <span className="ml-2 text-slate-400">{getResourceDetails()?.license}</span>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        
-                        {getConnectedItems().length > 0 && (
-                          <div>
-                            <span className="font-medium text-slate-200">Connected to (click to select):</span>
-                            <div className="mt-1 max-h-20 overflow-y-auto">
-                              {getConnectedItems().slice(0, 5).map((item: KGNode) => (
-                                <button
-                                  key={item.id}
-                                  type="button"
-                                  onClick={() => selectNode(item)}
-                                  className="w-full flex items-center gap-2 py-1 text-left rounded hover:bg-gray-700/50 transition-colors"
-                                >
-                                  <div 
-                                    className="w-2 h-2 rounded shrink-0" 
-                                    style={{ 
-                                      backgroundColor: 
-                                        item.type === 'resource' ? '#8b5cf6' :
-                                        item.type === 'author' ? '#3b82f6' :
-                                        item.type === 'tag' ? '#10b981' :
-                                        item.type === 'source' ? '#f97316' :
-                                        item.type === 'type' ? '#eab308' : '#8b5cf6'
-                                    }}
-                                  />
-                                  <span className="text-slate-400 truncate">
-                                    {item.label.length > 25 ? `${item.label.substring(0, 25)}...` : item.label}
-                                  </span>
-                                  <span className="text-slate-500 shrink-0">({TYPE_LABELS[item.type] ?? item.type})</span>
-                                </button>
-                              ))}
-                              {getConnectedItems().length > 5 && (
-                                <div className="text-slate-500 text-xs mt-1">
-                                  +{getConnectedItems().length - 5} more connections
+                      {!is3D && cy && (
+                        <motion.button
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          className="px-3 py-1.5 bg-gray-700/80 hover:bg-gray-700 text-white rounded-lg text-xs font-medium transition-all"
+                          onClick={focusSelectedNode}
+                        >
+                          Focus on this
+                        </motion.button>
+                      )}
+                      {selectedNode.type === 'resource' && onSave && getResourceDetails() && (
+                        <motion.button
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          className="px-3 py-1.5 bg-emerald-500/80 hover:bg-emerald-500 text-white rounded-lg text-xs font-medium transition-all"
+                          onClick={() => onSave(getResourceDetails()!)}
+                        >
+                          Save to Workspace
+                        </motion.button>
+                      )}
+                    </div>
+                    
+                    <AnimatePresence>
+                      {expanded && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="space-y-3 text-xs overflow-hidden"
+                        >
+                          {selectedNode.type === 'resource' && getResourceDetails() && (
+                            <div className="space-y-2">
+                              {getResourceDetails()?.summary && (
+                                <div>
+                                  <span className="font-medium text-slate-200">Summary:</span>
+                                  <p className="text-slate-400 mt-1 leading-relaxed">
+                                    {(() => {
+                                      const summary = getResourceDetails()?.summary;
+                                      const summaryStr = typeof summary === 'string' ? summary : String(summary || '');
+                                      return summaryStr.substring(0, 200) + (summaryStr.length > 200 ? '...' : '');
+                                    })()}
+                                  </p>
+                                </div>
+                              )}
+                              {getResourceDetails()?.url && (
+                                <div>
+                                  <span className="font-medium text-slate-200">URL:</span>
+                                  <a 
+                                    href={getResourceDetails()?.url} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="ml-2 text-blue-400 hover:text-blue-300 underline break-all"
+                                  >
+                                    {(() => {
+                                      const url = getResourceDetails()?.url;
+                                      return url && url.length > 40 ? `${url.substring(0, 40)}...` : url;
+                                    })()}
+                                  </a>
+                                </div>
+                              )}
+                              {getResourceDetails()?.license && (
+                                <div>
+                                  <span className="font-medium text-slate-200">License:</span>
+                                  <span className="ml-2 text-slate-400">{getResourceDetails()?.license}</span>
                                 </div>
                               )}
                             </div>
-                          </div>
-                        )}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                          )}
+                          
+                          {getConnectedItems().length > 0 && (
+                            <div>
+                              <span className="font-medium text-slate-200">Connected to (click to select):</span>
+                              <div className="mt-1 max-h-32 overflow-y-auto">
+                                {getConnectedItems().slice(0, 10).map((item: KGNode) => (
+                                  <button
+                                    key={item.id}
+                                    type="button"
+                                    onClick={() => selectNode(item)}
+                                    className="w-full flex items-center gap-2 py-1 text-left rounded hover:bg-gray-700/50 transition-colors"
+                                  >
+                                    <div 
+                                      className="w-2 h-2 rounded shrink-0" 
+                                      style={{ 
+                                        backgroundColor: 
+                                          item.type === 'resource' ? '#8b5cf6' :
+                                          item.type === 'author' ? '#3b82f6' :
+                                          item.type === 'tag' ? '#10b981' :
+                                          item.type === 'source' ? '#f97316' :
+                                          item.type === 'type' ? '#eab308' : '#8b5cf6'
+                                      }}
+                                    />
+                                    <span className="text-slate-400 truncate">
+                                      {item.label.length > 40 ? `${item.label.substring(0, 40)}...` : item.label}
+                                    </span>
+                                    <span className="text-slate-500 shrink-0">({TYPE_LABELS[item.type] ?? item.type})</span>
+                                  </button>
+                                ))}
+                                {getConnectedItems().length > 10 && (
+                                  <div className="text-slate-500 text-xs mt-1">
+                                    +{getConnectedItems().length - 10} more connections
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
