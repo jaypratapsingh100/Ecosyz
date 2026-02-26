@@ -6,6 +6,7 @@ import ChatQuestionnaire from './ChatQuestionnaire';
 import { SUGGESTED_PROMPTS } from '@/lib/app-builder/businessWebsitePrompts';
 import { extractAgentResponse } from '@/lib/app-builder/agentSchema';
 import type { QuestionnaireData } from '@/app/types/app-builder';
+import { useFileExtraction } from './chat/hooks/useFileExtraction';
 
 interface ChatMessage {
   id: string;
@@ -50,8 +51,13 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
   const [selectedProvider, setSelectedProvider] = useState<'groq' | 'openrouter'>('groq');
   const [selectedModel, setSelectedModel] = useState<string>('');
 
+  const [extractingMessageId, setExtractingMessageId] = useState<string | null>(null);
+  const [extractingFileKey, setExtractingFileKey] = useState<string | null>(null);
+
   const hasNoFiles = projectFiles.length === 0;
   const canGenerate = projectId && message.trim() && !loading;
+
+  const { handleExtractFiles } = useFileExtraction({ projectId, onFilesCreated });
 
   // Load available AI providers/models (Groq, OpenRouter DeepSeek Coder, etc.)
   useEffect(() => {
@@ -260,6 +266,8 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
     const isUser = msg.role === 'user';
     const parsedAgent = !isUser ? extractAgentResponse(msg.content) : null;
     const structuredFiles = parsedAgent?.files ?? [];
+    const hasFiles = !isUser && structuredFiles.length > 0;
+
     return (
       <div key={msg.id} className={`flex gap-3 items-start ${isUser ? 'flex-row-reverse' : ''}`}>
         <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1 ${
@@ -286,34 +294,191 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
               ? 'bg-gradient-to-r from-blue-500/20 to-indigo-500/20 border border-blue-500/30'
               : 'bg-[#1a1a1a] border border-white/10'
           }`}>
-            {!isUser && structuredFiles.length > 0 ? (
+            {hasFiles ? (
               <div className="space-y-3">
                 {parsedAgent?.summary && (
                   <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap break-words">
                     {parsedAgent.summary}
                   </p>
                 )}
-                <div className="space-y-3">
-                  {structuredFiles.map((file) => (
-                    <div
-                      key={file.path}
-                      className="rounded-xl border border-white/10 bg-black/40 overflow-hidden"
+                {projectId && (
+                  <div className="flex items-center justify-between gap-2 text-xs text-gray-400">
+                    <span>
+                      {structuredFiles.length} file{structuredFiles.length === 1 ? '' : 's'} ready to
+                      extract.
+                    </span>
+                    <button
+                      type="button"
+                      disabled={!!extractingMessageId || !projectId}
+                      onClick={async () => {
+                        if (!projectId || structuredFiles.length === 0) return;
+                        setExtractingMessageId(msg.id);
+                        try {
+                          const result = await handleExtractFiles(msg.content, structuredFiles);
+                          if (result.ok) {
+                            toast.success('Files extracted', {
+                              description: result.message,
+                              duration: 4000,
+                            });
+                          } else {
+                            toast.error('Extract failed', {
+                              description: result.message,
+                              duration: 4000,
+                            });
+                          }
+                        } finally {
+                          setExtractingMessageId(null);
+                        }
+                      }}
+                      className="inline-flex items-center gap-1 rounded-md border border-emerald-500/40 bg-emerald-500/15 px-2.5 py-1 font-medium text-emerald-300 hover:bg-emerald-500/25 hover:border-emerald-400/60 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 bg-white/5">
-                        <span className="text-xs font-mono text-emerald-300">
-                          {file.path}
-                        </span>
-                        {file.language && (
-                          <span className="text-[10px] uppercase text-gray-400">
-                            {file.language}
-                          </span>
-                        )}
+                      {extractingMessageId === msg.id ? (
+                        <span className="inline-block w-3 h-3 border-2 border-emerald-300/40 border-t-emerald-300 rounded-full animate-spin" />
+                      ) : (
+                        <svg
+                          className="w-3 h-3"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            d="M4 4h16v4H4zM4 16h16v4H4zM4 8h2v8H4zM18 8h2v8h-2z"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      )}
+                      <span>Extract all</span>
+                    </button>
+                  </div>
+                )}
+                <div className="space-y-3">
+                  {structuredFiles.map((file) => {
+                    const fileKey = `${msg.id}:${file.path}`;
+                    const isExtractingThisFile = extractingFileKey === fileKey;
+                    return (
+                      <div
+                        key={file.path}
+                        className="rounded-xl border border-white/10 bg-black/40 overflow-hidden"
+                      >
+                        <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 bg-white/5">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-xs font-mono text-emerald-300 truncate">
+                              {file.path}
+                            </span>
+                            {file.language && (
+                              <span className="text-[10px] uppercase text-gray-400 flex-shrink-0">
+                                {file.language}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  if (
+                                    typeof navigator !== 'undefined' &&
+                                    navigator.clipboard &&
+                                    navigator.clipboard.writeText
+                                  ) {
+                                    await navigator.clipboard.writeText(file.content || '');
+                                    toast.success('Copied file to clipboard', {
+                                      description: file.path,
+                                      duration: 2000,
+                                    });
+                                  } else {
+                                    throw new Error('Clipboard API not available');
+                                  }
+                                } catch (err) {
+                                  toast.error('Failed to copy', {
+                                    description:
+                                      err instanceof Error ? err.message : 'Please copy manually.',
+                                    duration: 3000,
+                                  });
+                                }
+                              }}
+                              className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-medium text-gray-200 hover:bg-emerald-500/20 hover:border-emerald-400/40"
+                            >
+                              <svg
+                                className="w-3 h-3"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <rect
+                                  x="9"
+                                  y="9"
+                                  width="13"
+                                  height="13"
+                                  rx="2"
+                                  ry="2"
+                                  strokeWidth="2"
+                                />
+                                <path
+                                  d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                              <span>Copy</span>
+                            </button>
+                            {projectId && (
+                              <button
+                                type="button"
+                                disabled={isExtractingThisFile || !!extractingMessageId}
+                                onClick={async () => {
+                                  if (!projectId) return;
+                                  setExtractingFileKey(fileKey);
+                                  try {
+                                    const result = await handleExtractFiles(msg.content, [file]);
+                                    if (result.ok) {
+                                      toast.success('File extracted', {
+                                        description: result.message,
+                                        duration: 4000,
+                                      });
+                                    } else {
+                                      toast.error('Extract failed', {
+                                        description: result.message,
+                                        duration: 4000,
+                                      });
+                                    }
+                                  } finally {
+                                    setExtractingFileKey(null);
+                                  }
+                                }}
+                                className="inline-flex items-center gap-1 rounded-md border border-emerald-500/40 bg-emerald-500/15 px-2 py-1 text-[10px] font-medium text-emerald-300 hover:bg-emerald-500/25 hover:border-emerald-400/60 disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {isExtractingThisFile ? (
+                                  <span className="inline-block w-3 h-3 border-2 border-emerald-300/40 border-t-emerald-300 rounded-full animate-spin" />
+                                ) : (
+                                  <svg
+                                    className="w-3 h-3"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      d="M12 3v12m0 0-4-4m4 4 4-4M4 21h16"
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    />
+                                  </svg>
+                                )}
+                                <span>Extract</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <pre className="max-h-64 overflow-auto text-xs text-gray-100 px-3 py-2 whitespace-pre">
+                          {file.content}
+                        </pre>
                       </div>
-                      <pre className="max-h-64 overflow-auto text-xs text-gray-100 px-3 py-2 whitespace-pre">
-                        {file.content}
-                      </pre>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ) : (
@@ -348,8 +513,7 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
   };
 
   const showQuestionnaire =
-    projectId &&
-    projectFiles.length <= 2 &&
+    !!projectId &&
     !questionnaireDismissed &&
     (questionnaireData === null || Object.keys(questionnaireData || {}).length < 2);
 

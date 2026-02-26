@@ -29,6 +29,7 @@ const FEATURES = [
   'Auth UI',
 ];
 const STYLES = ['Professional', 'Modern', 'Minimal', 'Gradient', 'Dark', 'Light'];
+const LAYOUTS = ['Single-page scroll', 'Multi-section with nav', 'Sidebar layout', 'Grid-heavy', 'Card-based', 'Landing + blog'];
 
 function buildPromptFromQuestionnaire(data: QuestionnaireData): string {
   const parts: string[] = [];
@@ -61,6 +62,10 @@ export default function ChatQuestionnaire({
     (initialData?.requiredFeatures as string[]) || (initialData?.specialFeatures as string[]) || []
   );
   const [style, setStyle] = useState((initialData?.designStyle as string) || (initialData?.colorScheme as string) || '');
+  const [targetAudience, setTargetAudience] = useState((initialData?.targetAudience as string) || '');
+  const [layoutStyle, setLayoutStyle] = useState((initialData?.layoutStyle as string) || '');
+  const [brandName, setBrandName] = useState((initialData?.brandName as string) || '');
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const toggleFeature = (f: string) => {
@@ -77,7 +82,11 @@ export default function ChatQuestionnaire({
         requiredFeatures: features,
         specialFeatures: features,
         designStyle: style || undefined,
-        colorScheme: style?.toLowerCase().includes('dark') ? 'dark' : style?.toLowerCase().includes('light') ? 'light' : undefined,
+        colorScheme:
+          style?.toLowerCase().includes('dark') ? 'dark' : style?.toLowerCase().includes('light') ? 'light' : undefined,
+        targetAudience: targetAudience || undefined,
+        layoutStyle: layoutStyle || undefined,
+        brandName: brandName || undefined,
       };
       const res = await fetch(`/api/app-projects/${projectId}`, {
         method: 'PATCH',
@@ -95,7 +104,9 @@ export default function ChatQuestionnaire({
     <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 mb-4">
       <h3 className="text-sm font-semibold text-emerald-400 mb-3 flex items-center gap-2">
         <span>Quick setup</span>
-        <span className="text-xs font-normal text-gray-500">— helps build better prompts</span>
+        <span className="text-xs font-normal text-gray-500">
+          — optional questionnaire to help the assistant understand your app
+        </span>
       </h3>
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
@@ -149,6 +160,59 @@ export default function ChatQuestionnaire({
             ))}
           </div>
         </div>
+        <div className="flex items-center justify-between pt-1">
+          <button
+            type="button"
+            onClick={() => setShowAdvanced((prev) => !prev)}
+            className="text-[11px] text-emerald-400 hover:text-emerald-300 underline-offset-2 hover:underline"
+          >
+            {showAdvanced ? 'Hide detailed questionnaire' : 'Open detailed questionnaire'}
+          </button>
+          <span className="text-[11px] text-gray-500">Optional, but helps generate better apps</span>
+        </div>
+        {showAdvanced && (
+          <div className="space-y-3 pt-1">
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Target audience</label>
+              <input
+                type="text"
+                value={targetAudience}
+                onChange={(e) => setTargetAudience(e.target.value)}
+                placeholder="e.g., B2B SaaS founders, local customers, job recruiters"
+                className="w-full px-3 py-2 bg-[#1a1a1a] border border-white/10 rounded-lg text-sm text-white placeholder-gray-500 focus:ring-2 focus:ring-emerald-500/50 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Layout preference</label>
+              <div className="flex flex-wrap gap-1.5">
+                {LAYOUTS.map((layout) => (
+                  <button
+                    key={layout}
+                    type="button"
+                    onClick={() => setLayoutStyle(layoutStyle === layout ? '' : layout)}
+                    className={`px-2.5 py-1 rounded-md text-xs transition-colors ${
+                      layoutStyle === layout
+                        ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/50'
+                        : 'bg-[#1a1a1a] text-gray-400 border border-white/10 hover:border-white/20'
+                    }`}
+                  >
+                    {layout}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Brand or project name (optional)</label>
+              <input
+                type="text"
+                value={brandName}
+                onChange={(e) => setBrandName(e.target.value)}
+                placeholder="e.g., Open Idea, Ecosyz"
+                className="w-full px-3 py-2 bg-[#1a1a1a] border border-white/10 rounded-lg text-sm text-white placeholder-gray-500 focus:ring-2 focus:ring-emerald-500/50 focus:outline-none"
+              />
+            </div>
+          </div>
+        )}
         <div className="flex gap-2 pt-1">
           <button
             type="submit"

@@ -69,7 +69,16 @@ const BUSINESS_BRIEF = `Professional business website requirements:
 - Layout: responsive, modern typography, clear hierarchy
 - Styling: clean, trustworthy, subtle shadows, professional palette
 - Components: Header (nav), Hero, ServiceCards, Testimonials, Footer
-- Use realistic copy structure; no "Lorem ipsum" placeholders`;
+- Use realistic copy structure; no "Lorem ipsum" placeholders
+- IMPORTANT: Create separate React components in src/components for each major section:
+  - Header.jsx (navigation + dark mode toggle when requested)
+  - Hero.jsx (hero + primary CTA)
+  - Services.jsx (services / features grid or cards)
+  - Testimonials.jsx (optional, if relevant)
+  - ContactForm.jsx (contact form with inputs and submit button)
+  - Footer.jsx (footer with links / legal / brand)
+- ALWAYS return ALL of these components as separate files in the JSON "files" array (plus src/App.jsx and any CSS files you need).
+- src/App.jsx should import and render these components in order instead of containing all markup directly.`;
 
 /** Build intelligent user prompt from questionnaire + message */
 export function buildUserPrompt(

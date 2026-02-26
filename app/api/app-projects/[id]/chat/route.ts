@@ -11,28 +11,15 @@ import {
   SRC_ROOT_COMPONENT_PATTERN,
   CSS_PATH_PATTERN,
 } from '@/lib/app-builder/agentSchema';
-import { buildSystemPrompt, buildUserPrompt, buildFixPrompt } from '@/lib/app-builder/promptBuilder';
+import { buildFixPrompt } from '@/lib/app-builder/promptBuilder';
 import { buildPlannerPrompt, parsePlannerResponse } from '@/lib/app-builder/agents/planner';
 import { buildArchitectPrompt, parseArchitectResponse } from '@/lib/app-builder/agents/architect';
+import { buildAppBuilderPrompts } from '@/lib/app-builder/contextBuilder';
 import { validateProjectFiles, checkComponentStructureAndStyling } from '../../../../../src/lib/utils/validateJSX';
 import type { ChatMessage, ChatRequestBody, DatabaseError, QuestionnaireData, ProjectFile } from '@/app/types/app-builder';
 import type { PlannerPlan, ArchitectTaskPlan, AppProjectState } from '@/app/types/app-builder';
 
 type FileCreationResult = { path: string; success: boolean; error?: string; validated?: boolean; validationError?: string; sandboxIssues?: string[] };
-
-function buildScaffoldContext(framework: string) {
-  const scaffoldFiles = getScaffoldFiles(framework);
-  const entryPoints = scaffoldFiles.filter((file) => file.isMain).map((file) => file.path);
-  const fileList = scaffoldFiles.map((file) => file.path).join(', ');
-
-  let scaffoldContext = `\nPROJECT SCAFFOLD (align output to this structure):\n`;
-  if (entryPoints.length > 0) {
-    scaffoldContext += `- Entry: ${entryPoints.join(', ')}\n`;
-  }
-  scaffoldContext += `- Files: ${fileList}\n`;
-
-  return scaffoldContext;
-}
 
 // GET endpoint to fetch chat history
 export async function GET(
@@ -568,83 +555,23 @@ export async function POST(
       }
     }
 
-    // Token-optimized system prompt (Lovable/Replit style) with scaffold structure for correct rendering
-    let systemPrompt = buildSystemPrompt({
-      framework: frameworkForScaffold,
-      language: useTypeScript ? 'typescript' : 'javascript',
-      fileCount: existingFilePaths.length,
-      filePaths: existingFilePaths,
+    // Token-optimized system + user prompts (Lovable/Replit style) with scaffold structure for correct rendering
+    const promptResult = buildAppBuilderPrompts({
+      message,
+      questionnaireData,
+      frameworkForScaffold,
+      useTypeScript,
+      existingFilePaths,
+      hasScaffoldFiles,
+      fileExtension,
+      plan,
+      taskPlan,
+      currentFilePath,
+      projectFiles: project.files as unknown as { path: string; name: string; content: string }[],
     });
-    // When project has scaffold files, add explicit entry/file list so LLM aligns output with preview
-    if (existingFilePaths.length > 0) {
-      systemPrompt += buildScaffoldContext(frameworkForScaffold);
-      systemPrompt += `\nCurrent project files (preview uses these): ${existingFilePaths.join(', ')}. Main entry for preview: src/App.${fileExtension}.`;
-    }
-    
-    // Token-optimized user prompt (questionnaire + message + existing paths; optional plan/taskPlan from agents)
-    let userMessage = buildUserPrompt(message, questionnaireData, existingFilePaths);
-    if (plan) {
-      userMessage += `\n\nSTRUCTURED PLAN (implement this):\n${JSON.stringify(plan, null, 2)}`;
-    }
-    if (taskPlan?.implementationSteps?.length) {
-      userMessage += `\n\nIMPLEMENTATION STEPS (follow in order):\n${JSON.stringify(taskPlan.implementationSteps, null, 2)}`;
-    }
-    if (hasScaffoldFiles && existingFilePaths.length > 0) {
-      userMessage += `\n\nEXTEND existing files. Add imports and render new components in App.${fileExtension}.`;
-    }
-    
-    // CURSOR-LIKE: Include current file context for editing
-    // Detect file mentions in message: "edit Header.jsx", "update App.jsx", "modify index.js"
-    const fileMentionPattern = /(?:edit|update|modify|change|add to|remove from|in|to)\s+([a-zA-Z0-9_/-]+\.(jsx?|tsx?|css|html|json))/i;
-    const fileMention = message.match(fileMentionPattern);
-    const mentionedFilePath = fileMention ? fileMention[1] : null;
-    
-    // Use mentioned file, current file, or neither
-    const fileToEdit = mentionedFilePath || currentFilePath;
-    
-    if (fileToEdit) {
-      // Find the file (check multiple patterns)
-      const file = project.files.find((f: { path: string; name: string }) => 
-        f.path === fileToEdit || 
-        f.path.endsWith(`/${fileToEdit}`) ||
-        f.path.endsWith(`\\${fileToEdit}`) ||
-        f.name === fileToEdit ||
-        f.path.includes(fileToEdit)
-      );
-      
-      if (file) {
-        if (file.content.length < 8000) {
-          // Include full file for editing - instruct to EXTEND, not replace
-          userMessage += `\n\nEXISTING FILE TO EXTEND (${file.path}):\n`;
-          userMessage += `⚠️ DO NOT DELETE OR REWRITE THIS FILE. EXTEND IT by adding new imports, functions, or components.\n`;
-          userMessage += `Preserve all existing code and functionality.\n\n`;
-          userMessage += file.content;
-          console.log(`📝 EXTEND MODE: Including full file context for extension: ${file.path} (${file.content.length} chars)`);
-        } else {
-          // Large file - include beginning and end with extension instructions
-          const start = file.content.substring(0, 2000);
-          const end = file.content.substring(file.content.length - 1000);
-          userMessage += `\n\nEXISTING FILE TO EXTEND (${file.path}):\n`;
-          userMessage += `⚠️ DO NOT DELETE OR REWRITE THIS FILE. EXTEND IT by adding new imports, functions, or components.\n`;
-          userMessage += `Preserve all existing code and functionality.\n\n`;
-          userMessage += `File start:\n${start}\n\n... (${file.content.length - 3000} chars omitted) ...\n\nFile end:\n${end}`;
-          console.log(`📝 EXTEND MODE: Including partial file context: ${file.path} (showing start/end of ${file.content.length} chars)`);
-        }
-      } else {
-        console.log(`⚠️ File mentioned/selected but not found: ${fileToEdit}`);
-        console.log(`Available files:`, project.files.map((f: { path: string }) => f.path));
-      }
-    }
-    
-    message = userMessage;
-    
-    console.log('📝 Request prepared:', {
-      systemPromptTokens: Math.ceil(systemPrompt.length / 4),
-      userMessageTokens: Math.ceil(message.length / 4),
-      totalTokens: Math.ceil((systemPrompt.length + message.length) / 4),
-      maxContext: '16K',
-      maxNewTokens: '4K'
-    });
+
+    const systemPrompt = promptResult.systemPrompt;
+    message = promptResult.userMessage;
 
     // Helper function to validate file integration by checking preview
     const validateFileIntegration = async (filePath: string): Promise<{ valid: boolean; error?: string; previewLength?: number }> => {
