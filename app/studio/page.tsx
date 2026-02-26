@@ -52,6 +52,14 @@ function AppBuilderPageContent() {
   const [selectedFile, setSelectedFile] = useState<{ id: string; path: string; name: string; content: string; language?: string; isMain?: boolean } | null>(null);
   const linkedInFileInputRef = useRef<HTMLInputElement | null>(null);
 
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(typeof window !== 'undefined' && window.innerWidth < 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
   const fetchProjects = useCallback(async () => {
     try {
       const res = await fetch('/api/app-projects');
@@ -538,15 +546,23 @@ function AppBuilderPageContent() {
     <div 
       className="app-builder-page bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016]"
       style={{ 
-        minHeight: '100vh', 
-        width: '100vw', 
-        display: 'flex', 
+        minHeight: '100vh',
+        width: '100%',
+        maxWidth: '100vw',
+        display: 'flex',
         flexDirection: 'column',
-        overflow: 'hidden'
+        overflowX: 'hidden',
+        overflowY: 'auto'
       }}
     >
       <Header />
-      <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflow: selectedProjectId ? 'hidden' : 'auto',
+        }}
+      >
         {selectedProjectId ? (
         <div style={{ display: 'flex', height: '100%', overflow: 'hidden', position: 'relative' }}>
           {/* Left Sidebar - Collapsible */}
@@ -784,20 +800,35 @@ function AppBuilderPageContent() {
           </div>
         </div>
       ) : (
-        <div style={{ display: 'flex', height: '100%', overflow: 'hidden', position: 'relative', width: '100%' }}>
-          {/* Left Sidebar - Resizable */}
+        <div className="flex flex-col h-auto md:h-full w-full overflow-visible md:overflow-hidden relative min-h-0">
+          {/* Beta Ribbon - On top (Welcome Screen only) */}
+          <div className="w-full flex-shrink-0 bg-gradient-to-r from-yellow-500/20 via-yellow-500/15 to-yellow-500/20 border-b border-yellow-500/30 px-4 py-2 flex flex-wrap items-center justify-center gap-2">
+            <span className="px-2 py-0.5 bg-yellow-500/30 text-yellow-300 text-xs font-semibold rounded border border-yellow-500/50">
+              BETA
+            </span>
+            <span className="text-yellow-200/90 text-xs font-medium text-center">
+              App Builder is in beta. Your feedback helps us improve!
+            </span>
+            <button
+              onClick={() => setShowFeedbackModal(true)}
+              className="text-yellow-300 hover:text-yellow-200 text-xs font-medium underline transition-colors"
+            >
+              Share Feedback
+            </button>
+          </div>
+          <div className="flex flex-col md:flex-row flex-1 min-h-0 w-full overflow-visible md:overflow-hidden">
+          {/* Left Sidebar - Full width on mobile (stacked), resizable on desktop */}
           <div 
-            className="border-r border-white/10 bg-[#0a0a0a] overflow-hidden relative"
+            className="border-r border-white/10 bg-[#0a0a0a] overflow-y-auto md:overflow-hidden relative flex-shrink-0 w-full max-h-[45vh] md:max-h-none"
             style={{ 
-              width: `${Math.min(sidebarWidth, Math.max(256, sidebarWidth))}px`,
-              minWidth: '256px',
-              maxWidth: '50%',
-              flexShrink: 0,
+              width: isMobile ? '100%' : `${Math.min(sidebarWidth, Math.max(256, sidebarWidth))}px`,
+              minWidth: isMobile ? undefined : 256,
+              maxWidth: isMobile ? undefined : '50%',
               transition: !isResizing ? 'width 300ms ease-in-out' : 'none',
               zIndex: 10
             }}
           >
-            <div className="h-full flex flex-col" style={{ position: 'relative', zIndex: 10 }}>
+            <div className="h-full min-h-0 flex flex-col" style={{ position: 'relative', zIndex: 10 }}>
               <ProjectManager
                 onSelectProject={setSelectedProjectId}
                 selectedProjectId={selectedProjectId}
@@ -809,7 +840,8 @@ function AppBuilderPageContent() {
               />
             </div>
             
-            {/* Resize Handle */}
+            {/* Resize Handle - desktop only */}
+            {!isMobile && (
             <div
               className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-400/50 transition-colors group z-20"
               onMouseDown={(e) => {
@@ -823,26 +855,12 @@ function AppBuilderPageContent() {
                 isResizing ? 'bg-emerald-400' : 'bg-emerald-400/30 group-hover:bg-emerald-400'
               }`} />
             </div>
+            )}
           </div>
           
           {/* Main Content Area */}
-          <div className="flex-1 overflow-hidden flex flex-col min-w-0">
-            {/* Beta Ribbon - Only on Welcome Screen */}
-            <div className="w-full bg-gradient-to-r from-yellow-500/20 via-yellow-500/15 to-yellow-500/20 border-b border-yellow-500/30 px-4 py-2 flex items-center justify-center gap-2 flex-shrink-0">
-              <span className="px-2 py-0.5 bg-yellow-500/30 text-yellow-300 text-xs font-semibold rounded border border-yellow-500/50">
-                BETA
-              </span>
-              <span className="text-yellow-200/90 text-xs font-medium">
-                App Builder is in beta. Your feedback helps us improve!
-              </span>
-              <button
-                onClick={() => setShowFeedbackModal(true)}
-                className="text-yellow-300 hover:text-yellow-200 text-xs font-medium underline transition-colors"
-              >
-                Share Feedback
-              </button>
-            </div>
-            <div className="flex-1 overflow-hidden flex items-center justify-center">
+          <div className="flex-shrink-0 md:flex-1 flex flex-col min-w-0 md:min-h-0 overflow-visible md:overflow-hidden">
+            <div className="min-h-0 flex items-start justify-center py-6 md:flex-1 md:items-center md:justify-center md:py-0 overflow-visible">
               <WelcomeScreen
               onCreateReactSample={async () => {
                 setIsCreatingReactSample(true);
@@ -914,6 +932,7 @@ function AppBuilderPageContent() {
             />
             </div>
           </div>
+        </div>
         </div>
       )}
       </div>

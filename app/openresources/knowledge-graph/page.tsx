@@ -56,10 +56,10 @@ function KnowledgeGraphPage() {
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016]">
       <Header />
       <main className="flex-grow">
-        <div className="container mx-auto px-4 py-8">
-          <div className="mb-6 flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent mb-2">
+        <div className="container mx-auto px-4 py-6 sm:py-8">
+          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent mb-1 sm:mb-2">
                 Explore connections
               </h1>
               <p className="text-gray-400 text-sm md:text-base mb-1">
@@ -71,16 +71,18 @@ function KnowledgeGraphPage() {
                 </p>
               )}
             </div>
-            <button
-              onClick={() => router.back()}
-              className="px-4 py-2 rounded-lg bg-white/10 text-white hover:bg-white/15 transition-colors"
-            >
-              ← Back
-            </button>
+            <div className="flex sm:justify-end">
+              <button
+                onClick={() => router.back()}
+                className="px-3 py-2 sm:px-4 rounded-lg bg-white/10 text-white text-sm sm:text-base hover:bg-white/15 transition-colors w-full sm:w-auto"
+              >
+                ← Back
+              </button>
+            </div>
           </div>
           
           {loading ? (
-            <div className="flex items-center justify-center h-[600px]">
+            <div className="flex items-center justify-center h-[60vh] min-h-[320px]">
               <div className="text-center">
                 <svg className="animate-spin h-8 w-8 text-emerald-400 mx-auto mb-4" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -91,7 +93,7 @@ function KnowledgeGraphPage() {
               </div>
             </div>
           ) : results.length > 0 ? (
-            <div className="h-[calc(100vh-250px)] min-h-[700px] rounded-xl overflow-hidden bg-gradient-to-br from-gray-900/95 via-gray-800/90 to-gray-900/95 border border-purple-500/30 shadow-2xl shadow-purple-500/20 backdrop-blur-xl">
+            <div className="h-[60vh] sm:h-[70vh] md:h-[calc(100vh-260px)] min-h-[360px] sm:min-h-[480px] md:min-h-[560px] rounded-xl overflow-y-auto md:overflow-hidden bg-gradient-to-br from-gray-900/95 via-gray-800/90 to-gray-900/95 border border-purple-500/30 shadow-2xl shadow-purple-500/20 backdrop-blur-xl">
               <KnowledgeGraph
                 resources={results.map((r) => ({
                   id: r.id,

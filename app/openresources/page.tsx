@@ -506,7 +506,7 @@ Output ONLY the JSON object, no markdown code fence, no extra text. Example shap
             <div className="absolute left-1/2 top-1/3 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] bg-gradient-radial from-cyan-400/20 to-transparent opacity-80 blur-3xl"></div>
           </div>
           
-          <div className="relative z-10 flex flex-col md:flex-row h-[calc(100vh-80px)]">
+          <div className="relative z-10 flex flex-col md:flex-row h-auto md:h-[calc(100vh-80px)] min-h-[calc(100vh-80px)]">
             {/* Floating Chat Toggle Button - Shows when collapsed */}
             {chatCollapsed && (
               <button
@@ -578,7 +578,7 @@ Output ONLY the JSON object, no markdown code fence, no extra text. Example shap
             </div>
             
             {/* Content - Right side (60%) */}
-            <div className={`flex-1 flex flex-col px-2 sm:px-4 md:px-6 lg:px-8 transition-all duration-300 h-full overflow-y-auto hide-scrollbar ${chatCollapsed ? 'w-full' : 'w-full md:w-[60%]'}`}>
+            <div className={`flex-1 flex flex-col px-2 sm:px-4 md:px-6 lg:px-8 transition-all duration-300 md:h-full md:overflow-y-auto hide-scrollbar ${chatCollapsed ? 'w-full' : 'w-full md:w-[60%]'}`}>
               {/* Chat Search Results - Horizontal Scrolling Cards */}
               {chatSearchActive && chatSearchResults.length > 0 && (
                 <div className="pt-4 md:pt-6 pb-4">
