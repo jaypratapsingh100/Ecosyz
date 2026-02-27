@@ -8,6 +8,7 @@ import { prisma } from '@/lib/db';
 import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
 import {
   extractAgentResponse,
+  parseCodeBlocksToFiles,
   ALLOWED_PATHS,
   COMPONENT_PATH_PATTERN,
   SRC_ROOT_COMPONENT_PATTERN,
@@ -75,12 +76,19 @@ export async function POST(
         });
       }
     } else if (content) {
-      const agentResponse = extractAgentResponse(content);
+      let agentResponse = extractAgentResponse(content);
+      // Fallback: parse markdown code blocks when JSON extraction fails
+      if (!agentResponse || agentResponse.files.length === 0) {
+        const codeBlockFiles = parseCodeBlocksToFiles(content);
+        if (codeBlockFiles.length > 0) {
+          agentResponse = { files: codeBlockFiles };
+        }
+      }
       if (!agentResponse || agentResponse.files.length === 0) {
         return NextResponse.json({
           ok: false,
           success: false,
-          message: 'No files could be extracted. The content may not contain valid JSON with a "files" array. Try sending a chat message to generate code.',
+          message: 'No files could be extracted. The content may not contain valid JSON with a "files" array or markdown code blocks (e.g. ```file:src/App.jsx). Try sending a chat message to generate code.',
           createdCount: 0,
           files: [],
         });

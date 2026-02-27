@@ -205,3 +205,172 @@ export function extractAgentResponse(text: string): AgentResponse | null {
 
   return null;
 }
+
+const VALID_FILE_EXTENSIONS = ['.js', '.jsx', '.ts', '.tsx', '.css', '.html', '.json', '.md'];
+const KNOWN_LANG_TAGS = new Set([
+  'jsx', 'javascript', 'typescript', 'tsx', 'js', 'ts', 'css', 'html',
+  'json', 'markdown', 'python', 'java', 'cpp', 'c', 'bash', 'sh',
+  'sql', 'yaml', 'yml', 'xml', 'text', 'plaintext', 'diff', 'md',
+]);
+
+function normalizePath(p: string): string {
+  return p
+    .replace(/\s+/g, '')
+    .replace(/\\/g, '/')
+    .replace(/\/+/g, '/')
+    .replace(/\.jxs$/i, '.jsx')
+    .replace(/\.tsxs$/i, '.tsx')
+    .replace(/^\.\//, '')
+    .trim();
+}
+
+function isFilePath(s: string): boolean {
+  if (!s) return false;
+  const cleaned = normalizePath(s);
+  const hasValidExt = VALID_FILE_EXTENSIONS.some((ext) => cleaned.toLowerCase().endsWith(ext));
+  return hasValidExt || (cleaned.includes('.') && cleaned.includes('/'));
+}
+
+function inferPathFromContent(content: string, langTag: string): string | null {
+  let ext = '.jsx';
+  if (langTag === 'tsx' || langTag === 'typescript') ext = '.tsx';
+  else if (langTag === 'ts') ext = '.ts';
+  else if (langTag === 'css') ext = '.css';
+  else if (langTag === 'html') ext = '.html';
+  else if (langTag === 'json') ext = '.json';
+  else if (content.includes('interface ') || content.match(/:\s*(string|number|boolean|React)/)) ext = '.tsx';
+
+  if (ext === '.css') return content.includes('.App') ? 'src/App.css' : 'src/styles.css';
+  if (ext === '.html') return 'index.html';
+  if (ext === '.json' && content.includes('"name"') && content.includes('"version"')) return 'package.json';
+
+  const patterns = [
+    /export\s+default\s+function\s+([A-Z][a-zA-Z0-9]*)/,
+    /(?:^|\n)\s*function\s+([A-Z][a-zA-Z0-9]*)/,
+    /(?:^|\n)\s*(?:export\s+)?const\s+([A-Z][a-zA-Z0-9]*)\s*=/,
+    /(?:^|\n)\s*(?:export\s+)?class\s+([A-Z][a-zA-Z0-9]*)/,
+    /export\s+default\s+([A-Z][a-zA-Z0-9]*)\s*;?\s*$/,
+  ];
+  let componentName: string | null = null;
+  for (const pattern of patterns) {
+    const m = content.match(pattern);
+    if (m) {
+      componentName = m[1];
+      break;
+    }
+  }
+  if (!componentName) return null;
+  if (componentName === 'App') return `src/App${ext}`;
+  return `src/components/${componentName}${ext}`;
+}
+
+/**
+ * Parse markdown code blocks into AgentFile[] when JSON extraction fails.
+ * Supports: ```file:path, ```jsx:path, ```jsx path, first line as path, inferred from content.
+ */
+export function parseCodeBlocksToFiles(text: string): AgentFile[] {
+  const trimmed = text.trim();
+  const codeBlockRegex = /```([^\n`]*)\n([\s\S]*?)```/g;
+  const rawBlocks: Array<{ header: string; content: string }> = [];
+  let match;
+  while ((match = codeBlockRegex.exec(trimmed)) !== null) {
+    const header = (match[1] || '').trim();
+    const content = (match[2] || '').trim();
+    if (content.length > 0) rawBlocks.push({ header, content });
+  }
+
+  const allMatches: Array<{ path: string; content: string }> = [];
+  const inferredBlocks: Array<{ header: string; content: string }> = [];
+
+  for (const block of rawBlocks) {
+    let { header, content } = block;
+    let filePath: string | null = null;
+
+    if (header.startsWith('file:')) filePath = header.substring(5).trim();
+    else if (header.includes(':') && !KNOWN_LANG_TAGS.has(header.split(':')[0].toLowerCase())) filePath = header;
+    else if (header.includes(':')) {
+      const afterColon = header.split(':').slice(1).join(':').trim();
+      if (isFilePath(afterColon)) filePath = afterColon;
+    }
+    if (!filePath && header.includes(' ')) {
+      const parts = header.split(/\s+/);
+      if (parts.length >= 2) {
+        const possiblePath = parts.slice(1).join(' ').trim();
+        if (isFilePath(possiblePath)) filePath = possiblePath;
+      }
+    }
+    if (!filePath && isFilePath(header)) filePath = header;
+    if (!filePath) {
+      const lines = content.split('\n');
+      const firstNonEmptyIndex = lines.findIndex((l) => l.trim().length > 0);
+      if (firstNonEmptyIndex !== -1) {
+        const firstLine = lines[firstNonEmptyIndex].trim();
+        if (isFilePath(firstLine)) {
+          filePath = firstLine;
+          content = [...lines.slice(0, firstNonEmptyIndex), ...lines.slice(firstNonEmptyIndex + 1)].join('\n').trim();
+        }
+      }
+    }
+
+    if (filePath) {
+      const normalized = normalizePath(filePath);
+      const valid =
+        ALLOWED_PATHS.includes(normalized as (typeof ALLOWED_PATHS)[number]) ||
+        COMPONENT_PATH_PATTERN.test(normalized) ||
+        SRC_ROOT_COMPONENT_PATTERN.test(normalized) ||
+        CSS_PATH_PATTERN.test(normalized);
+      if (valid) {
+        const existing = allMatches.findIndex((m) => m.path === normalized);
+        if (existing >= 0 && content.length > allMatches[existing].content.length) {
+          allMatches[existing].content = content;
+        } else if (existing < 0) {
+          allMatches.push({ path: normalized, content });
+        }
+      }
+    } else {
+      inferredBlocks.push(block);
+    }
+  }
+
+  for (const block of inferredBlocks) {
+    const { header, content } = block;
+    const langTag = KNOWN_LANG_TAGS.has(header.toLowerCase()) ? header.toLowerCase() : '';
+    const looksLikeCode =
+      content.includes('import ') ||
+      content.includes('export ') ||
+      content.includes('function ') ||
+      content.includes('const ') ||
+      content.includes('class ') ||
+      content.includes('return ') ||
+      content.includes('{') ||
+      content.includes('<');
+    if (!looksLikeCode) continue;
+
+    const inferredPath = inferPathFromContent(content, langTag);
+    if (inferredPath) {
+      const normalized = normalizePath(inferredPath);
+      const valid =
+        ALLOWED_PATHS.includes(normalized as (typeof ALLOWED_PATHS)[number]) ||
+        COMPONENT_PATH_PATTERN.test(normalized) ||
+        SRC_ROOT_COMPONENT_PATTERN.test(normalized) ||
+        CSS_PATH_PATTERN.test(normalized);
+      if (valid) {
+        const existing = allMatches.findIndex((m) => m.path === normalized);
+        if (existing >= 0 && content.length > allMatches[existing].content.length) {
+          allMatches[existing].content = content;
+        } else if (existing < 0) {
+          allMatches.push({ path: normalized, content });
+        }
+      }
+    }
+  }
+
+  return allMatches.map((m) => ({
+    path: m.path,
+    name: m.path.split('/').pop() || m.path,
+    content: m.content,
+    language:
+      m.path.endsWith('.tsx') ? 'tsx' : m.path.endsWith('.jsx') ? 'jsx' : m.path.endsWith('.css') ? 'css' : 'html',
+    isMain: m.path === 'src/App.jsx' || m.path === 'src/App.tsx',
+  }));
+}

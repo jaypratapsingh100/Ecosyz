@@ -326,6 +326,28 @@ function AppBuilderPageContent() {
     }
   }, [selectedProjectId, fetchProjectFiles]);
 
+  // Refresh code editor file list when files are created (chat auto-extract, Extract button, etc.)
+  useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const handleFilesUpdated = (e?: Event) => {
+      const detail = (e as CustomEvent<{ projectId?: string }>)?.detail;
+      const updatedProjectId = detail?.projectId;
+      if (updatedProjectId && updatedProjectId === selectedProjectId) {
+        const pathToPreserve = selectedFile?.path;
+        if (timeoutId) clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => {
+          timeoutId = null;
+          fetchProjectFiles(selectedProjectId, pathToPreserve);
+        }, 300);
+      }
+    };
+    window.addEventListener('files-updated', handleFilesUpdated);
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      window.removeEventListener('files-updated', handleFilesUpdated);
+    };
+  }, [selectedProjectId, selectedFile?.path, fetchProjectFiles]);
+
   const handleCreateNewProject = useCallback(() => {
     setCreateModalOpen(true);
   }, []);

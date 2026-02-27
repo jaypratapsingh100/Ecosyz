@@ -6,9 +6,9 @@
 import { REACT_MAIN_JSX } from '@/lib/app-builder/canonicalReact';
 
 export const SAMPLE_REACT_PROJECT = {
-  title: 'Aurora Portfolio Studio',
+  title: 'ORAA — Saree E-Commerce',
   description:
-    'A visually rich personal portfolio with image-heavy galleries and case studies',
+    'A vibrant e-commerce website for sarees with jewel-tone aesthetics and shopping cart',
   type: 'web' as const,
   framework: 'react',
   appType: 'react',
@@ -20,7 +20,7 @@ const INDEX_HTML = `<!DOCTYPE html>
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Aurora • Creative Portfolio</title>
+  <title>ORAA • Sarees</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -32,184 +32,93 @@ const INDEX_HTML = `<!DOCTYPE html>
     const { createRoot } = ReactDOM;
     const { useState } = React;
 
-    const GALLERY_IMAGES = [
-      {
-        id: 'city-lights',
-        src: 'https://images.unsplash.com/photo-1518837695005-2083093ee35b?auto=format&fit=crop&w=1000&q=80',
-        alt: 'Night city skyline with glowing lights',
-        category: 'Photography',
-      },
-      {
-        id: 'designer-desk',
-        src: 'https://images.unsplash.com/photo-1523475472560-d2df97ec485c?auto=format&fit=crop&w=1000&q=80',
-        alt: 'Minimal designer desk with laptop and sketches',
-        category: 'Product',
-      },
-      {
-        id: 'brand-collage',
-        src: 'https://images.unsplash.com/photo-1526498460520-4c246339dccb?auto=format&fit=crop&w=1000&q=80',
-        alt: 'Brand moodboard with typography and color swatches',
-        category: 'Brand',
-      },
-      {
-        id: 'mobile-app',
-        src: 'https://images.unsplash.com/photo-1553877522-43269d4ea984?auto=format&fit=crop&w=1000&q=80',
-        alt: 'Mobile app screens on a table',
-        category: 'Product',
-      },
-      {
-        id: 'portrait',
-        src: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=1000&q=80',
-        alt: 'Portrait of a woman with soft studio lighting',
-        category: 'Photography',
-      },
-      {
-        id: 'workspace',
-        src: 'https://images.unsplash.com/photo-1521747116042-5a810fda9664?auto=format&fit=crop&w=1000&q=80',
-        alt: 'Creative studio workspace with big monitor',
-        category: 'Product',
-      },
-      {
-        id: 'branding-cards',
-        src: 'https://images.unsplash.com/photo-1522202222206-764ec137a6a9?auto=format&fit=crop&w=1000&q=80',
-        alt: 'Business cards and stationery branding set',
-        category: 'Brand',
-      },
-      {
-        id: 'architecture',
-        src: 'https://images.unsplash.com/photo-1487958449943-2429e8be8625?auto=format&fit=crop&w=1000&q=80',
-        alt: 'Modern building with strong geometric shapes',
-        category: 'Photography',
-      },
-      {
-        id: 'editorial',
-        src: 'https://images.unsplash.com/photo-1519710164239-da123dc03ef4?auto=format&fit=crop&w=1000&q=80',
-        alt: 'Editorial fashion photography pose',
-        category: 'Photography',
-      },
+    const SAREES = [
+      { id: 's1', name: 'Royal Silk Banarasi', price: 12999, originalPrice: 15999, category: 'Banarasi', image: 'https://images.unsplash.com/photo-1617127365659-c47fa927d264?auto=format&fit=crop&w=800&q=80', badge: 'Bestseller' },
+      { id: 's2', name: 'Saffron Cotton Print', price: 2499, originalPrice: 2999, category: 'Cotton', image: 'https://images.unsplash.com/photo-1582555172866-f73bb12a2ab3?auto=format&fit=crop&w=800&q=80', badge: 'New' },
+      { id: 's3', name: 'Emerald Chiffon Drape', price: 4499, originalPrice: null, category: 'Chiffon', image: 'https://images.unsplash.com/photo-1582552938357-32b906df40cb?auto=format&fit=crop&w=800&q=80', badge: null },
+      { id: 's4', name: 'Gold Zari Silk', price: 18999, originalPrice: 22999, category: 'Silk', image: 'https://images.unsplash.com/photo-1558171813-4b74a2f7f4e1?auto=format&fit=crop&w=800&q=80', badge: 'Luxe' },
+      { id: 's5', name: 'Coral Georgette', price: 3299, originalPrice: null, category: 'Georgette', image: 'https://images.unsplash.com/photo-1515886652393-9c5f01e1e5f6?auto=format&fit=crop&w=800&q=80', badge: null },
+      { id: 's6', name: 'Fuchsia Silk Blend', price: 6999, originalPrice: 8499, category: 'Silk', image: 'https://images.unsplash.com/photo-1490481461827-8c496aba61b7?auto=format&fit=crop&w=800&q=80', badge: 'Sale' },
+      { id: 's7', name: 'Indigo Cotton Handloom', price: 3999, originalPrice: null, category: 'Cotton', image: 'https://images.unsplash.com/photo-1558618662-d8c38c9631e?auto=format&fit=crop&w=800&q=80', badge: null },
+      { id: 's8', name: 'Pearl Banarasi', price: 15999, originalPrice: 18999, category: 'Banarasi', image: 'https://images.unsplash.com/photo-1519699047748-7e42932eef30?auto=format&fit=crop&w=800&q=80', badge: 'Limited' },
+      { id: 's9', name: 'Mint Chiffon', price: 3799, originalPrice: null, category: 'Chiffon', image: 'https://images.unsplash.com/photo-1515886652393-9c5f01e1e5f6?auto=format&fit=crop&w=800&q=80', badge: null },
     ];
 
-    const FEATURED_PROJECTS = [
-      {
-        id: 'aurora-brand',
-        title: 'Aurora Brand System',
-        subtitle: 'A flexible visual identity for a digital studio',
-        cover: 'https://images.unsplash.com/photo-1545239351-1141bd82e8a6?auto=format&fit=crop&w=1000&q=80',
-        year: '2025',
-        role: 'Brand & Art Direction',
-        tools: ['Figma', 'Illustrator', 'Cinema 4D'],
-      },
-      {
-        id: 'atlas-app',
-        title: 'Atlas Finance Mobile',
-        subtitle: 'Human, friendly money app focused on clarity',
-        cover: 'https://images.unsplash.com/photo-1556740749-887f6717d7e4?auto=format&fit=crop&w=1000&q=80',
-        year: '2024',
-        role: 'Product Design',
-        tools: ['Figma', 'Framer'],
-      },
-      {
-        id: 'lumen-gallery',
-        title: 'Lumen Gallery Website',
-        subtitle: 'Online gallery for emerging digital artists',
-        cover: 'https://images.unsplash.com/photo-1519710164239-da123dc03ef4?auto=format&fit=crop&w=1000&q=80',
-        year: '2023',
-        role: 'Web Design & Art Direction',
-        tools: ['Next.js', 'Tailwind', 'Vercel'],
-      },
-    ];
-
-    const FILTERS = ['All', 'Photography', 'Product', 'Brand'];
+    const CATEGORIES = ['All', 'Silk', 'Cotton', 'Banarasi', 'Chiffon', 'Georgette'];
 
     function App() {
       const [activeFilter, setActiveFilter] = useState('All');
+      const [cart, setCart] = useState([]);
 
-      const filteredImages =
-        activeFilter === 'All'
-          ? GALLERY_IMAGES
-          : GALLERY_IMAGES.filter((img) => img.category === activeFilter);
+      const filteredSarees = activeFilter === 'All' ? SAREES : SAREES.filter((s) => s.category === activeFilter);
 
-      const scrollToSection = (id) => {
-        const el = document.getElementById(id);
-        if (el) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const addToCart = (saree) => {
+        const existing = cart.find((c) => c.id === saree.id);
+        if (existing) {
+          setCart(cart.map((c) => c.id === saree.id ? { ...c, qty: c.qty + 1 } : c));
+        } else {
+          setCart([...cart, { ...saree, qty: 1 }]);
         }
       };
+
+      const updateQty = (id, delta) => {
+        setCart(cart.map((c) => {
+          if (c.id !== id) return c;
+          const n = Math.max(0, c.qty + delta);
+          return n === 0 ? null : { ...c, qty: n };
+        }).filter(Boolean));
+      };
+
+      const cartCount = cart.reduce((sum, c) => sum + c.qty, 0);
+      const cartTotal = cart.reduce((sum, c) => sum + c.price * c.qty, 0);
+
+      const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
       return (
         <div className="app">
           <header className="nav">
             <div className="brand">
-              <div className="brand-mark">a</div>
+              <div className="brand-mark">O</div>
               <div className="brand-text">
-                <div className="brand-name">aurora studio</div>
-                <div className="brand-tagline">portfolio preview</div>
+                <div className="brand-name">ORAA</div>
+                <div className="brand-tagline">For Sarees</div>
               </div>
             </div>
-            <div className="nav-pill">React sample • Image-rich portfolio</div>
+            <div className="nav-pill">E-commerce • Saree store</div>
           </header>
 
           <main>
             <section className="hero">
               <div className="hero-grid">
                 <div>
-                  <div className="hero-left-eyebrow">
+                  <div className="hero-eyebrow">
                     <span className="hero-dot" />
-                    Product designer & art director
+                    Premium handpicked sarees
                   </div>
                   <h1 className="hero-title">
-                    Crafting calm, cinematic interfaces.
-                    <span className="highlight">
-                      A portfolio designed to feel like a gallery.
-                    </span>
+                    Wrap yourself in
+                    <span className="highlight"> timeless elegance.</span>
                   </h1>
                   <p className="hero-subtitle">
-                    This React sample is a full personal site: hero, image-forward
-                    gallery and featured case studies. Use it as a starting point
-                    for your own portfolio in Studio.
+                    Silk, cotton, Banarasi and more — curated for every occasion. Free shipping on orders above ₹2,999.
                   </p>
                   <div className="hero-actions">
-                    <button
-                      className="btn-primary"
-                      onClick={() => scrollToSection('aurora-gallery')}
-                    >
-                      View image gallery
-                    </button>
-                    <button
-                      className="btn-secondary"
-                      onClick={() => scrollToSection('aurora-projects')}
-                    >
-                      Jump to case studies
-                    </button>
+                    <button className="btn-primary" onClick={() => scrollTo('products')}>Shop collection</button>
+                    <button className="btn-secondary" onClick={() => scrollTo('cart-bar')}>View cart</button>
                   </div>
                   <div className="hero-badges">
-                    <div className="hero-badge">
-                      Over a dozen curated photography and UI shots
-                    </div>
-                    <div className="hero-badge">
-                      Designed to showcase product work beautifully
-                    </div>
-                    <div className="hero-badge">
-                      Built as a realistic portfolio starter for Ecosyz Studio
-                    </div>
+                    <div className="hero-badge">100% authentic</div>
+                    <div className="hero-badge">Easy returns</div>
+                    <div className="hero-badge">Handcrafted</div>
                   </div>
                 </div>
-
-                <aside className="hero-right-card">
-                  <div className="hero-right-title">Snapshot of the work</div>
-                  <div className="hero-right-grid">
-                    {GALLERY_IMAGES.slice(0, 3).map((image) => (
-                      <div key={image.id} className="mini-card">
-                        <div>
-                          <div className="mini-card-name">{image.category}</div>
-                          <div className="mini-card-label">
-                            Curated gallery image
-                          </div>
-                        </div>
-                        <div>
-                          <div className="mini-card-price">HD imagery</div>
-                          <div className="mini-card-badge">Featured</div>
-                        </div>
+                <aside className="hero-card">
+                  <div className="hero-card-title">Featured pick</div>
+                  <div className="hero-card-grid">
+                    {SAREES.slice(0, 3).map((s) => (
+                      <div key={s.id} className="mini-card">
+                        <div><div className="mini-card-name">{s.name}</div><div className="mini-card-label">{s.category}</div></div>
+                        <div><div className="mini-card-price">₹{s.price.toLocaleString('en-IN')}</div><div className="mini-card-badge">{s.badge || '—'}</div></div>
                       </div>
                     ))}
                   </div>
@@ -217,96 +126,36 @@ const INDEX_HTML = `<!DOCTYPE html>
               </div>
             </section>
 
-            <section id="aurora-gallery" className="section">
+            <section id="products" className="section">
               <div className="section-header">
                 <div>
-                  <div className="section-eyebrow">image gallery</div>
-                  <h2 className="section-title">
-                    A wall of moments, screens and stories
-                  </h2>
+                  <div className="section-eyebrow">collection</div>
+                  <h2 className="section-title">Shop by fabric</h2>
                 </div>
-                <p className="section-subtitle">
-                  A dense, scrolling grid of photography and UI captures so you can
-                  see how a portfolio with lots of imagery feels.
-                </p>
+                <p className="section-subtitle">Filter by category and add to cart.</p>
               </div>
-
               <div className="gallery-filters">
-                {FILTERS.map((filter) => (
-                  <button
-                    key={filter}
-                    type="button"
-                    className={
-                      'gallery-filter-btn' +
-                      (activeFilter === filter ? ' is-active' : '')
-                    }
-                    onClick={() => setActiveFilter(filter)}
-                  >
-                    {filter}
-                  </button>
+                {CATEGORIES.map((cat) => (
+                  <button key={cat} type="button" className={'gallery-filter-btn' + (activeFilter === cat ? ' is-active' : '')} onClick={() => setActiveFilter(cat)}>{cat}</button>
                 ))}
               </div>
-
-              <div className="gallery-grid">
-                {filteredImages.map((image) => (
-                  <article key={image.id} className="gallery-card">
-                    <div className="gallery-image-wrapper">
-                      <img
-                        src={image.src}
-                        alt={image.alt}
-                        className="gallery-image"
-                      />
-                    </div>
-                    <div className="gallery-meta">
-                      <span className="pill">{image.category}</span>
-                      <span className="pill">High-res</span>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </section>
-
-            <section id="aurora-projects" className="section">
-              <div className="section-header">
-                <div>
-                  <div className="section-eyebrow">featured case studies</div>
-                  <h2 className="section-title">
-                    Image-led projects across product and brand
-                  </h2>
-                </div>
-                <p className="section-subtitle">
-                  Each card pairs a large hero visual with crisp project details —
-                  a pattern you can plug your own work into.
-                </p>
-              </div>
-
-              <div className="project-grid">
-                {FEATURED_PROJECTS.map((project) => (
-                  <article key={project.id} className="project-card">
-                    <div className="project-cover-wrapper">
-                      <img
-                        src={project.cover}
-                        alt={project.title}
-                        className="project-cover"
-                      />
-                    </div>
-                    <div className="project-body">
-                      <div className="project-header">
-                        <div>
-                          <h3 className="project-title">{project.title}</h3>
-                          <p className="project-subtitle">
-                            {project.subtitle}
-                          </p>
-                        </div>
-                        <span className="project-year-chip">{project.year}</span>
+              <div className="products-grid">
+                {filteredSarees.map((s) => (
+                  <article key={s.id} className="product-card">
+                    <div className="product-media"><img src={s.image} alt={s.name} className="product-image" /></div>
+                    <div className="product-body">
+                      <div className="product-name">{s.name}</div>
+                      <div className="product-subtitle">{s.category} • Premium quality</div>
+                      <div className="product-meta">
+                        {s.badge && <span className="pill">{s.badge}</span>}
+                        <span className="pill">Free shipping</span>
                       </div>
-                      <div className="project-meta">
-                        <span className="project-chip">{project.role}</span>
-                        {project.tools.map((tool) => (
-                          <span key={tool} className="project-chip subtle">
-                            {tool}
-                          </span>
-                        ))}
+                      <div className="product-footer">
+                        <div>
+                          <span className="product-price-main">₹{s.price.toLocaleString('en-IN')}</span>
+                          {s.originalPrice && <span className="product-price-strike">₹{s.originalPrice.toLocaleString('en-IN')}</span>}
+                        </div>
+                        <button className="btn-cart" onClick={() => addToCart(s)}>Add to cart</button>
                       </div>
                     </div>
                   </article>
@@ -315,10 +164,31 @@ const INDEX_HTML = `<!DOCTYPE html>
             </section>
           </main>
 
+          <div id="cart-bar" className="cart-bar">
+            <div className="cart-summary">
+              <span className="cart-count-pill"><span className="cart-count-badge">{cartCount}</span> items in cart</span>
+              <span className="cart-total">Total: ₹{cartTotal.toLocaleString('en-IN')}</span>
+            </div>
+            {cart.length > 0 && (
+              <div className="cart-panel">
+                {cart.map((c) => (
+                  <div key={c.id} className="cart-item-row">
+                    <div className="cart-item-meta"><div className="cart-item-name">{c.name}</div><div className="cart-item-detail">₹{c.price.toLocaleString('en-IN')} × {c.qty}</div></div>
+                    <div className="cart-item-controls">
+                      <button className="cart-qty-btn" onClick={() => updateQty(c.id, -1)}>−</button>
+                      <span className="qty-pill">{c.qty}</span>
+                      <button className="cart-qty-btn" onClick={() => updateQty(c.id, 1)}>+</button>
+                    </div>
+                    <span className="cart-item-price">₹{(c.price * c.qty).toLocaleString('en-IN')}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button className="cart-button" disabled={cartCount === 0}>Checkout</button>
+          </div>
+
           <div className="bottom-note">
-            This Aurora portfolio sample is intentionally image-heavy so you can
-            see how a rich gallery and case-study layout behaves. Clone it in App
-            Studio and replace the visuals, copy and links with your own work.
+            ORAA sample — vibrant saree e-commerce for Sarees. Clone in App Studio and add your own products.
           </div>
         </div>
       );
@@ -338,11 +208,13 @@ const STYLES_CSS = `* {
 }
 
 body {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: radial-gradient(circle at top, #3b1d42 0%, #050308 55%);
+  font-family: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  background: radial-gradient(ellipse at top, #4a1942 0%, #1a0a2e 40%, #0d0518 70%, #050308 100%);
   min-height: 100vh;
-  color: #fdf5e6;
+  color: #fef7ed;
 }
+
+/* ORAA vibrant palette: saffron #ff6b35, gold #f4c430, coral #ff7f50, fuchsia #e91e63, jewel purple #6b21a8 */
 
 .app {
   min-height: 100vh;
@@ -358,8 +230,8 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: 0.75rem 1.25rem;
-  border-bottom: 1px solid rgba(245, 226, 197, 0.3);
-  background: linear-gradient(90deg, rgba(26, 11, 30, 0.95), rgba(19, 9, 26, 0.95), rgba(26, 11, 30, 0.95));
+  border-bottom: 1px solid rgba(255, 107, 53, 0.35);
+  background: linear-gradient(90deg, rgba(26, 11, 46, 0.97), rgba(74, 25, 66, 0.95), rgba(26, 11, 46, 0.97));
   backdrop-filter: blur(18px);
 }
 
@@ -370,17 +242,17 @@ body {
 }
 
 .brand-mark {
-  width: 34px;
-  height: 34px;
+  width: 38px;
+  height: 38px;
   border-radius: 999px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 800;
-  font-size: 1.1rem;
-  background: conic-gradient(from 220deg, #fbd28e, #f7a6c1, #e6c8ff, #fbd28e);
-  color: #1a0b1e;
-  box-shadow: 0 0 22px rgba(251, 210, 142, 0.6);
+  font-size: 1.2rem;
+  background: conic-gradient(from 220deg, #ff6b35, #f4c430, #e91e63, #ff6b35);
+  color: #fff;
+  box-shadow: 0 0 24px rgba(233, 30, 99, 0.6);
 }
 
 .brand-text {
@@ -388,11 +260,11 @@ body {
 }
 
 .brand-name {
-  font-size: 1.1rem;
-  font-weight: 650;
-  letter-spacing: 0.06em;
-  text-transform: lowercase;
-  background: linear-gradient(90deg, #ffe7c2, #f7a6c1, #e6c8ff);
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  background: linear-gradient(90deg, #ff6b35, #f4c430, #e91e63);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -404,17 +276,17 @@ body {
   letter-spacing: 0.22em;
   padding: 0.2rem 0.5rem;
   border-radius: 999px;
-  border: 1px solid rgba(247, 227, 193, 0.45);
-  color: rgba(247, 227, 193, 0.9);
+  border: 1px solid rgba(255, 107, 53, 0.5);
+  color: rgba(255, 247, 237, 0.9);
 }
 
 .nav-pill {
   font-size: 0.7rem;
   padding: 0.4rem 0.7rem;
   border-radius: 999px;
-  border: 1px solid rgba(245, 226, 197, 0.4);
+  border: 1px solid rgba(255, 107, 53, 0.45);
   background: rgba(5, 3, 8, 0.7);
-  color: rgba(245, 226, 197, 0.8);
+  color: rgba(255, 247, 237, 0.85);
 }
 
 .hero {
@@ -429,25 +301,26 @@ body {
   gap: 2rem;
 }
 
+.hero-eyebrow,
 .hero-left-eyebrow {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
   padding: 0.3rem 0.6rem;
   border-radius: 999px;
-  border: 1px solid rgba(247, 227, 193, 0.5);
+  border: 1px solid rgba(255, 107, 53, 0.6);
   background: rgba(26, 11, 30, 0.9);
   text-transform: uppercase;
   letter-spacing: 0.18em;
   font-size: 0.64rem;
-  color: rgba(245, 226, 197, 0.8);
+  color: rgba(255, 247, 237, 0.9);
 }
 
 .hero-dot {
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  background: #f7a6c1;
+  background: linear-gradient(135deg, #ff6b35, #e91e63);
 }
 
 .hero-title {
@@ -458,8 +331,9 @@ body {
 }
 
 .hero-title span.highlight {
-  color: #fbd28e;
+  color: #f4c430;
   display: block;
+  text-shadow: 0 0 30px rgba(244, 196, 48, 0.5);
 }
 
 .hero-subtitle {
@@ -484,9 +358,9 @@ body {
   cursor: pointer;
   font-size: 0.9rem;
   font-weight: 600;
-  background: linear-gradient(90deg, #fbd28e, #f7a6c1, #e6c8ff);
-  color: #1a0b1e;
-  box-shadow: 0 0 26px rgba(247, 166, 193, 0.7);
+  background: linear-gradient(90deg, #ff6b35, #e91e63, #ff7f50);
+  color: #fff;
+  box-shadow: 0 0 26px rgba(233, 30, 99, 0.6);
 }
 
 .btn-secondary {
@@ -516,22 +390,25 @@ body {
   padding: 0.45rem 0.75rem;
 }
 
+.hero-card,
 .hero-right-card {
   border-radius: 1.6rem;
   padding: 1.2rem;
-  border: 1px solid rgba(245, 226, 197, 0.3);
-  background: radial-gradient(circle at top, rgba(247, 166, 193, 0.35), rgba(5, 3, 8, 0.95));
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.85);
+  border: 1px solid rgba(255, 107, 53, 0.4);
+  background: radial-gradient(circle at top, rgba(233, 30, 99, 0.25), rgba(107, 33, 168, 0.2), rgba(5, 3, 8, 0.95));
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.85), 0 0 40px rgba(233, 30, 99, 0.15);
 }
 
+.hero-card-title,
 .hero-right-title {
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.18em;
-  color: rgba(245, 226, 197, 0.8);
+  color: rgba(255, 247, 237, 0.9);
   margin-bottom: 0.8rem;
 }
 
+.hero-card-grid,
 .hero-right-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -551,7 +428,7 @@ body {
 .mini-card-name {
   font-size: 0.68rem;
   font-weight: 600;
-  color: #ffe7c2;
+  color: #fef7ed;
 }
 
 .mini-card-label {
@@ -562,15 +439,15 @@ body {
 .mini-card-price {
   font-size: 0.7rem;
   font-weight: 600;
-  color: #fbd28e;
+  color: #f4c430;
 }
 
 .mini-card-badge {
   font-size: 0.6rem;
   padding: 0.15rem 0.4rem;
   border-radius: 999px;
-  background: rgba(247, 166, 193, 0.22);
-  color: #f7a6c1;
+  background: rgba(233, 30, 99, 0.3);
+  color: #ff7f50;
   align-self: flex-start;
 }
 
@@ -599,7 +476,7 @@ body {
   margin-top: 0.1rem;
   font-size: 1.1rem;
   font-weight: 600;
-  background: linear-gradient(90deg, #ffe7c2, #f7a6c1, #e6c8ff);
+  background: linear-gradient(90deg, #ff6b35, #f4c430, #e91e63);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -620,18 +497,26 @@ body {
 .product-card {
   border-radius: 1.4rem;
   overflow: hidden;
-  border: 1px solid rgba(245, 226, 197, 0.3);
-  background: radial-gradient(circle at top, rgba(251, 210, 142, 0.25), rgba(5, 3, 8, 0.96));
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.9);
+  border: 1px solid rgba(255, 107, 53, 0.35);
+  background: radial-gradient(circle at top, rgba(233, 30, 99, 0.15), rgba(5, 3, 8, 0.98));
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.9), 0 0 30px rgba(233, 30, 99, 0.08);
   display: flex;
   flex-direction: column;
 }
 
 .product-media {
-  height: 130px;
+  height: 160px;
   position: relative;
-  border-bottom: 1px solid rgba(245, 226, 197, 0.3);
-  background: conic-gradient(from 200deg, rgba(251, 210, 142, 0.6), rgba(247, 166, 193, 0.55), rgba(230, 200, 255, 0.5), rgba(5, 3, 8, 0.9));
+  overflow: hidden;
+  border-bottom: 1px solid rgba(255, 107, 53, 0.3);
+  background: linear-gradient(135deg, rgba(233, 30, 99, 0.2), rgba(107, 33, 168, 0.15));
+}
+
+.product-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .product-media-inner {
@@ -651,7 +536,7 @@ body {
 .product-name {
   font-size: 0.78rem;
   font-weight: 600;
-  color: #ffe7c2;
+  color: #fef7ed;
 }
 
 .product-subtitle {
@@ -685,7 +570,7 @@ body {
 .product-price-main {
   font-size: 0.9rem;
   font-weight: 600;
-  color: #fbd28e;
+  color: #f4c430;
 }
 
 .product-price-strike {
@@ -714,8 +599,8 @@ body {
   cursor: pointer;
   font-size: 0.7rem;
   font-weight: 600;
-  background: linear-gradient(90deg, #fbd28e, #f7a6c1);
-  color: #1a0b1e;
+  background: linear-gradient(90deg, #ff6b35, #e91e63);
+  color: #fff;
 }
 
 .btn-link {
@@ -728,11 +613,13 @@ body {
   bottom: 0;
   margin-top: auto;
   padding: 0.7rem 1.25rem 0.9rem;
-  border-top: 1px solid rgba(245, 226, 197, 0.3);
-  background: linear-gradient(180deg, rgba(5, 3, 8, 0.96), rgba(5, 3, 8, 1));
+  border-top: 1px solid rgba(255, 107, 53, 0.35);
+  background: linear-gradient(180deg, rgba(26, 11, 46, 0.98), rgba(5, 3, 8, 1));
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
+  gap: 0.75rem;
   font-size: 0.8rem;
 }
 
@@ -763,13 +650,13 @@ body {
   justify-content: center;
   font-size: 0.7rem;
   font-weight: 600;
-  background: linear-gradient(135deg, #fbd28e, #f7a6c1);
-  color: #1a0b1e;
+  background: linear-gradient(135deg, #ff6b35, #e91e63);
+  color: #fff;
 }
 
 .cart-total {
   font-size: 0.8rem;
-  color: #fbd28e;
+  color: #f4c430;
   font-weight: 600;
 }
 
@@ -785,9 +672,14 @@ body {
   cursor: pointer;
   font-size: 0.75rem;
   font-weight: 600;
-  background: linear-gradient(90deg, #fbd28e, #f7a6c1);
-  color: #1a0b1e;
-  box-shadow: 0 0 22px rgba(251, 210, 142, 0.7);
+  background: linear-gradient(90deg, #ff6b35, #e91e63);
+  color: #fff;
+  box-shadow: 0 0 22px rgba(233, 30, 99, 0.6);
+}
+
+.cart-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .cart-panel {
@@ -813,7 +705,7 @@ body {
 
 .cart-item-name {
   font-weight: 500;
-  color: #ffe7c2;
+  color: #fef7ed;
 }
 
 .cart-item-detail {
@@ -846,7 +738,7 @@ body {
 
 .cart-item-price {
   font-size: 0.72rem;
-  color: #fbd28e;
+  color: #f4c430;
 }
 
 .bottom-note {
@@ -864,7 +756,8 @@ body {
   .hero-grid {
     grid-template-columns: minmax(0, 1fr);
   }
-  .hero-right-card {
+  .hero-right-card,
+  .hero-card {
     margin-top: 1.4rem;
   }
   .section {
@@ -907,8 +800,8 @@ body {
 }
 
 .gallery-filter-btn.is-active {
-  background: linear-gradient(90deg, #fbd28e, #f7a6c1);
-  color: #1a0b1e;
+  background: linear-gradient(90deg, #ff6b35, #e91e63);
+  color: #fff;
   border-color: transparent;
 }
 
@@ -1344,187 +1237,163 @@ body {
 
 const APP_JSX = `import { useState } from 'react';
 
-const GALLERY_IMAGES = [
-  {
-    id: 'city-lights',
-    src: 'https://images.unsplash.com/photo-1518837695005-2083093ee35b?auto=format&fit=crop&w=1000&q=80',
-    alt: 'Night city skyline with glowing lights',
-    category: 'Photography',
-  },
-  {
-    id: 'designer-desk',
-    src: 'https://images.unsplash.com/photo-1523475472560-d2df97ec485c?auto=format&fit=crop&w=1000&q=80',
-    alt: 'Minimal designer desk with laptop and sketches',
-    category: 'Product',
-  },
-  {
-    id: 'brand-collage',
-    src: 'https://images.unsplash.com/photo-1526498460520-4c246339dccb?auto=format&fit=crop&w=1000&q=80',
-    alt: 'Brand moodboard with typography and color swatches',
-    category: 'Brand',
-  },
-  {
-    id: 'mobile-app',
-    src: 'https://images.unsplash.com/photo-1553877522-43269d4ea984?auto=format&fit=crop&w=1000&q=80',
-    alt: 'Mobile app screens on a table',
-    category: 'Product',
-  },
-  {
-    id: 'portrait',
-    src: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=1000&q=80',
-    alt: 'Portrait of a woman with soft studio lighting',
-    category: 'Photography',
-  },
-  {
-    id: 'workspace',
-    src: 'https://images.unsplash.com/photo-1521747116042-5a810fda9664?auto=format&fit=crop&w=1000&q=80',
-    alt: 'Creative studio workspace with big monitor',
-    category: 'Product',
-  },
-  {
-    id: 'branding-cards',
-    src: 'https://images.unsplash.com/photo-1522202222206-764ec137a6a9?auto=format&fit=crop&w=1000&q=80',
-    alt: 'Business cards and stationery branding set',
-    category: 'Brand',
-  },
-  {
-    id: 'architecture',
-    src: 'https://images.unsplash.com/photo-1487958449943-2429e8be8625?auto=format&fit=crop&w=1000&q=80',
-    alt: 'Modern building with strong geometric shapes',
-    category: 'Photography',
-  },
-  {
-    id: 'editorial',
-    src: 'https://images.unsplash.com/photo-1519710164239-da123dc03ef4?auto=format&fit=crop&w=1000&q=80',
-    alt: 'Editorial fashion photography pose',
-    category: 'Photography',
-  },
+const SAREES = [
+  { id: 's1', name: 'Royal Silk Banarasi', price: 12999, originalPrice: 15999, category: 'Banarasi', image: 'https://images.unsplash.com/photo-1617127365659-c47fa927d264?auto=format&fit=crop&w=800&q=80', badge: 'Bestseller' },
+  { id: 's2', name: 'Saffron Cotton Print', price: 2499, originalPrice: 2999, category: 'Cotton', image: 'https://images.unsplash.com/photo-1582555172866-f73bb12a2ab3?auto=format&fit=crop&w=800&q=80', badge: 'New' },
+  { id: 's3', name: 'Emerald Chiffon Drape', price: 4499, originalPrice: null, category: 'Chiffon', image: 'https://images.unsplash.com/photo-1582552938357-32b906df40cb?auto=format&fit=crop&w=800&q=80', badge: null },
+  { id: 's4', name: 'Gold Zari Silk', price: 18999, originalPrice: 22999, category: 'Silk', image: 'https://images.unsplash.com/photo-1558171813-4b74a2f7f4e1?auto=format&fit=crop&w=800&q=80', badge: 'Luxe' },
+  { id: 's5', name: 'Coral Georgette', price: 3299, originalPrice: null, category: 'Georgette', image: 'https://images.unsplash.com/photo-1515886652393-9c5f01e1e5f6?auto=format&fit=crop&w=800&q=80', badge: null },
+  { id: 's6', name: 'Fuchsia Silk Blend', price: 6999, originalPrice: 8499, category: 'Silk', image: 'https://images.unsplash.com/photo-1490481461827-8c496aba61b7?auto=format&fit=crop&w=800&q=80', badge: 'Sale' },
+  { id: 's7', name: 'Indigo Cotton Handloom', price: 3999, originalPrice: null, category: 'Cotton', image: 'https://images.unsplash.com/photo-1558618662-d8c38c9631e?auto=format&fit=crop&w=800&q=80', badge: null },
+  { id: 's8', name: 'Pearl Banarasi', price: 15999, originalPrice: 18999, category: 'Banarasi', image: 'https://images.unsplash.com/photo-1519699047748-7e42932eef30?auto=format&fit=crop&w=800&q=80', badge: 'Limited' },
+  { id: 's9', name: 'Mint Chiffon', price: 3799, originalPrice: null, category: 'Chiffon', image: 'https://images.unsplash.com/photo-1515886652393-9c5f01e1e5f6?auto=format&fit=crop&w=800&q=80', badge: null },
 ];
 
-function App() {
-  const [highlighted, setHighlighted] = useState(GALLERY_IMAGES[0]);
+const CATEGORIES = ['All', 'Silk', 'Cotton', 'Banarasi', 'Chiffon', 'Georgette'];
 
-  const primaryRow = GALLERY_IMAGES.slice(0, 4);
-  const secondaryRow = GALLERY_IMAGES.slice(4);
+function App() {
+  const [activeFilter, setActiveFilter] = useState('All');
+  const [cart, setCart] = useState([]);
+
+  const filteredSarees = activeFilter === 'All' ? SAREES : SAREES.filter((s) => s.category === activeFilter);
+
+  const addToCart = (saree) => {
+    const existing = cart.find((c) => c.id === saree.id);
+    if (existing) {
+      setCart(cart.map((c) => c.id === saree.id ? { ...c, qty: c.qty + 1 } : c));
+    } else {
+      setCart([...cart, { ...saree, qty: 1 }]);
+    }
+  };
+
+  const updateQty = (id, delta) => {
+    setCart(cart.map((c) => {
+      if (c.id !== id) return c;
+      const n = Math.max(0, c.qty + delta);
+      return n === 0 ? null : { ...c, qty: n };
+    }).filter(Boolean));
+  };
+
+  const cartCount = cart.reduce((sum, c) => sum + c.qty, 0);
+  const cartTotal = cart.reduce((sum, c) => sum + c.price * c.qty, 0);
+
+  const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   return (
-    <div className="app app--solar">
-      <header className="nav nav--glass">
+    <div className="app">
+      <header className="nav">
         <div className="brand">
-          <div className="brand-mark">s</div>
+          <div className="brand-mark">O</div>
           <div className="brand-text">
-            <div className="brand-name">solaris studio</div>
-            <div className="brand-tagline">creative grid portfolio</div>
+            <div className="brand-name">ORAA</div>
+            <div className="brand-tagline">For Sarees</div>
           </div>
         </div>
-        <div className="nav-pill">Modern image grid • React sample</div>
+        <div className="nav-pill">E-commerce • Saree store</div>
       </header>
 
       <main>
-        <section className="section split-layout">
-          <aside className="profile-panel">
-            <div className="profile-avatar" />
-            <div className="profile-name">Riya Sen</div>
-            <div className="profile-role">Product designer & visual director</div>
-            <p className="profile-meta">
-              Designing calm, cinematic product experiences for fintech, creator tools
-              and modern SaaS brands. Based in Bengaluru, working with teams globally.
-            </p>
-            <div className="profile-tags">
-              <span className="profile-tag accent">Available for Q2–Q3 2026</span>
-              <span className="profile-tag">Product design</span>
-              <span className="profile-tag">Art direction</span>
-              <span className="profile-tag">Design systems</span>
+        <section className="hero">
+          <div className="hero-grid">
+            <div>
+              <div className="hero-eyebrow">
+                <span className="hero-dot" />
+                Premium handpicked sarees
+              </div>
+              <h1 className="hero-title">
+                Wrap yourself in
+                <span className="highlight"> timeless elegance.</span>
+              </h1>
+              <p className="hero-subtitle">
+                Silk, cotton, Banarasi and more — curated for every occasion. Free shipping on orders above ₹2,999.
+              </p>
+              <div className="hero-actions">
+                <button className="btn-primary" onClick={() => scrollTo('products')}>Shop collection</button>
+                <button className="btn-secondary" onClick={() => scrollTo('cart-bar')}>View cart</button>
+              </div>
+              <div className="hero-badges">
+                <div className="hero-badge">100% authentic</div>
+                <div className="hero-badge">Easy returns</div>
+                <div className="hero-badge">Handcrafted</div>
+              </div>
             </div>
-          </aside>
-
-          <div className="feed">
-            <section className="mosaic-hero">
-              <div className="mosaic-main">
-                <img
-                  src={highlighted.src}
-                  alt={highlighted.alt}
-                  className="mosaic-main-image"
-                />
-                <div className="mosaic-overlay">
-                  Featured frame • {highlighted.category} — drawn from a live client
-                  project.
-                </div>
-              </div>
-              <div className="mosaic-thumbs">
-                {primaryRow.map((image) => (
-                  <button
-                    key={image.id}
-                    type="button"
-                    className={
-                      'mosaic-thumb' +
-                      (highlighted.id === image.id ? ' is-active' : '')
-                    }
-                    onClick={() => setHighlighted(image)}
-                  >
-                    <img src={image.src} alt={image.alt} />
-                    <span className="mosaic-thumb-label">{image.category}</span>
-                  </button>
+            <aside className="hero-card">
+              <div className="hero-card-title">Featured pick</div>
+              <div className="hero-card-grid">
+                {SAREES.slice(0, 3).map((s) => (
+                  <div key={s.id} className="mini-card">
+                    <div><div className="mini-card-name">{s.name}</div><div className="mini-card-label">{s.category}</div></div>
+                    <div><div className="mini-card-price">₹{s.price.toLocaleString('en-IN')}</div><div className="mini-card-badge">{s.badge || '—'}</div></div>
+                  </div>
                 ))}
               </div>
-            </section>
+            </aside>
+          </div>
+        </section>
 
-            <section className="strip-gallery">
-              <header className="strip-header">
-                <div>
-                  <div className="strip-eyebrow">selected visuals</div>
-                  <div className="strip-title">A fast scroll through recent work</div>
-                </div>
-                <p className="strip-description">
-                  A mix of interface stills, brand explorations and art direction shots
-                  that define my current visual language.
-                </p>
-              </header>
-
-              <div className="strip-row">
-                {primaryRow.map((image) => (
-                  <article key={image.id} className="strip-card">
-                    <img src={image.src} alt={image.alt} />
-                    <div className="strip-card-body">
-                      <div className="strip-card-title">{image.category}</div>
-                      <div className="strip-card-subtitle">Hero frames & gallery cuts</div>
+        <section id="products" className="section">
+          <div className="section-header">
+            <div>
+              <div className="section-eyebrow">collection</div>
+              <h2 className="section-title">Shop by fabric</h2>
+            </div>
+            <p className="section-subtitle">Filter by category and add to cart.</p>
+          </div>
+          <div className="gallery-filters">
+            {CATEGORIES.map((cat) => (
+              <button key={cat} type="button" className={'gallery-filter-btn' + (activeFilter === cat ? ' is-active' : '')} onClick={() => setActiveFilter(cat)}>{cat}</button>
+            ))}
+          </div>
+          <div className="products-grid">
+            {filteredSarees.map((s) => (
+              <article key={s.id} className="product-card">
+                <div className="product-media"><img src={s.image} alt={s.name} className="product-image" /></div>
+                <div className="product-body">
+                  <div className="product-name">{s.name}</div>
+                  <div className="product-subtitle">{s.category} • Premium quality</div>
+                  <div className="product-meta">
+                    {s.badge && <span className="pill">{s.badge}</span>}
+                    <span className="pill">Free shipping</span>
+                  </div>
+                  <div className="product-footer">
+                    <div>
+                      <span className="product-price-main">₹{s.price.toLocaleString('en-IN')}</span>
+                      {s.originalPrice && <span className="product-price-strike">₹{s.originalPrice.toLocaleString('en-IN')}</span>}
                     </div>
-                  </article>
-                ))}
-              </div>
-
-              <div className="strip-row strip-row--muted">
-                {secondaryRow.map((image) => (
-                  <article key={image.id} className="strip-card">
-                    <img src={image.src} alt={image.alt} />
-                    <div className="strip-card-body">
-                      <div className="strip-card-title">Supporting visuals</div>
-                      <div className="strip-card-subtitle">
-                        Detail crops, editorial shots and UI zoom-ins
-                      </div>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </section>
-
-            <section className="contact-banner">
-              <div className="contact-text">
-                Currently partnering with teams on product launches, brand refreshes and
-                immersive marketing sites.
-              </div>
-              <button type="button" className="contact-cta">
-                Request full portfolio deck
-              </button>
-            </section>
+                    <button className="btn-cart" onClick={() => addToCart(s)}>Add to cart</button>
+                  </div>
+                </div>
+              </article>
+            ))}
           </div>
         </section>
       </main>
 
+      <div id="cart-bar" className="cart-bar">
+        <div className="cart-summary">
+          <span className="cart-count-pill"><span className="cart-count-badge">{cartCount}</span> items in cart</span>
+          <span className="cart-total">Total: ₹{cartTotal.toLocaleString('en-IN')}</span>
+        </div>
+        {cart.length > 0 && (
+          <div className="cart-panel">
+            {cart.map((c) => (
+              <div key={c.id} className="cart-item-row">
+                <div className="cart-item-meta"><div className="cart-item-name">{c.name}</div><div className="cart-item-detail">₹{c.price.toLocaleString('en-IN')} × {c.qty}</div></div>
+                <div className="cart-item-controls">
+                  <button className="cart-qty-btn" onClick={() => updateQty(c.id, -1)}>−</button>
+                  <span className="qty-pill">{c.qty}</span>
+                  <button className="cart-qty-btn" onClick={() => updateQty(c.id, 1)}>+</button>
+                </div>
+                <span className="cart-item-price">₹{(c.price * c.qty).toLocaleString('en-IN')}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <button className="cart-button" disabled={cartCount === 0}>Checkout</button>
+      </div>
+
       <div className="bottom-note">
-        This Solaris portfolio layout is intentionally different from the main sample —
-        it focuses on a side profile, a highlighted frame and dense image strips. Clone
-        it in App Studio and swap in your own visuals and copy.
+        ORAA sample — vibrant saree e-commerce for Sarees. Clone in App Studio and add your own products.
       </div>
     </div>
   );

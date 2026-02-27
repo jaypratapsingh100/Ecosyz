@@ -11,7 +11,7 @@ import {
   SRC_ROOT_COMPONENT_PATTERN,
   CSS_PATH_PATTERN,
 } from '@/lib/app-builder/agentSchema';
-import { buildFixPrompt } from '@/lib/app-builder/promptBuilder';
+import { buildFixPrompt, buildRetryPrompt } from '@/lib/app-builder/promptBuilder';
 import { buildPlannerPrompt, parsePlannerResponse } from '@/lib/app-builder/agents/planner';
 import { buildArchitectPrompt, parseArchitectResponse } from '@/lib/app-builder/agents/architect';
 import { buildAppBuilderPrompts } from '@/lib/app-builder/contextBuilder';
@@ -507,10 +507,12 @@ export async function POST(
       });
     }
     
+    // Both Groq and OpenRouter (DeepSeek V3) support 8192 output tokens for consistent multi-file responses
+    const maxOutputTokens = 8192;
     console.log(`✅ Using ${provider.toUpperCase()}:`, {
       model: model,
-      maxContext: provider === 'groq' ? '128K tokens' : '16K tokens',
-      maxNewTokens: provider === 'groq' ? '8192' : '4000'
+      maxContext: provider === 'groq' ? '128K tokens' : '128K tokens (DeepSeek V3)',
+      maxNewTokens: maxOutputTokens
     });
     
     const existingFilePaths = project.files?.map((f: { path: string }) => f.path) || [];
@@ -1740,7 +1742,6 @@ root.render(
     const systemTokens = Math.ceil(systemPrompt.length / 4);
     const userTokens = Math.ceil(message.length / 4);
     const totalInputTokens = systemTokens + userTokens;
-    const maxOutputTokens = 4000;
     
     if (process.env.NODE_ENV === 'development') {
       console.log(`[${provider.toUpperCase()}] Request: ~${totalInputTokens} input tokens, max ${maxOutputTokens} output tokens`);
@@ -1763,8 +1764,8 @@ root.render(
           { role: 'system', content: systemPrompt },
           { role: 'user', content: message },
         ],
-        temperature: 0.7,
-        max_tokens: 8192, // Groq supports up to 8192
+        temperature: 0.5, // Lower for more consistent output across Groq and OpenRouter
+        max_tokens: maxOutputTokens,
         stream: false, // Non-streaming for reliability
       });
       
@@ -1787,15 +1788,16 @@ root.render(
         throw new Error(`${provider.toUpperCase()} returned an empty or incomplete response`);
       }
       
-      // Check if response contains code blocks
+      // Check if response contains parseable output (JSON or code blocks)
       const hasCodeBlocks = /```/.test(response);
-      if (!hasCodeBlocks) {
-        console.warn('⚠️ Response does not contain code blocks');
+      const hasJsonFiles = /\{\s*"files"\s*:/.test(response);
+      if (!hasCodeBlocks && !hasJsonFiles) {
+        console.warn('⚠️ Response has neither JSON nor code blocks');
         console.warn('Response preview:', response.substring(0, 500));
 
-        // Retry once with strict file-only instruction
-        const strictMessage = `${message}\n\nSTRICT OUTPUT FORMAT:\n- Return ONLY code blocks using \`\`\`file:path/to/file.ext\`\`\`\n- Do NOT include prose outside code blocks\n- Ensure every file has a valid path\n`;
-        console.warn('🔁 Retrying with strict file-only format...');
+        // Retry with unified format instruction (works for both Groq and OpenRouter)
+        const strictMessage = buildRetryPrompt(message, fileExtension);
+        console.warn('🔁 Retrying with unified output format...');
         const retryCompletion = await client.chat.completions.create({
           model: model,
           messages: [
@@ -1803,13 +1805,15 @@ root.render(
             { role: 'user', content: strictMessage },
           ],
           temperature: 0.4,
-          max_tokens: 4000,
+          max_tokens: maxOutputTokens,
           stream: false,
         });
         const retryResponse = retryCompletion.choices[0]?.message?.content || '';
-        if (retryResponse && /```/.test(retryResponse)) {
+        const retryHasCodeBlocks = retryResponse && /```/.test(retryResponse);
+        const retryHasJson = retryResponse && /\{\s*"files"\s*:/.test(retryResponse);
+        if (retryResponse && (retryHasCodeBlocks || retryHasJson)) {
           response = retryResponse;
-          console.log('✅ Retry returned code blocks');
+          console.log(`✅ Retry returned ${retryHasJson ? 'JSON' : 'code blocks'}`);
         }
       }
       
@@ -1887,14 +1891,15 @@ root.render(
       throw new Error(`${provider.toUpperCase()} returned an empty response. Please try again.`);
     }
     
-    // Validate response contains code blocks
+    // Validate response contains parseable output (JSON or code blocks)
     const codeBlockCount = (response.match(/```/g) || []).length / 2;
-    if (codeBlockCount === 0) {
-      console.warn('⚠️ Response does not contain code blocks');
+    const hasJsonFiles = /\{\s*"files"\s*:/.test(response);
+    if (codeBlockCount === 0 && !hasJsonFiles) {
+      console.warn('⚠️ Response has neither JSON nor code blocks');
       console.warn('Response preview:', response.substring(0, 500));
       // Don't throw - let parsing handle it, but log warning
     } else {
-      console.log(`✅ Response contains ${codeBlockCount} code blocks`);
+      console.log(`✅ Response contains ${hasJsonFiles ? 'JSON' : ''}${hasJsonFiles && codeBlockCount > 0 ? ' + ' : ''}${codeBlockCount > 0 ? `${codeBlockCount} code blocks` : ''}`);
     }
     
     // Parse response: JSON-first (agent schema), then regex fallback

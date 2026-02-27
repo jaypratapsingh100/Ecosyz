@@ -105,18 +105,21 @@ ${VIBE_DESIGN_SYSTEM}
 
 Allowed paths (use these exactly): ${paths}
 
-OUTPUT: Valid JSON only, one response:
-{"files":[{"path":"src/App.${ext}","name":"App.${ext}","content":"...","language":"${ext.slice(0, 2)}x","isMain":true},...],"summary":"..."}
+OUTPUT FORMAT (use one; both are accepted):
+- PREFERRED: Valid JSON: {"files":[{"path":"src/App.${ext}","name":"App.${ext}","content":"...","language":"${ext.slice(0, 2)}x","isMain":true},...],"summary":"..."}
+- ALTERNATIVE: Markdown code blocks with \`\`\`file:path/to/file.${ext}\`\`\` or \`\`\`jsx:src/components/Name.${ext}\`\`\`
 
 RULES:
-- JSON only. One response. Semantic HTML, responsive, accessible.
+- Return ALL files in one response (JSON or code blocks). Semantic HTML, responsive, accessible.
 - Main entry: src/App.${ext} with export default App. New components in src/components/.
 - Use CSS in src/index.css or component-level; avoid inline styles except for dynamic values.
 - BEFORE WRITING CODE: silently decide the full set of React components, pages and support files needed to satisfy the user request.
 - OUTPUT REQUIREMENT: for every component, hook, utility or page you reference (e.g. <Hero />, useNavbar(), getData(), etc.), include a corresponding file in the "files" array with matching "path".
 - NEVER return a partial app. At minimum include: src/App.${ext}, all components imported into App, and any shared layout/section components those depend on, plus required CSS files.
 - DO NOT return only a single file like src/App.${ext}; always return the complete, self-contained file set needed for the app to run without missing imports.
-- CRITICAL for preview: (1) For any .map() always guard: (items || []).map(...) or useState([]). Never .map() on undefined. (2) Valid JSX only; no Node/require. (3) For navigation use <a href="..."> or Link (stub provided in preview).`;
+- CRITICAL for preview: (1) For any .map() always guard: (items || []).map(...) or useState([]). Never .map() on undefined. (2) Valid JSX only; no Node/require. (3) For navigation use <a href="..."> or Link (stub provided in preview).
+
+CONSISTENCY (apply for every request): Always return the complete file set. Never return only src/App.${ext}. Include App + every component it imports (Header, Hero, Footer, etc.) as separate files. Same structure every time.`;
 }
 
 /** Business / portfolio website requirements - injected when app type is business-like */
@@ -151,7 +154,9 @@ export function buildUserPrompt(
   if (questionnaire && typeof questionnaire === 'object' && Object.keys(questionnaire).length > 0) {
     const parts: string[] = [];
     if (questionnaire.appType) parts.push(`App type: ${questionnaire.appType}`);
+    if (questionnaire.projectGoal) parts.push(`Vision: ${questionnaire.projectGoal}`);
     if (questionnaire.targetAudience) parts.push(`Audience: ${questionnaire.targetAudience}`);
+    if (questionnaire.primaryGoal) parts.push(`Primary goal: ${questionnaire.primaryGoal}`);
     if (questionnaire.designStyle) parts.push(`Style: ${questionnaire.designStyle}`);
     if (questionnaire.colorScheme) parts.push(`Colors: ${questionnaire.colorScheme}`);
     if (questionnaire.layoutStyle) parts.push(`Layout: ${questionnaire.layoutStyle}`);
@@ -162,6 +167,7 @@ export function buildUserPrompt(
       parts.push(`Special: ${(questionnaire.specialFeatures as string[]).join(', ')}`);
     }
     if (questionnaire.brandName) parts.push(`Brand: ${questionnaire.brandName}`);
+    if (questionnaire.tagline) parts.push(`Tagline: ${questionnaire.tagline}`);
 
     if (parts.length > 0) {
       out = `[Context: ${parts.join(' | ')}]\n\n${out}`;
@@ -192,6 +198,17 @@ export function buildUserPrompt(
     `- Do not return an incomplete subset of files; the response should be a fully working app with no missing imports.`;
 
   return out;
+}
+
+/** Build retry prompt when initial response lacks valid output (used for both Groq and OpenRouter) */
+export function buildRetryPrompt(originalMessage: string, ext: string): string {
+  return `${originalMessage}
+
+STRICT OUTPUT (retry - ensure complete response):
+- Return ALL files: src/App.${ext} plus every component (Header, Hero, Footer, etc.) as separate files.
+- Use either: (A) JSON {"files":[...]} OR (B) Markdown code blocks \`\`\`file:path/to/file.${ext}\`\`\`
+- Do NOT return only one file. Include the complete, self-contained file set.
+- Every component imported in App MUST have its own file in the output.`;
 }
 
 /** Build fix prompt for auto-repair on render errors */

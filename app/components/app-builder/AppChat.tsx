@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import ChatQuestionnaire from './ChatQuestionnaire';
 import { SUGGESTED_PROMPTS } from '@/lib/app-builder/businessWebsitePrompts';
-import { extractAgentResponse } from '@/lib/app-builder/agentSchema';
+import { extractAgentResponse, parseCodeBlocksToFiles } from '@/lib/app-builder/agentSchema';
 import type { QuestionnaireData } from '@/app/types/app-builder';
 import { useFileExtraction } from './chat/hooks/useFileExtraction';
 
@@ -265,7 +265,9 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
   const renderMessage = (msg: ChatMessage) => {
     const isUser = msg.role === 'user';
     const parsedAgent = !isUser ? extractAgentResponse(msg.content) : null;
-    const structuredFiles = parsedAgent?.files ?? [];
+    // Fallback: parse code blocks when JSON extraction fails (so Extract button still works)
+    const structuredFiles =
+      (parsedAgent?.files?.length ? parsedAgent.files : parseCodeBlocksToFiles(msg.content)) ?? [];
     const hasFiles = !isUser && structuredFiles.length > 0;
 
     return (
@@ -513,7 +515,7 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
   };
 
   const showQuestionnaire =
-    !!projectId &&
+    projectId &&
     !questionnaireDismissed &&
     (questionnaireData === null || Object.keys(questionnaireData || {}).length < 2);
 

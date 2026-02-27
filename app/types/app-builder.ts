@@ -70,6 +70,17 @@ export interface DatabaseError extends Error {
 }
 
 export interface QuestionnaireData {
+  appType?: string;
+  projectGoal?: string;
+  targetAudience?: string;
+  primaryGoal?: string;
+  requiredFeatures?: string[];
+  specialFeatures?: string[];
+  designStyle?: string;
+  colorScheme?: string;
+  layoutStyle?: string;
+  brandName?: string;
+  tagline?: string;
   language?: 'javascript' | 'typescript';
   frameworkPreference?: string;
   [key: string]: unknown;
