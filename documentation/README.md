@@ -4,9 +4,6 @@ This directory contains all project documentation files.
 
 ## Files in this Directory
 
-- **ARCHITECTURE.md** - Application architecture overview (tech stack, modules, data flow)
-- **APP_STUDIO_ENHANCEMENT_PLAN.md** - Atomic tasks for App Studio enhancements (one task per agent/chat)
-- **tasks/** - Individual task files for copy-paste into new agent chats (see tasks/README.md)
 - **COMPREHENSIVE_DOCUMENTATION.md** - Complete documentation combining all guides
 - **API_TESTING_GUIDE.md** - Authentication API testing guide with curl examples
 - **COMMIT_SUMMARY.md** - Summary of commits made in develop branch
