@@ -40,9 +40,10 @@ const SIMPLE_VIEW_MAX_RESOURCES = 20;
 function filterToSimpleView(
   nodes: KGNode[],
   edges: KGEdge[],
-  connectionType: 'tag' | 'author' | 'source' | 'type'
+  connectionType: 'tag' | 'author' | 'source' | 'type',
+  maxResources: number = SIMPLE_VIEW_MAX_RESOURCES
 ): { nodes: KGNode[]; edges: KGEdge[] } {
-  const resourceNodes = nodes.filter((n) => n.type === 'resource').slice(0, SIMPLE_VIEW_MAX_RESOURCES);
+  const resourceNodes = nodes.filter((n) => n.type === 'resource').slice(0, maxResources);
   const resourceIds = new Set(resourceNodes.map((n) => n.id));
   const connectedEdges = edges.filter(
     (e) =>
@@ -82,6 +83,7 @@ export default function KnowledgeGraph({ resources, onSelect, onSave, onClose }:
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showEdgeLabels, setShowEdgeLabels] = useState(false);
   const [mobileHeaderExpanded, setMobileHeaderExpanded] = useState(false);
+  const [simpleMaxResources, setSimpleMaxResources] = useState<number>(SIMPLE_VIEW_MAX_RESOURCES);
   const [stats, setStats] = useState<{
     nodes: number;
     edges: number;
@@ -111,6 +113,15 @@ export default function KnowledgeGraph({ resources, onSelect, onSave, onClose }:
       setMobileHeaderExpanded(false);
     }
   }, [isFullscreen]);
+
+  // When controls are hidden, also hide legend and any open details panel
+  useEffect(() => {
+    if (!mobileHeaderExpanded) {
+      setShowLegend(false);
+      setSelectedNode(null);
+      setExpanded(false);
+    }
+  }, [mobileHeaderExpanded]);
 
   const buildGraph = (resources: Resource[]) => {
     const nodes: KGNode[] = [];
@@ -167,9 +178,9 @@ export default function KnowledgeGraph({ resources, onSelect, onSave, onClose }:
     if (!resources.length) return { nodes: [] as KGNode[], edges: [] as KGEdge[] };
     const { nodes: fullNodes, edges: fullEdges } = buildGraph(resources);
     return viewMode === 'simple'
-      ? filterToSimpleView(fullNodes, fullEdges, simpleConnectionType)
+      ? filterToSimpleView(fullNodes, fullEdges, simpleConnectionType, simpleMaxResources)
       : { nodes: fullNodes, edges: fullEdges };
-  }, [resources, viewMode, simpleConnectionType]);
+  }, [resources, viewMode, simpleConnectionType, simpleMaxResources]);
 
   const overviewSentence = useMemo(() => {
     if (!stats) return '';
@@ -605,6 +616,36 @@ export default function KnowledgeGraph({ resources, onSelect, onSave, onClose }:
                       <option value="source">By source</option>
                       <option value="type">By kind</option>
                     </select>
+                    <span className="text-xs text-slate-500 ml-2">Density:</span>
+                    <div className="flex rounded-lg overflow-hidden border border-emerald-500/30">
+                      <button
+                        type="button"
+                        onClick={() => setSimpleMaxResources(10)}
+                        className={`px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                          simpleMaxResources === 10 ? 'bg-emerald-500/30 text-emerald-200' : 'bg-gray-700/60 text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        Low
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSimpleMaxResources(SIMPLE_VIEW_MAX_RESOURCES)}
+                        className={`px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                          simpleMaxResources === SIMPLE_VIEW_MAX_RESOURCES ? 'bg-emerald-500/30 text-emerald-200' : 'bg-gray-700/60 text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        Med
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSimpleMaxResources(40)}
+                        className={`px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                          simpleMaxResources === 40 ? 'bg-emerald-500/30 text-emerald-200' : 'bg-gray-700/60 text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        High
+                      </button>
+                    </div>
                   </>
                 )}
                 <span className="text-xs text-slate-500 ml-1">|</span>
@@ -919,7 +960,12 @@ export default function KnowledgeGraph({ resources, onSelect, onSave, onClose }:
                       ? 'fixed inset-0 z-40 flex items-center justify-center p-4 bg-black/70'
                       : 'absolute bottom-4 right-4 z-30'
                   }
-                  onClick={() => expanded && setExpanded(false)}
+                  onClick={() => {
+                    if (expanded) {
+                      setExpanded(false);
+                      setSelectedNode(null);
+                    }
+                  }}
                 >
                   <div
                     className={`bg-gray-800/90 backdrop-blur-md rounded-xl p-4 border border-emerald-500/30 shadow-xl ${
@@ -944,16 +990,17 @@ export default function KnowledgeGraph({ resources, onSelect, onSave, onClose }:
                           {TYPE_LABELS[selectedNode.type] ?? selectedNode.type}
                         </span>
                       </div>
-                      {expanded && (
-                        <button
-                          type="button"
-                          onClick={() => setExpanded(false)}
-                          className="p-1 rounded-full text-slate-400 hover:text-white hover:bg-emerald-500/20 transition-colors"
-                          aria-label="Close details"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setExpanded(false);
+                          setSelectedNode(null);
+                        }}
+                        className="p-1 rounded-full text-slate-400 hover:text-white hover:bg-emerald-500/20 transition-colors"
+                        aria-label="Close details"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
                     </div>
                     
                     <h4 className={`text-white font-semibold mb-1 leading-tight ${expanded ? 'text-base' : 'text-sm'}`}>

@@ -7,6 +7,8 @@
  * Schema: { files: Array<{ path, name, content, language, isMain }> }
  */
 
+import { jsonrepair } from 'jsonrepair';
+
 export const ALLOWED_PATHS = [
   'index.html',
   'styles.css',
@@ -141,11 +143,11 @@ export function extractAgentResponse(text: string): AgentResponse | null {
       try {
         return JSON.parse(jsonStr) as unknown;
       } catch {
-        // 2) Fallback: treat as JS object literal (handles unescaped newlines in strings)
+        // 2) Fallback: use jsonrepair to fix malformed JSON (trailing commas, unescaped newlines, etc.)
+        // Never use eval/new Function — LLM output is untrusted and could execute arbitrary code
         try {
-          // eslint-disable-next-line no-new-func
-          const fn = new Function(`return (${jsonStr});`);
-          return fn() as unknown;
+          const repaired = jsonrepair(jsonStr);
+          return JSON.parse(repaired) as unknown;
         } catch {
           return null;
         }
