@@ -233,6 +233,9 @@ export default function AdminAnalyticsPage() {
         let errorMessage = 'Failed to fetch analytics';
         let errorDetails: { message?: string; code?: string; name?: string; details?: string } | null = null;
         
+        // Clone response before reading to allow fallback to text if JSON parsing fails
+        const clonedResponse = response.clone();
+        
         try {
           const errorData = await response.json();
           errorMessage = errorData.error || errorMessage;
@@ -245,9 +248,9 @@ export default function AdminAnalyticsPage() {
             console.error('Error name:', errorDetails.name);
           }
         } catch (_parseError) {
-          // If response is not JSON, try to get text
+          // If response is not JSON, try to get text from cloned response
           try {
-            const text = await response.text();
+            const text = await clonedResponse.text();
             console.error('Non-JSON error response:', text);
             errorMessage = text || response.statusText || errorMessage;
           } catch (_textError) {

@@ -88,7 +88,12 @@ jobs:
         run: ${{ steps.detect-package-manager.outputs.manager }} ${{ steps.detect-package-manager.outputs.command }}
         
       - name: Build with Next.js
-        run: ${{ steps.detect-package-manager.outputs.runner }} run build
+        run: |
+          if [ "${{ steps.detect-package-manager.outputs.manager }}" == "npm" ]; then
+            npm run build
+          else
+            ${{ steps.detect-package-manager.outputs.runner }} run build
+          fi
         
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

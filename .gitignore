@@ -51,10 +51,6 @@ coverage/
 TASKS.md
 STRATEGY.md
 
-# Markdown documentation files
-*.md
-!README.md
-
 # Optional: Build artifacts
 build/
 tmp/
