@@ -70,8 +70,32 @@ export interface DatabaseError extends Error {
 }
 
 export interface QuestionnaireData {
+  // Step 1: App Type
+  appType?: string;
+
+  // Step 2: Description
+  appDescription?: string;
+
+  // Step 3: Features
+  requiredFeatures?: string[];
+  specialFeatures?: string[];
+
+  // Step 4: Design Style
+  designStyle?: string;
+  colorScheme?: string;
+  layoutStyle?: string;
+
+  // Step 5: Brand Details
+  brandName?: string;
+  tagline?: string;
+  primaryColor?: string;
+  targetAudience?: string;
+
+  // Technical preferences
   language?: 'javascript' | 'typescript';
   frameworkPreference?: string;
+
+  // Allow additional fields
   [key: string]: unknown;
 }
 

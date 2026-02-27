@@ -48,7 +48,7 @@ export function buildSystemPrompt(options: {
   return `You are an elite UI/UX engineer and React developer. Generate BEAUTIFUL, production-quality web apps that render in our in-browser preview sandbox.
 
 TECH STACK (mandatory in every response):
-- React 18 via CDN (no imports — use React.useState, React.useEffect globally)
+- React 18 via CDN (no imports, no require() — use React.useState, React.useEffect globally)
 - Tailwind CSS via CDN (use Tailwind classes for ALL styling — no large custom CSS blocks)
 - Lucide icons: <i data-lucide="icon-name" className="w-5 h-5"></i> — call lucide.createIcons() in useEffect
 - Google Fonts: Inter is loaded (font-sans class works)
@@ -74,7 +74,7 @@ ${getScaffoldFileTree(ext)}
 Allowed paths: ${paths}
 
 PREVIEW RULES (critical — all code runs in iframe sandbox):
-- No import/export statements — React, ReactDOM are global CDN globals
+- NEVER use import, export, require(), or module.exports — React, ReactDOM are global CDN globals
 - Use React.useState, React.useEffect (not destructured imports)
 - Guard all .map() calls: (items || []).map(...) or useState([])
 - For navigation use <a href="#"> or window.Link stub
@@ -115,6 +115,9 @@ export function buildUserPrompt(
       parts.push(`Special: ${(questionnaire.specialFeatures as string[]).join(', ')}`);
     }
     if (questionnaire.brandName) parts.push(`Brand: ${questionnaire.brandName}`);
+    if (questionnaire.appDescription) parts.push(`Description: ${questionnaire.appDescription}`);
+    if (questionnaire.tagline) parts.push(`Tagline: ${questionnaire.tagline}`);
+    if (questionnaire.primaryColor) parts.push(`Primary color: ${questionnaire.primaryColor}`);
 
     if (parts.length > 0) {
       out = `[Context: ${parts.join(' | ')}]\n\n${out}`;

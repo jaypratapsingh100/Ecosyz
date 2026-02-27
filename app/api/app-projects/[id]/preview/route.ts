@@ -170,6 +170,28 @@ export async function POST(
       }
     }
 
+    // Strip ALL module syntax (ES6 + CommonJS) before injecting into the browser iframe.
+    // The preview sandbox has React/ReactDOM as globals — no module system exists.
+    const stripModuleSyntax = (code: string): string => {
+      return (code || '')
+        // === ES6 imports ===
+        .replace(/import\s+[\s\S]*?from\s+['"][^'"]*['"]\s*;?\s*/g, '')
+        .replace(/import\s+['"][^'"]*['"]\s*;?\s*/g, '')
+        // === ES6 exports ===
+        .replace(/export\s+default\s+/g, '')
+        .replace(/export\s*\{[^}]*\}\s*;?\s*/g, '')
+        .replace(/export\s+(const|let|var|function|class)\s+/g, '$1 ')
+        // === CommonJS require ===
+        .replace(/(?:const|let|var)\s+[\w{}\s,]+\s*=\s*require\s*\([^)]*\)\s*;?\s*/g, '')
+        .replace(/require\s*\([^)]*\)\s*;?\s*/g, '')
+        // === CommonJS exports ===
+        .replace(/module\.exports\s*=\s*[^;\n]+;?\s*/g, '')
+        .replace(/exports\.\w+\s*=\s*[^;\n]+;?\s*/g, '')
+        // === Safety: escape </script> and template literals ===
+        .replace(/<\/script>/gi, '<\\/script>')
+        .replace(/\$\{/g, '\\${');
+    };
+
     // Handle JS/JSX file injection
     if (isReactProject) {
       // For React projects: inject src/App.jsx if it exists separately
@@ -233,11 +255,7 @@ export async function POST(
             !f.path.match(/^src\/main\.(jsx|tsx)$/) // Exclude entry - we inject App directly
         );
         const stripForBrowser = (code: string) => {
-          let c = (code || '')
-            .replace(/export\s+default\s+/g, '')
-            .replace(/import\s+[\s\S]*?from\s+['"][^'"]*['"]\s*;?\s*/g, '') // Remove imports
-            .replace(/<\/script>/gi, '<\\/script>')
-            .replace(/\$\{/g, '\\${'); // Escape template literals
+          let c = stripModuleSyntax(code);
           if ((c.includes('useState(') || c.includes('useEffect(')) && !c.includes('React.useState') && !c.includes('const { useState')) {
             c = 'const { useState, useEffect, useCallback, useMemo } = React;\n' + c;
           }
@@ -304,9 +322,7 @@ export async function POST(
         ensureReactAndRoot();
 
         // Inject the App.jsx component with proper React rendering
-        let appContent = mainJsFile.content
-          .replace(/export\s+default\s+/g, '')
-          .replace(/import\s+[\s\S]*?from\s+['"][^'"]*['"]\s*;?\s*/g, ''); // Remove imports (components injected above)
+        let appContent = stripModuleSyntax(mainJsFile.content);
         appContent = appContent.trim();
         // Ensure React hooks are in scope in iframe (same as component files)
         if ((appContent.includes('useState(') || appContent.includes('useEffect(')) && !appContent.includes('React.useState') && !appContent.includes('const { useState')) {
@@ -322,10 +338,7 @@ const Route = function Route(props) { return props.element ?? null; };
           appContent = routerStub + appContent;
         }
 
-        // CRITICAL: Escape </script> so HTML parser doesn't close script tag early
-        appContent = appContent.replace(/<\/script>/gi, '<\\/script>');
-        // Escape template literals so ${} in source isn't interpreted when we build the HTML
-        appContent = appContent.replace(/\$\{/g, '\\${');
+        // Note: </script> escaping and template literal escaping are already handled by stripModuleSyntax above.
         
         // Wrap app in an error boundary so runtime errors (e.g. .map on undefined) show a message instead of blank preview
         // When router stubs are active, render a small banner so the fix is visible; also highlight "Router is not defined" in errors
@@ -388,7 +401,7 @@ const Route = function Route(props) { return props.element ?? null; };
           !f.isMain
       );
       for (const jsFile of jsFiles) {
-        const safeContent = (jsFile.content || '').replace(/<\/script>/gi, '<\\/script>');
+        const safeContent = stripModuleSyntax(jsFile.content);
         const scriptTag = `<script type="text/babel">${safeContent}</script>`;
         // Insert before closing body tag
         if (html.includes('</body>')) {
@@ -410,7 +423,7 @@ const Route = function Route(props) { return props.element ?? null; };
           f.path !== 'index.html'
       );
       if (mainJsFile && !html.includes(mainJsFile.content)) {
-        const safeContent = (mainJsFile.content || '').replace(/<\/script>/gi, '<\\/script>');
+        const safeContent = stripModuleSyntax(mainJsFile.content);
         const scriptTag = `<script type="text/babel">${safeContent}</script>`;
         if (html.includes('</body>')) {
           html = html.replace('</body>', `${scriptTag}\n</body>`);

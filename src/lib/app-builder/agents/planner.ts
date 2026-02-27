@@ -19,8 +19,10 @@ export function buildPlannerPrompt(
   if (questionnaire && typeof questionnaire === 'object' && Object.keys(questionnaire).length > 0) {
     const parts: string[] = [];
     if (questionnaire.appType) parts.push(`App type: ${questionnaire.appType}`);
+    if (questionnaire.appDescription) parts.push(`Description: ${questionnaire.appDescription}`);
     if (questionnaire.targetAudience) parts.push(`Audience: ${questionnaire.targetAudience}`);
     if (questionnaire.designStyle) parts.push(`Style: ${questionnaire.designStyle}`);
+    if (questionnaire.primaryColor) parts.push(`Primary color: ${questionnaire.primaryColor}`);
     if (parts.length > 0) out = `[Context: ${parts.join(' | ')}]\n\n${out}`;
   }
   return out + '\n\nRespond with valid JSON only (plan object).';
