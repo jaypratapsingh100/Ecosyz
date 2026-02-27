@@ -125,17 +125,46 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const projects = await prisma.appProject.findMany({
-      where: { ownerId: prismaUser.id },
-      orderBy: { createdAt: 'desc' },
-      include: {
-        files: {
-          orderBy: { path: 'asc' },
+    const { searchParams } = new URL(req.url);
+    const limitParam = searchParams.get('limit');
+    const pageParam = searchParams.get('page');
+
+    const limit = limitParam ? parseInt(limitParam, 10) : 50;
+    const page = pageParam ? parseInt(pageParam, 10) : 1;
+
+    const safeLimit = Number.isNaN(limit) ? 50 : Math.min(Math.max(limit, 1), 100);
+    const safePage = Number.isNaN(page) ? 1 : Math.max(page, 1);
+    const skip = (safePage - 1) * safeLimit;
+
+    const [projects, total] = await Promise.all([
+      prisma.appProject.findMany({
+        where: { ownerId: prismaUser.id },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: safeLimit,
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          framework: true,
+          createdAt: true,
+          isPublic: true,
         },
+      }),
+      prisma.appProject.count({
+        where: { ownerId: prismaUser.id },
+      }),
+    ]);
+
+    return NextResponse.json({
+      projects,
+      pagination: {
+        total,
+        page: safePage,
+        limit: safeLimit,
+        totalPages: Math.ceil(total / safeLimit) || 1,
       },
     });
-
-    return NextResponse.json(projects);
   } catch (error) {
     console.error('Error fetching projects:', error);
     return NextResponse.json(

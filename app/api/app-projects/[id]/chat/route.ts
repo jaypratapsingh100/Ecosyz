@@ -555,7 +555,7 @@ export async function POST(
       }
     }
 
-    // Token-optimized system + user prompts (Lovable/Replit style) with scaffold structure for correct rendering
+    // Token-optimized system + user prompts with scaffold structure for correct rendering
     const promptResult = buildAppBuilderPrompts({
       message,
       questionnaireData,

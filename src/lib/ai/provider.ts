@@ -30,12 +30,12 @@ const GROQ_BASE = 'https://api.groq.com/openai/v1';
 
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
 const OPENROUTER_MODEL_CHAT = 'deepseek/deepseek-chat-v3-0324';
-const OPENROUTER_MODEL_CODER = 'deepseek/deepseek-coder-v2';
+const OPENROUTER_MODEL_CODER = 'deepseek/deepseek-coder';
 
 /** Allowed OpenRouter model IDs for app builder (user can select). */
 export const OPENROUTER_APP_BUILDER_MODELS = [
   { id: 'deepseek/deepseek-chat-v3-0324', label: 'DeepSeek Chat v3' },
-  { id: 'deepseek/deepseek-coder-v2', label: 'DeepSeek Coder v2' },
+  { id: OPENROUTER_MODEL_CODER, label: 'DeepSeek Coder v2' },
   { id: 'deepseek/deepseek-coder-v1.5-16b', label: 'DeepSeek Coder 1.5 16B' },
 ] as const;
 

@@ -30,6 +30,19 @@ const FEATURES = [
 ];
 const STYLES = ['Professional', 'Modern', 'Minimal', 'Gradient', 'Dark', 'Light'];
 const LAYOUTS = ['Single-page scroll', 'Multi-section with nav', 'Sidebar layout', 'Grid-heavy', 'Card-based', 'Landing + blog'];
+const GOALS = [
+  'Get freelance/consulting clients',
+  'Book sales or intro calls',
+  'Showcase portfolio and case studies',
+  'Collect email leads',
+  'Promote a single product or offer',
+];
+const TONES = [
+  'Friendly & conversational',
+  'Confident & expert',
+  'Minimal & direct',
+  'Playful & energetic',
+];
 
 function buildPromptFromQuestionnaire(data: QuestionnaireData): string {
   const parts: string[] = [];
@@ -39,9 +52,18 @@ function buildPromptFromQuestionnaire(data: QuestionnaireData): string {
   }
   if (data.designStyle) parts.push(`${data.designStyle as string} design`);
   const base = parts.join(' ');
+
+  const detailParts: string[] = [];
+  if (data.brandName) detailParts.push(`for the brand "${data.brandName as string}"`);
+  if (data.targetAudience) detailParts.push(`for ${data.targetAudience as string}`);
+  if (data.layoutStyle) detailParts.push(`layout: ${data.layoutStyle as string}`);
+  if ((data as any).primaryGoal) detailParts.push(`primary goal: ${(data as any).primaryGoal as string}`);
+  if ((data as any).tone) detailParts.push(`tone: ${(data as any).tone as string}`);
+  const details = detailParts.length ? ` Focus on ${detailParts.join(', ')}.` : '';
+
   return base
-    ? `Create a ${base}. Responsive, modern, production-ready.`
-    : 'Create a professional web app. Responsive, modern design.';
+    ? `Create a ${base}. Responsive, modern, production-ready UI.${details} Use strong, specific, conversion-focused copy and avoid generic placeholders.`
+    : `Create a professional, conversion-focused marketing site. Responsive, modern design.${details} Use specific, realistic copy instead of placeholders.`;
 }
 
 interface ChatQuestionnaireProps {
@@ -65,6 +87,8 @@ export default function ChatQuestionnaire({
   const [targetAudience, setTargetAudience] = useState((initialData?.targetAudience as string) || '');
   const [layoutStyle, setLayoutStyle] = useState((initialData?.layoutStyle as string) || '');
   const [brandName, setBrandName] = useState((initialData?.brandName as string) || '');
+  const [primaryGoal, setPrimaryGoal] = useState((initialData?.primaryGoal as string) || '');
+  const [tone, setTone] = useState((initialData?.tone as string) || '');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -87,6 +111,8 @@ export default function ChatQuestionnaire({
         targetAudience: targetAudience || undefined,
         layoutStyle: layoutStyle || undefined,
         brandName: brandName || undefined,
+        primaryGoal: primaryGoal || undefined,
+        tone: tone || undefined,
       };
       const res = await fetch(`/api/app-projects/${projectId}`, {
         method: 'PATCH',
@@ -181,6 +207,44 @@ export default function ChatQuestionnaire({
                 placeholder="e.g., B2B SaaS founders, local customers, job recruiters"
                 className="w-full px-3 py-2 bg-[#1a1a1a] border border-white/10 rounded-lg text-sm text-white placeholder-gray-500 focus:ring-2 focus:ring-emerald-500/50 focus:outline-none"
               />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Primary goal of this site</label>
+              <div className="flex flex-wrap gap-1.5">
+                {GOALS.map((goal) => (
+                  <button
+                    key={goal}
+                    type="button"
+                    onClick={() => setPrimaryGoal(primaryGoal === goal ? '' : goal)}
+                    className={`px-2.5 py-1 rounded-md text-xs transition-colors ${
+                      primaryGoal === goal
+                        ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/50'
+                        : 'bg-[#1a1a1a] text-gray-400 border border-white/10 hover:border-white/20'
+                    }`}
+                  >
+                    {goal}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Voice & tone</label>
+              <div className="flex flex-wrap gap-1.5">
+                {TONES.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setTone(tone === t ? '' : t)}
+                    className={`px-2.5 py-1 rounded-md text-xs transition-colors ${
+                      tone === t
+                        ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/50'
+                        : 'bg-[#1a1a1a] text-gray-400 border border-white/10 hover:border-white/20'
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
             </div>
             <div>
               <label className="block text-xs text-gray-400 mb-1">Layout preference</label>

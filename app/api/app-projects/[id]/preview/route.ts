@@ -126,6 +126,14 @@ export async function POST(
       );
     }
 
+    // Tailwind CSS via CDN so utility classNames (flex, items-center, gap-4, etc.) render in preview
+    const tailwindCdn = `<script src="https://cdn.tailwindcss.com"></script>`;
+    if (html.includes('</head>')) {
+      html = html.replace('</head>', `${tailwindCdn}\n</head>`);
+    } else {
+      html = tailwindCdn + html;
+    }
+
     // Standardize preview: inject base CSS for all projects so user always sees a styled app
     // (project CSS is injected after so it overrides; base covers missing CSS or LLM classNames like contact-*, footer-*)
     const baseCss = `<style id="preview-base">${SCAFFOLD_STYLES}${PREVIEW_BASE_CSS}</style>`;

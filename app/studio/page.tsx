@@ -65,8 +65,9 @@ function AppBuilderPageContent() {
       const res = await fetch('/api/app-projects');
       if (!res.ok) return;
       const data = await res.json();
+      const list = Array.isArray(data) ? data : (data?.projects ?? []);
       setProjects(
-        data.map(
+        list.map(
           (p: {
             id: string;
             title: string;
@@ -899,8 +900,8 @@ function AppBuilderPageContent() {
 
                   setSelectedProjectId(projectId);
                   await fetchProjects();
-                  toast.success('React Sample Created', {
-                    description: 'Your React sample project has been created successfully!',
+                  toast.success('Sample Project Created', {
+                    description: 'Your sample project has been created successfully!',
                     duration: 3000,
                   });
                 } catch (error) {

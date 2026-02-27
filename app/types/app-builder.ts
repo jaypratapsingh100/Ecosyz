@@ -15,7 +15,7 @@ export interface ChatRequestBody {
   currentFile?: string;
   /** User-selected AI provider: groq | openrouter (enables OpenRouter DeepSeek Coder, etc.) */
   userProvider?: 'groq' | 'openrouter';
-  /** User-selected model id (e.g. deepseek/deepseek-coder-v2, llama-3.3-70b-versatile) */
+  /** User-selected model id (e.g. deepseek/deepseek-coder, llama-3.3-70b-versatile) */
   userModel?: string;
   userApiKey?: string;
   questionnaireData?: unknown;
