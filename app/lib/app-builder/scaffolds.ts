@@ -8,87 +8,132 @@
 import type { ProjectFile } from '@/app/types/app-builder';
 
 /** Fallback App content when user's App.jsx has syntax errors */
-export const DEFAULT_APP_CONTENT = `function App() {
+export const DEFAULT_APP_CONTENT = `
+const features = [
+  { icon: 'zap', title: 'Lightning Fast', desc: 'Optimized for performance from day one.' },
+  { icon: 'shield', title: 'Secure by Default', desc: 'Enterprise-grade security built in.' },
+  { icon: 'layers', title: 'Infinitely Scalable', desc: 'Grows effortlessly with your business.' },
+];
+
+function App() {
+  React.useEffect(() => { if (window.lucide) lucide.createIcons(); }, []);
   return (
-    <div className="App" style={{
-      minHeight: '100vh',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: 'linear-gradient(135deg, #0c2321 0%, #121f22 50%, #0a1016 100%)',
-      color: '#fff',
-      padding: '2rem',
-      textAlign: 'center',
-      fontFamily: "'Space Grotesk', system-ui, sans-serif"
-    }}>
-      <div style={{
-        background: 'rgba(27, 29, 33, 0.9)',
-        padding: '3rem',
-        borderRadius: '20px',
-        border: '1px solid rgba(56, 189, 248, 0.3)',
-        boxShadow: '0 0 24px rgba(56, 189, 248, 0.15)',
-        maxWidth: '600px'
-      }}>
-        <h1 style={{ fontSize: '2.5rem', marginBottom: '1rem', background: 'linear-gradient(90deg, #38bdf8, #0ff0fc)', WebkitBackgroundClip: 'text', color: 'transparent' }}>
-          Welcome to Your App
+    <div className="min-h-screen bg-slate-950 text-white">
+      <nav className="fixed top-0 w-full z-50 border-b border-white/5 bg-slate-950/90 backdrop-blur-xl">
+        <div className="max-w-7xl mx-auto px-6 flex items-center justify-between h-16">
+          <span className="text-xl font-bold bg-gradient-to-r from-violet-400 to-cyan-400 bg-clip-text text-transparent">MyApp</span>
+          <button className="bg-gradient-to-r from-violet-600 to-indigo-600 px-5 py-2 rounded-full text-sm font-semibold hover:shadow-lg hover:shadow-violet-500/25 transition-all">
+            Get Started
+          </button>
+        </div>
+      </nav>
+      <section className="pt-32 pb-20 px-6 text-center">
+        <div className="inline-flex items-center gap-2 bg-violet-500/10 border border-violet-500/20 rounded-full px-4 py-2 text-sm text-violet-300 mb-8">
+          <i data-lucide="sparkles" className="w-4 h-4"></i>
+          Built with AI — Edit me in Chat!
+        </div>
+        <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-6 max-w-4xl mx-auto">
+          Build products
+          <span className="block bg-gradient-to-r from-violet-400 via-cyan-400 to-violet-400 bg-clip-text text-transparent">10x faster</span>
         </h1>
-        <p style={{ fontSize: '1.2rem', marginBottom: '2rem', color: '#e5e7eb' }}>
-          Start building by asking the AI to create components!
+        <p className="text-xl text-slate-400 max-w-2xl mx-auto mb-10 leading-relaxed">
+          The modern platform for teams who want to ship faster without sacrificing quality.
         </p>
-        <div style={{
-          display: 'flex',
-          gap: '1rem',
-          justifyContent: 'center',
-          flexWrap: 'wrap'
-        }}>
-          <div style={{
-            padding: '1rem 2rem',
-            background: 'rgba(56, 189, 248, 0.1)',
-            border: '1px solid rgba(56, 189, 248, 0.4)',
-            borderRadius: '10px',
-            fontSize: '0.9rem',
-            color: '#38bdf8'
-          }}>
-            Ready to Build
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+          <button className="w-full sm:w-auto bg-gradient-to-r from-violet-600 to-indigo-600 px-8 py-4 rounded-full font-semibold hover:shadow-2xl hover:shadow-violet-500/30 transition-all hover:-translate-y-0.5">
+            Start for free →
+          </button>
+          <button className="w-full sm:w-auto px-8 py-4 rounded-full border border-white/10 text-slate-300 hover:bg-white/5 transition-all">
+            Watch demo
+          </button>
+        </div>
+      </section>
+      <section className="py-20 px-6">
+        <div className="max-w-6xl mx-auto">
+          <h2 className="text-3xl font-bold text-center mb-4">Everything you need</h2>
+          <p className="text-slate-400 text-center mb-16 max-w-xl mx-auto">All the tools to build, ship, and scale.</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {features.map(f => (
+              <div key={f.title} className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 hover:bg-white/8 transition-all hover:-translate-y-1">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-600/20 to-cyan-600/20 border border-violet-500/20 flex items-center justify-center mb-4">
+                  <i data-lucide={f.icon} className="w-5 h-5 text-violet-400"></i>
+                </div>
+                <h3 className="text-lg font-semibold mb-2">{f.title}</h3>
+                <p className="text-slate-400 text-sm leading-relaxed">{f.desc}</p>
+              </div>
+            ))}
           </div>
         </div>
-      </div>
+      </section>
+      <footer className="border-t border-white/5 py-8 px-6 text-center text-slate-500 text-sm">
+        © 2025 MyApp · Built with Ecosyz Studio
+      </footer>
     </div>
   );
 }
-
 export default App;`;
 
 /** Minimal default App for scaffold */
-const SCAFFOLD_APP_CONTENT = `function App() {
+const SCAFFOLD_APP_CONTENT = `
+const features = [
+  { icon: 'zap', title: 'Lightning Fast', desc: 'Optimized for performance from day one.' },
+  { icon: 'shield', title: 'Secure by Default', desc: 'Enterprise-grade security built in.' },
+  { icon: 'layers', title: 'Infinitely Scalable', desc: 'Grows effortlessly with your business.' },
+];
+
+function App() {
+  React.useEffect(() => { if (window.lucide) lucide.createIcons(); }, []);
   return (
-    <div style={{
-      minHeight: '100vh',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontFamily: "'Space Grotesk', system-ui, sans-serif",
-      background: 'linear-gradient(135deg, #0c2321 0%, #121f22 50%, #0a1016 100%)',
-      color: '#fff'
-    }}>
-      <div style={{
-        padding: '2.5rem 3rem',
-        borderRadius: '1.25rem',
-        background: 'rgba(27, 29, 33, 0.9)',
-        border: '1px solid rgba(56, 189, 248, 0.3)',
-        boxShadow: '0 0 24px rgba(56, 189, 248, 0.15)',
-        maxWidth: '480px',
-        width: '100%',
-        textAlign: 'center'
-      }}>
-        <h1 style={{ fontSize: '1.9rem', fontWeight: 700, marginBottom: '0.75rem', background: 'linear-gradient(90deg, #38bdf8, #0ff0fc)', WebkitBackgroundClip: 'text', color: 'transparent' }}>
-          Welcome to your new app
+    <div className="min-h-screen bg-slate-950 text-white">
+      <nav className="fixed top-0 w-full z-50 border-b border-white/5 bg-slate-950/90 backdrop-blur-xl">
+        <div className="max-w-7xl mx-auto px-6 flex items-center justify-between h-16">
+          <span className="text-xl font-bold bg-gradient-to-r from-violet-400 to-cyan-400 bg-clip-text text-transparent">MyApp</span>
+          <button className="bg-gradient-to-r from-violet-600 to-indigo-600 px-5 py-2 rounded-full text-sm font-semibold hover:shadow-lg hover:shadow-violet-500/25 transition-all">
+            Get Started
+          </button>
+        </div>
+      </nav>
+      <section className="pt-32 pb-20 px-6 text-center">
+        <div className="inline-flex items-center gap-2 bg-violet-500/10 border border-violet-500/20 rounded-full px-4 py-2 text-sm text-violet-300 mb-8">
+          <i data-lucide="sparkles" className="w-4 h-4"></i>
+          Built with AI — Edit me in Chat!
+        </div>
+        <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-6 max-w-4xl mx-auto">
+          Build products
+          <span className="block bg-gradient-to-r from-violet-400 via-cyan-400 to-violet-400 bg-clip-text text-transparent">10x faster</span>
         </h1>
-        <p style={{ fontSize: '0.95rem', color: '#e5e7eb', marginBottom: '2rem' }}>
-          Open the Chat tab and tell me what kind of product or page you want to build.
+        <p className="text-xl text-slate-400 max-w-2xl mx-auto mb-10 leading-relaxed">
+          The modern platform for teams who want to ship faster without sacrificing quality.
         </p>
-      </div>
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+          <button className="w-full sm:w-auto bg-gradient-to-r from-violet-600 to-indigo-600 px-8 py-4 rounded-full font-semibold hover:shadow-2xl hover:shadow-violet-500/30 transition-all hover:-translate-y-0.5">
+            Start for free →
+          </button>
+          <button className="w-full sm:w-auto px-8 py-4 rounded-full border border-white/10 text-slate-300 hover:bg-white/5 transition-all">
+            Watch demo
+          </button>
+        </div>
+      </section>
+      <section className="py-20 px-6">
+        <div className="max-w-6xl mx-auto">
+          <h2 className="text-3xl font-bold text-center mb-4">Everything you need</h2>
+          <p className="text-slate-400 text-center mb-16 max-w-xl mx-auto">All the tools to build, ship, and scale.</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {features.map(f => (
+              <div key={f.title} className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 hover:bg-white/8 transition-all hover:-translate-y-1">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-600/20 to-cyan-600/20 border border-violet-500/20 flex items-center justify-center mb-4">
+                  <i data-lucide={f.icon} className="w-5 h-5 text-violet-400"></i>
+                </div>
+                <h3 className="text-lg font-semibold mb-2">{f.title}</h3>
+                <p className="text-slate-400 text-sm leading-relaxed">{f.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+      <footer className="border-t border-white/5 py-8 px-6 text-center text-slate-500 text-sm">
+        © 2025 MyApp · Built with Ecosyz Studio
+      </footer>
     </div>
   );
 }
@@ -96,58 +141,13 @@ const SCAFFOLD_APP_CONTENT = `function App() {
 export default App;
 `;
 
-/** Global styles - used by both preview and local run. Exported for preview fallback. */
-export const SCAFFOLD_STYLES = `* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-body {
-  font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
-  line-height: 1.6;
-}
-
-.page, .section, .container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 1rem;
-}
-
-.hero, .card, .btn {
-  border-radius: 0.5rem;
-}
+/** Global styles - minimal reset, Tailwind CDN provides everything else in preview. */
+export const SCAFFOLD_STYLES = `*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
 `;
 
-/** Minimal base CSS for app-builder preview when project has no CSS or for common LLM class names */
-export const PREVIEW_BASE_CSS = `
-.contact-input, .contact-textarea, input[type="text"], input[type="email"], textarea {
-  display: block;
-  width: 100%;
-  max-width: 400px;
-  padding: 0.5rem 0.75rem;
-  margin: 0.5rem 0;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.375rem;
-  font-size: 1rem;
-}
-.contact-textarea, textarea { min-height: 100px; resize: vertical; }
-.contact-cta, .btn, button {
-  padding: 0.5rem 1rem;
-  margin: 0.5rem 0.25rem 0.5rem 0;
-  border-radius: 0.375rem;
-  font-size: 1rem;
-  cursor: pointer;
-  border: 1px solid transparent;
-  background: #38bdf8;
-  color: #fff;
-}
-.contact-cta:hover, .btn:hover, button:hover { opacity: 0.9; }
-.footer-copyright { margin: 1rem 0; color: #6b7280; font-size: 0.875rem; }
-.footer-links { list-style: none; display: flex; gap: 1rem; flex-wrap: wrap; margin: 0.5rem 0; padding: 0; }
-.footer-link, .footer-links a { color: #38bdf8; text-decoration: none; }
-.footer-link:hover, .footer-links a:hover { text-decoration: underline; }
-`;
+/** Minimal base CSS — Tailwind CDN replaces this in preview. */
+export const PREVIEW_BASE_CSS = ``;
 
 /** Detect corruption: JSX tags inside style/string literals */
 export function hasStyleStringCorruption(code: string): boolean {

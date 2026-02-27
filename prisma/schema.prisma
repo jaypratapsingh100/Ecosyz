@@ -214,6 +214,7 @@ model AppProject {
   chats             AppChat[]
   executions        AppExecution[]
   appProjectUpvotes AppProjectUpvote[]
+  snapshots         AppSnapshot[]
 }
 
 model AppProjectUpvote {
@@ -274,6 +275,17 @@ model AppExecution {
   output    String?    @db.Text
   error     String?    @db.Text
   createdAt DateTime   @default(now())
+}
+
+model AppSnapshot {
+  id        String     @id @default(cuid())
+  projectId String
+  project   AppProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  label     String?
+  filesJson Json
+  createdAt DateTime   @default(now())
+
+  @@index([projectId])
 }
 
 // Community Models

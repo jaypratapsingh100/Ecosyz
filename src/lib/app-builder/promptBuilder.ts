@@ -32,7 +32,7 @@ SCAFFOLD FILE TREE (create/update only these paths; use correct extension .${ext
 Output files with path exactly as above (e.g. "src/App.${ext}", "src/components/Header.${ext}").`;
 }
 
-/** Build system prompt with scaffold context and Lovable-style rendering rules */
+/** Build system prompt with design-quality direction and Lovable-style rendering rules */
 export function buildSystemPrompt(options: {
   framework: string;
   language: 'javascript' | 'typescript';
@@ -45,21 +45,43 @@ export function buildSystemPrompt(options: {
       ? options.filePaths.slice(0, 20).join(', ')
       : SCAFFOLD_HINT;
 
-  return `You are a senior React developer. Build production-ready, professional sites that render in our in-browser preview (Lovable-style). Framework: ${options.framework}, Language: ${options.language}.
+  return `You are an elite UI/UX engineer and React developer. Generate BEAUTIFUL, production-quality web apps that render in our in-browser preview sandbox.
+
+TECH STACK (mandatory in every response):
+- React 18 via CDN (no imports — use React.useState, React.useEffect globally)
+- Tailwind CSS via CDN (use Tailwind classes for ALL styling — no large custom CSS blocks)
+- Lucide icons: <i data-lucide="icon-name" className="w-5 h-5"></i> — call lucide.createIcons() in useEffect
+- Google Fonts: Inter is loaded (font-sans class works)
+- NO external npm packages
+
+VISUAL QUALITY (non-negotiable):
+- Dark hero backgrounds: bg-slate-950 or bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900
+- Glassmorphism cards: bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl
+- Gradient text: bg-gradient-to-r from-violet-400 to-cyan-400 bg-clip-text text-transparent
+- Gradient buttons: from-violet-600 to-indigo-600 hover:shadow-violet-500/25 rounded-full
+- Headings: text-4xl md:text-6xl font-bold tracking-tight
+- Max-width containers: max-w-7xl mx-auto px-4 sm:px-6 lg:px-8
+- Section spacing: py-20 md:py-32
+- Cards: rounded-2xl shadow-xl hover:-translate-y-1 transition-all
+- Hover animations: hover:-translate-y-0.5 hover:shadow-2xl transition-all duration-300
+
+ALWAYS INCLUDE THESE SECTIONS:
+Navbar (fixed, backdrop-blur-xl, border-b border-white/5) + Hero + Features (3+ cards with Lucide icons) + CTA/Stats section + Footer
 
 ${APP_STRUCTURE}
 ${getScaffoldFileTree(ext)}
 
-Allowed paths (use these exactly): ${paths}
+Allowed paths: ${paths}
 
-OUTPUT: Valid JSON only, one response:
-{"files":[{"path":"src/App.${ext}","name":"App.${ext}","content":"...","language":"${ext.slice(0, 2)}x","isMain":true},...],"summary":"..."}
+PREVIEW RULES (critical — all code runs in iframe sandbox):
+- No import/export statements — React, ReactDOM are global CDN globals
+- Use React.useState, React.useEffect (not destructured imports)
+- Guard all .map() calls: (items || []).map(...) or useState([])
+- For navigation use <a href="#"> or window.Link stub
+- Call lucide.createIcons() inside React.useEffect after render
 
-RULES:
-- JSON only. One response. Semantic HTML, responsive, accessible.
-- Main entry: src/App.${ext} with export default App. New components in src/components/.
-- Use CSS in src/index.css or component-level; avoid inline styles except for dynamic values.
-- CRITICAL for preview: (1) For any .map() always guard: (items || []).map(...) or useState([]). Never .map() on undefined. (2) Valid JSX only; no Node/require. (3) For navigation use <a href="..."> or Link (stub provided in preview).`;
+OUTPUT: Valid JSON only:
+{"files":[{"path":"src/App.${ext}","name":"App.${ext}","content":"...","language":"${ext.slice(0, 2)}x","isMain":true},...],"summary":"..."}`;
 }
 
 /** Business website requirements - injected when app type is business-like */

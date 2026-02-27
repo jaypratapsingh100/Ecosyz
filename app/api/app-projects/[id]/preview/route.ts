@@ -8,7 +8,35 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
-import { DEFAULT_APP_CONTENT, SCAFFOLD_STYLES, PREVIEW_BASE_CSS } from '@/app/lib/app-builder/scaffolds';
+import { DEFAULT_APP_CONTENT } from '@/app/lib/app-builder/scaffolds';
+
+/** Tailwind CDN + Google Fonts + Lucide — injected into every preview <head> */
+const DESIGN_SYSTEM_HEAD = `
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+          animation: {
+            'fade-in': 'fadeIn 0.5s ease-in-out',
+            'slide-up': 'slideUp 0.4s ease-out',
+          },
+          keyframes: {
+            fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
+            slideUp: { '0%': { opacity: '0', transform: 'translateY(20px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } },
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  </style>`;
 
 export async function POST(
   req: NextRequest,
@@ -126,13 +154,11 @@ export async function POST(
       );
     }
 
-    // Standardize preview: inject base CSS for all projects so user always sees a styled app
-    // (project CSS is injected after so it overrides; base covers missing CSS or LLM classNames like contact-*, footer-*)
-    const baseCss = `<style id="preview-base">${SCAFFOLD_STYLES}${PREVIEW_BASE_CSS}</style>`;
+    // Standardize preview: inject Tailwind CDN + Google Fonts + Lucide into every preview
     if (html.includes('</head>')) {
-      html = html.replace('</head>', `${baseCss}\n</head>`);
+      html = html.replace('</head>', `${DESIGN_SYSTEM_HEAD}\n</head>`);
     } else {
-      html = baseCss + html;
+      html = DESIGN_SYSTEM_HEAD + html;
     }
 
     for (const cssFile of cssFiles) {
@@ -333,6 +359,7 @@ const Route = function Route(props) { return props.element ?? null; };
           appContent,
           '    const root = createRoot(document.getElementById("root"));',
           `    root.render(React.createElement(PreviewErrorBoundary, null, ${renderAppWithOptionalBanner}));`,
+          '    setTimeout(() => { if (window.lucide) lucide.createIcons(); }, 50);',
           '  </script>',
         ].join('\n');
         const appComponentScript = errorBoundaryScript;

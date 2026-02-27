@@ -1,13 +1,14 @@
 /**
  * Canonical React (Vercel-ready) project structure.
  * Single source of truth: AI, preview, deploy, and Code tab use these paths.
- * AI must return exactly these paths; no other paths for this app type.
+ * AI can return canonical paths + any src/ component/hook/page files.
  */
 
 export const REACT_PROJECT_PATHS = [
   'index.html',
   'styles.css',
   'src/App.jsx',
+  'src/App.tsx',
 ] as const;
 
 export type ReactProjectPath = (typeof REACT_PROJECT_PATHS)[number];
@@ -48,11 +49,24 @@ export const REACT_FILE_CONTRACTS = {
 
 /** Type for a single file in the canonical structure (e.g. for AI response). */
 export interface CanonicalReactFile {
-  path: ReactProjectPath;
+  path: string;
   name: string;
   content: string;
   language: string;
   isMain: boolean;
+}
+
+/**
+ * Check if a file path is allowed in an AI-generated project.
+ * Canonical files + any file under src/ (components, hooks, pages, etc.)
+ */
+export function isAllowedPath(path: string): boolean {
+  return (
+    path === 'index.html' ||
+    path === 'styles.css' ||
+    path.startsWith('src/') ||
+    path === 'public/index.html'
+  );
 }
 
 /** Check if a path is in the canonical React set. */

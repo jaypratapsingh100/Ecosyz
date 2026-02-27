@@ -4,13 +4,14 @@
  * Supported providers:
  * - Groq (default): Llama 3.3 — GROQ_API_KEY
  * - OpenRouter: DeepSeek Chat, DeepSeek Coder — OPENROUTER_API_KEY
+ * - Anthropic: Claude Sonnet — ANTHROPIC_API_KEY
  *
  * User can select provider and model from the chat UI (userProvider, userModel in request body).
  */
 
 import OpenAI from 'openai';
 
-export type AIProvider = 'openrouter' | 'groq';
+export type AIProvider = 'openrouter' | 'groq' | 'anthropic';
 
 export interface AIClientConfig {
   provider: AIProvider;
@@ -21,7 +22,7 @@ export interface AIClientConfig {
 
 /** Options to override default provider/model (from chat request body). */
 export interface AIClientOptions {
-  userProvider?: 'groq' | 'openrouter';
+  userProvider?: 'groq' | 'openrouter' | 'anthropic';
   userModel?: string;
 }
 
@@ -44,6 +45,11 @@ export const GROQ_APP_BUILDER_MODELS = [
   { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B' },
 ] as const;
 
+/** Allowed Anthropic model IDs for app builder. */
+export const ANTHROPIC_APP_BUILDER_MODELS = [
+  { id: 'claude-sonnet-4-6', label: 'Claude Sonnet (Recommended)' },
+] as const;
+
 /**
  * Create AI client. If userProvider/userModel are provided and valid, use them; else use env default.
  * OpenRouter is activated when OPENROUTER_API_KEY is set; user can select "OpenRouter" + "DeepSeek Coder" in UI.
@@ -51,9 +57,31 @@ export const GROQ_APP_BUILDER_MODELS = [
 export function createAIClient(options?: AIClientOptions): AIClientConfig {
   const groqKey = process.env.GROQ_API_KEY;
   const openRouterKey = process.env.OPENROUTER_API_KEY;
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
 
   const wantOpenRouter = options?.userProvider === 'openrouter';
   const wantGroq = options?.userProvider === 'groq' || !options?.userProvider;
+  const wantAnthropic = options?.userProvider === 'anthropic';
+
+  // Anthropic via OpenAI-compatible API
+  if (wantAnthropic && anthropicKey) {
+    const model =
+      options?.userModel && ANTHROPIC_APP_BUILDER_MODELS.some((m) => m.id === options.userModel)
+        ? options.userModel
+        : ANTHROPIC_APP_BUILDER_MODELS[0].id;
+    return {
+      provider: 'anthropic',
+      model,
+      baseURL: 'https://api.anthropic.com/v1',
+      client: new OpenAI({
+        baseURL: 'https://api.anthropic.com/v1',
+        apiKey: anthropicKey,
+        defaultHeaders: {
+          'anthropic-version': '2023-06-01',
+        },
+      }),
+    };
+  }
 
   if (wantOpenRouter && openRouterKey) {
     const model =
@@ -109,7 +137,7 @@ export function createAIClient(options?: AIClientOptions): AIClientConfig {
  * Check if any AI provider is available.
  */
 export function hasAIClient(): boolean {
-  return !!(process.env.GROQ_API_KEY || process.env.OPENROUTER_API_KEY);
+  return !!(process.env.GROQ_API_KEY || process.env.OPENROUTER_API_KEY || process.env.ANTHROPIC_API_KEY);
 }
 
 /**
@@ -117,4 +145,11 @@ export function hasAIClient(): boolean {
  */
 export function hasOpenRouter(): boolean {
   return !!process.env.OPENROUTER_API_KEY;
+}
+
+/**
+ * Check if Anthropic is available (so UI can show Claude Sonnet option).
+ */
+export function hasAnthropic(): boolean {
+  return !!process.env.ANTHROPIC_API_KEY;
 }

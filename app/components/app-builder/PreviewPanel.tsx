@@ -3,20 +3,29 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { parseApiResponse } from '../../../lib/parseApiResponse';
 
+interface PreviewError {
+  message: string;
+  source?: string;
+  line?: number;
+}
+
 interface PreviewPanelProps {
   projectId: string;
   projectType: string;
   onRefresh?: () => void;
+  onSendToChat?: (msg: string) => void;
 }
 
 export default function PreviewPanel({
   projectId,
   projectType,
   onRefresh,
+  onSendToChat,
 }: PreviewPanelProps) {
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<PreviewError | null>(null);
 
   // Prevent overlapping preview calls; queue one more refresh if requested while in flight
   const inFlightRef = useRef(false);
@@ -59,7 +68,21 @@ export default function PreviewPanel({
 
       if (html) {
         console.log('✅ PreviewPanel: Preview HTML received');
-        setPreviewHtml(html);
+        // Inject error capture script so iframe can postMessage errors to parent
+        const errorCaptureScript = `<script>
+window.onerror = function(msg, src, line) {
+  window.parent.postMessage({ type: 'preview-error', message: String(msg), source: src, line: line }, '*');
+  return false;
+};
+window.addEventListener('unhandledrejection', function(e) {
+  window.parent.postMessage({ type: 'preview-error', message: String(e.reason), source: 'promise', line: 0 }, '*');
+});
+<\/script>`;
+        const htmlWithCapture = html.includes('</head>')
+          ? html.replace('</head>', `${errorCaptureScript}\n</head>`)
+          : errorCaptureScript + html;
+        setPreviewHtml(htmlWithCapture);
+        setPreviewError(null);
         setError(null);
         return;
       }
@@ -120,6 +143,17 @@ export default function PreviewPanel({
 
     return () => clearTimeout(timer);
   }, [projectId, generatePreview]);
+
+  // Listen for runtime errors posted from the iframe
+  useEffect(() => {
+    const handle = (e: MessageEvent) => {
+      if (e.data?.type === 'preview-error') {
+        setPreviewError({ message: e.data.message, source: e.data.source, line: e.data.line });
+      }
+    };
+    window.addEventListener('message', handle);
+    return () => window.removeEventListener('message', handle);
+  }, []);
 
   // Debounced refresh events – only refresh when our project was updated
   useEffect(() => {
@@ -254,19 +288,42 @@ export default function PreviewPanel({
             </div>
           </div>
         ) : previewHtml ? (
-          <iframe
-            srcDoc={previewHtml}
-            className="w-full h-full border-0"
-            title="Preview"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
-            style={{ backgroundColor: '#fff', display: 'block' }}
-            onLoad={() => {
-              console.log(
-                '✅ PreviewPanel: iframe loaded, length:',
-                previewHtml.length
-              );
-            }}
-          />
+          <>
+            <iframe
+              srcDoc={previewHtml}
+              className="w-full h-full border-0"
+              title="Preview"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+              style={{ backgroundColor: '#fff', display: 'block' }}
+              onLoad={() => {
+                console.log('✅ PreviewPanel: iframe loaded, length:', previewHtml.length);
+              }}
+            />
+            {previewError && (
+              <div className="absolute bottom-4 left-4 right-4 bg-red-950/90 border border-red-500/40 rounded-xl p-4 backdrop-blur-sm z-20">
+                <p className="text-red-300 text-xs font-mono truncate">{previewError.message}</p>
+                <div className="flex gap-2 mt-2">
+                  {onSendToChat && (
+                    <button
+                      onClick={() => {
+                        onSendToChat(`Fix this runtime error in my app: ${previewError.message}`);
+                        setPreviewError(null);
+                      }}
+                      className="text-xs bg-red-600 hover:bg-red-500 px-3 py-1.5 rounded-lg text-white transition-colors"
+                    >
+                      Fix with AI →
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setPreviewError(null)}
+                    className="text-xs text-slate-400 hover:text-white transition-colors"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         ) : (
           <div className="absolute inset-0 flex items-center justify-center p-8 bg-gradient-to-br from-[#0a0a0a] via-[#0d0d0d] to-[#0a0a0a]">
             <div className="text-center max-w-md mx-auto">

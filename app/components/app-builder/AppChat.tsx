@@ -24,7 +24,8 @@ interface AIOption {
 interface AIOptionsState {
   groqAvailable: boolean;
   openRouterAvailable: boolean;
-  models: { groq: AIOption[]; openrouter: AIOption[] };
+  anthropicAvailable: boolean;
+  models: { groq: AIOption[]; openrouter: AIOption[]; anthropic: AIOption[] };
 }
 
 interface AppChatProps {
@@ -47,7 +48,7 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const [aiOptions, setAiOptions] = useState<AIOptionsState | null>(null);
-  const [selectedProvider, setSelectedProvider] = useState<'groq' | 'openrouter'>('groq');
+  const [selectedProvider, setSelectedProvider] = useState<'groq' | 'openrouter' | 'anthropic'>('groq');
   const [selectedModel, setSelectedModel] = useState<string>('');
 
   const hasNoFiles = projectFiles.length === 0;
@@ -65,11 +66,16 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
         setAiOptions({
           groqAvailable: !!data.groqAvailable,
           openRouterAvailable: !!data.openRouterAvailable,
-          models: data.models ?? { groq: [], openrouter: [] },
+          anthropicAvailable: !!data.anthropicAvailable,
+          models: data.models ?? { groq: [], openrouter: [], anthropic: [] },
         });
         const groq = data.models?.groq ?? [];
         const openrouter = data.models?.openrouter ?? [];
-        if (data.groqAvailable && groq.length > 0) {
+        const anthropic = data.models?.anthropic ?? [];
+        if (data.anthropicAvailable && anthropic.length > 0) {
+          setSelectedProvider('anthropic');
+          setSelectedModel((m) => m || anthropic[0].id);
+        } else if (data.groqAvailable && groq.length > 0) {
           setSelectedProvider('groq');
           setSelectedModel((m) => m || groq[0].id);
         } else if (data.openRouterAvailable && openrouter.length > 0) {
@@ -91,6 +97,9 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
     }
     if (selectedProvider === 'openrouter' && aiOptions.models.openrouter?.length && !aiOptions.models.openrouter.some((m) => m.id === selectedModel)) {
       setSelectedModel(aiOptions.models.openrouter[0].id);
+    }
+    if (selectedProvider === 'anthropic' && aiOptions.models.anthropic?.length && !aiOptions.models.anthropic.some((m) => m.id === selectedModel)) {
+      setSelectedModel(aiOptions.models.anthropic[0].id);
     }
   }, [aiOptions, selectedProvider, selectedModel]);
 
@@ -177,34 +186,55 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
         }),
       });
       
-      const data = await res.json().catch(() => ({}));
-      
       if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
         let errorMessage = data?.error || 'Failed to send message';
-        
-        // Provide more specific error messages based on status code
-        if (res.status === 401) {
-          errorMessage = 'Please sign in to use the chat feature';
-        } else if (res.status === 403) {
-          errorMessage = 'You don\'t have permission to chat in this project';
-        } else if (res.status === 404) {
-          errorMessage = 'Project not found. Please select a valid project';
-        } else if (res.status === 429) {
-          errorMessage = 'Too many requests. Please wait a moment and try again';
-        } else if (res.status >= 500) {
-          errorMessage = 'Server error. Please try again in a few moments';
-        }
-        
+        if (res.status === 401) errorMessage = 'Please sign in to use the chat feature';
+        else if (res.status === 403) errorMessage = "You don't have permission to chat in this project";
+        else if (res.status === 404) errorMessage = 'Project not found. Please select a valid project';
+        else if (res.status === 429) errorMessage = 'Too many requests. Please wait a moment and try again';
+        else if (res.status >= 500) errorMessage = 'Server error. Please try again in a few moments';
         setError(errorMessage);
-        toast.error('Chat Error', {
-          description: errorMessage,
-          duration: 5000,
-        });
-        // Remove user message on error
+        toast.error('Chat Error', { description: errorMessage, duration: 5000 });
         setMessages((prev) => prev.filter((msg) => msg.id !== userMessage.id));
         return;
       }
 
+      // SSE streaming support (when server sends text/event-stream)
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('text/event-stream') && res.body) {
+        const assistantId = `ai-${Date.now()}`;
+        setMessages((prev) => [...prev, { id: assistantId, role: 'assistant', content: '', timestamp: new Date() }]);
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let filesUpdated = false;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const lines = decoder.decode(value, { stream: true }).split('\n');
+          for (const line of lines) {
+            if (!line.startsWith('data: ') || line === 'data: [DONE]') continue;
+            try {
+              const evt = JSON.parse(line.slice(6));
+              if (evt.type === 'text') {
+                setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, content: m.content + evt.content } : m));
+              }
+              if (evt.type === 'files' && evt.files?.length > 0 && !filesUpdated) {
+                filesUpdated = true;
+                setTimeout(() => {
+                  onFilesCreated?.();
+                  window.dispatchEvent(new CustomEvent('files-updated', { detail: { projectId } }));
+                  setTimeout(() => window.dispatchEvent(new CustomEvent('auto-refresh-preview', { detail: { projectId } })), 400);
+                }, 400);
+              }
+            } catch { /* skip malformed SSE lines */ }
+          }
+        }
+        return;
+      }
+
+      // Standard JSON response (Groq / OpenRouter)
+      const data = await res.json().catch(() => ({}));
       const filesCreated = data.filesCreated ?? [];
       const successfulPaths = Array.isArray(filesCreated)
         ? filesCreated.filter((f: { success?: boolean; path?: string }) => f?.success).map((f: { path?: string }) => f?.path)
@@ -235,7 +265,6 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
 
       if (typeof window !== 'undefined' && successfulPaths.length > 0) {
         window.dispatchEvent(new CustomEvent('files-updated', { detail: { projectId } }));
-        // Delay so DB writes are visible to preview API (avoids "generated vs render" mismatch)
         setTimeout(() => {
           window.dispatchEvent(new CustomEvent('auto-refresh-preview', { detail: { projectId } }));
         }, 400);

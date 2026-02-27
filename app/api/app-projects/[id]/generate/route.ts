@@ -3,56 +3,53 @@ import { prisma } from '@/lib/db';
 import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
 import { createAIClient, hasAIClient } from '@/lib/ai/provider';
 import {
-  REACT_PROJECT_PATHS,
   REACT_MAIN_JSX,
-  REACT_FILE_CONTRACTS,
+  isAllowedPath,
   type CanonicalReactFile,
 } from '@/lib/app-builder/canonicalReact';
 
-const STRUCTURE_PROMPT = `You are generating a single-page, professional marketing / dashboard React app.
+const STRUCTURE_PROMPT = `You are generating a BEAUTIFUL, production-quality React app with stunning visual design.
 
 You MUST return a JSON object with exactly one key "files", which is an array of file objects.
 Each file must have: path, name, content, language, isMain (boolean).
-Allowed paths ONLY: ${REACT_PROJECT_PATHS.join(', ')}.
+Allowed paths: index.html, styles.css, src/App.jsx, src/components/*.jsx
+
+TECH STACK (mandatory):
+- React 18 via CDN (no imports — use React.useState, React.useEffect globally)
+- Tailwind CSS via CDN (ALL styling via Tailwind classes — minimal custom CSS)
+- Lucide icons via CDN: <i data-lucide="icon-name" class="w-5 h-5"></i>
+- Google Fonts: Inter is pre-loaded
+
+VISUAL REQUIREMENTS:
+- Dark theme: bg-slate-950 or bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900
+- Glassmorphism cards: bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6
+- Gradient text: bg-gradient-to-r from-violet-400 to-cyan-400 bg-clip-text text-transparent
+- Gradient buttons: from-violet-600 to-indigo-600 hover:shadow-violet-500/25 rounded-full px-8 py-4
+- Fixed navbar with backdrop-blur-xl and border-b border-white/5
+- Always include: Navbar + Hero + Features (3+ icon cards) + CTA + Footer
 
 File contracts:
-- "index.html": HTML shell with a complete <head> and <body>. It MUST contain:
-  - <div id="root"></div> as the React mount point.
-  - <link rel="stylesheet" href="styles.css" />.
-  - These script tags in this order at the end of <body>:
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script type="text/babel"> ... inline React code ... </script>
-  - DO NOT use any <script src="...jsx"> tags. All React code must be inside the inline <script type="text/babel"> block.
+- "index.html": MUST contain:
+  - <script src="https://cdn.tailwindcss.com"></script> in <head>
+  - <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  - <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  - <div id="root" class="bg-slate-950"></div>
+  - React 18 + ReactDOM + Babel CDN scripts at end of <body>
+  - Inline <script type="text/babel"> with App component + root.render() + lucide.createIcons()
 
-- "styles.css": Global CSS only, no @import. Define a small design system with classes for:
-  - Layout: .page, .hero, .section, .container, .grid, .card, .card-header, .card-body.
-  - Typography: .h1, .h2, .subtitle, .muted, .badge.
-  - Buttons: .btn, .btn-primary, .btn-outline, with hover and focus states.
-  - Use modern, clean design: good spacing, consistent paddings/margins, subtle shadows, rounded corners.
-  - Prefer class-based styling over inline styles.
+- "styles.css": Minimal reset only (Tailwind handles everything else):
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, sans-serif; }
 
-- "src/App.jsx": A single default export React component (function App() { ... }).
-  - It should import nothing (React is provided globally by the CDN).
-  - It should use the same CSS classes defined in styles.css.
-  - It should build a structured layout:
-    - <header className="hero"> ... </header>
-    - <main className="page">
-        <section className="section">Hero with title, subtitle, primary/secondary buttons.</section>
-        <section className="section">Features/services as 3–6 .card elements in a grid.</section>
-        <section className="section">Portfolio or dashboard content (cards, table, or chart placeholder).</section>
-        <section className="section">Pricing or call-to-action with 2–3 plans or a strong CTA.</section>
-      </main>
-    - <footer className="section">footer with links or copyright.</footer>
-  - Use concise, realistic copy (1–2 sentences per paragraph). Avoid "Service 1/2/3" and long lorem ipsum.
+- "src/App.jsx": Main component. No imports. Use React.useState, React.useEffect.
+  Guard all .map() with (arr || []).map(). Call lucide.createIcons() in useEffect.
 
 Return VALID JSON ONLY (no markdown, no backticks, no extra commentary).
-Example shape (simplified):
+Example shape:
 {
   "files": [
     { "path": "index.html", "name": "index.html", "content": "<!DOCTYPE html>...", "language": "html", "isMain": false },
-    { "path": "styles.css", "name": "styles.css", "content": "body { ... }", "language": "css", "isMain": false },
+    { "path": "styles.css", "name": "styles.css", "content": "...", "language": "css", "isMain": false },
     { "path": "src/App.jsx", "name": "App.jsx", "content": "function App() { ... }\\nexport default App;", "language": "jsx", "isMain": true }
   ]
 }`;
@@ -81,12 +78,12 @@ function extractJsonFromResponse(text: string): { files: CanonicalReactFile[] } 
   for (const f of files) {
     if (!f || typeof f !== 'object' || typeof (f as { path?: unknown }).path !== 'string') continue;
     const o = f as { path: string; name?: string; content?: string; language?: string; isMain?: boolean };
-    if (!REACT_PROJECT_PATHS.includes(o.path as 'index.html' | 'styles.css' | 'src/App.jsx')) continue;
+    if (!isAllowedPath(o.path)) continue;
     normalized.push({
-      path: o.path as CanonicalReactFile['path'],
+      path: o.path,
       name: typeof o.name === 'string' ? o.name : o.path.split('/').pop() || o.path,
       content: typeof o.content === 'string' ? o.content : '',
-      language: typeof o.language === 'string' ? o.language : (o.path.endsWith('.jsx') ? 'jsx' : o.path.endsWith('.css') ? 'css' : 'html'),
+      language: typeof o.language === 'string' ? o.language : (o.path.endsWith('.jsx') ? 'jsx' : o.path.endsWith('.tsx') ? 'tsx' : o.path.endsWith('.css') ? 'css' : 'html'),
       isMain: o.path === REACT_MAIN_JSX,
     });
   }
@@ -188,9 +185,13 @@ export async function POST(
       '  <meta charset="UTF-8" />',
       '  <meta name="viewport" content="width=device-width, initial-scale=1.0" />',
       `  <title>${project.title || 'My React App'}</title>`,
+      '  <script src="https://cdn.tailwindcss.com"></script>',
+      '  <link rel="preconnect" href="https://fonts.googleapis.com">',
+      '  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">',
+      '  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>',
       '  <link rel="stylesheet" href="styles.css" />',
       '</head>',
-      '<body>',
+      '<body class="bg-slate-950 text-white">',
       '  <div id="root"></div>',
       '  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>',
       '  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>',
@@ -200,6 +201,7 @@ export async function POST(
       '',
       `    const root = ReactDOM.createRoot(document.getElementById('root'));`,
       `    root.render(React.createElement(${appName}));`,
+      `    setTimeout(() => { if (window.lucide) lucide.createIcons(); }, 50);`,
       '  </script>',
       '</body>',
       '</html>',
