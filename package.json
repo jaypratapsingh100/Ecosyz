@@ -71,6 +71,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/three": "^0.183.1",
     "concurrently": "^8.2.0",
     "dotenv": "^17.2.3",
     "eslint": "^9",
