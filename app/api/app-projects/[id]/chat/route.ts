@@ -10,6 +10,7 @@ import {
   COMPONENT_PATH_PATTERN,
   SRC_ROOT_COMPONENT_PATTERN,
   CSS_PATH_PATTERN,
+  SRC_UTIL_PATH_PATTERN,
 } from '@/lib/app-builder/agentSchema';
 import { buildSystemPrompt, buildUserPrompt, buildFixPrompt } from '@/lib/app-builder/promptBuilder';
 import { buildPlannerPrompt, parsePlannerResponse } from '@/lib/app-builder/agents/planner';
@@ -590,7 +591,7 @@ export async function POST(
       userMessage += `\n\nIMPLEMENTATION STEPS (follow in order):\n${JSON.stringify(taskPlan.implementationSteps, null, 2)}`;
     }
     if (hasScaffoldFiles && existingFilePaths.length > 0) {
-      userMessage += `\n\nEXTEND existing files. Add imports and render new components in App.${fileExtension}.`;
+      userMessage += `\n\nProject already has files: ${existingFilePaths.join(', ')}. Output COMPLETE file contents for any file you create or modify. Always include the full src/App.${fileExtension} with all components integrated.`;
     }
     
     // CURSOR-LIKE: Include current file context for editing
@@ -614,21 +615,17 @@ export async function POST(
       
       if (file) {
         if (file.content.length < 8000) {
-          // Include full file for editing - instruct to EXTEND, not replace
-          userMessage += `\n\nEXISTING FILE TO EXTEND (${file.path}):\n`;
-          userMessage += `⚠️ DO NOT DELETE OR REWRITE THIS FILE. EXTEND IT by adding new imports, functions, or components.\n`;
-          userMessage += `Preserve all existing code and functionality.\n\n`;
+          // Include full file for context - AI should output the complete updated version
+          userMessage += `\n\nCURRENT FILE (${file.path}) — include in your response with all modifications applied:\n`;
           userMessage += file.content;
-          console.log(`📝 EXTEND MODE: Including full file context for extension: ${file.path} (${file.content.length} chars)`);
+          console.log(`📝 Including file context: ${file.path} (${file.content.length} chars)`);
         } else {
-          // Large file - include beginning and end with extension instructions
+          // Large file - include beginning and end
           const start = file.content.substring(0, 2000);
           const end = file.content.substring(file.content.length - 1000);
-          userMessage += `\n\nEXISTING FILE TO EXTEND (${file.path}):\n`;
-          userMessage += `⚠️ DO NOT DELETE OR REWRITE THIS FILE. EXTEND IT by adding new imports, functions, or components.\n`;
-          userMessage += `Preserve all existing code and functionality.\n\n`;
+          userMessage += `\n\nCURRENT FILE (${file.path}) — output the COMPLETE updated version:\n`;
           userMessage += `File start:\n${start}\n\n... (${file.content.length - 3000} chars omitted) ...\n\nFile end:\n${end}`;
-          console.log(`📝 EXTEND MODE: Including partial file context: ${file.path} (showing start/end of ${file.content.length} chars)`);
+          console.log(`📝 Including partial file context: ${file.path} (${file.content.length} chars)`);
         }
       } else {
         console.log(`⚠️ File mentioned/selected but not found: ${fileToEdit}`);
@@ -1221,12 +1218,13 @@ export async function POST(
             continue;
           }
 
-          // Sandbox: only allow paths that match scaffold + components (no arbitrary paths)
+          // Sandbox: only allow paths that match scaffold + components + utils (no arbitrary paths)
           const pathAllowed =
             ALLOWED_PATHS.includes(normalizedPath as (typeof ALLOWED_PATHS)[number]) ||
             COMPONENT_PATH_PATTERN.test(normalizedPath) ||
             SRC_ROOT_COMPONENT_PATTERN.test(normalizedPath) ||
-            CSS_PATH_PATTERN.test(normalizedPath);
+            CSS_PATH_PATTERN.test(normalizedPath) ||
+            SRC_UTIL_PATH_PATTERN.test(normalizedPath);
           if (!pathAllowed) {
             console.log(`  ❌ SANDBOX: path not allowed - skipping: ${normalizedPath}`);
             createdFiles.push({
@@ -1977,9 +1975,7 @@ root.render(
     try {
       // Agent path: try structured JSON (Lovable/Replit style)
       const agentResponse = extractAgentResponse(response);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:extractAgentResponse',message:'chat agentResponse result',data:{hasAgentResponse:!!agentResponse,fileCount:agentResponse?.files?.length??0,responseLen:response?.length,firstChars:response?.substring(0,150)},timestamp:Date.now(),hypothesisId:'H1,H3'})}).catch(()=>{});
-      // #endregion
+      // Agent response parsed
       if (agentResponse && agentResponse.files.length > 0) {
         agentProvidedApp = agentResponse.files.some(f =>
           f.path === 'src/App.jsx' || f.path === 'src/App.tsx'
@@ -2001,9 +1997,7 @@ root.render(
             createdFiles.push({ path: f.path, success: false, error: err instanceof Error ? err.message : 'Unknown error' });
           }
         }
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:agentFiles',message:'agent files created',data:{paths:agentResponse.files.map(x=>x.path),successCount:agentResponse.files.length},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
-        // #endregion
+        // Agent files created
       }
 
       // Fallback: regex-based parsing (legacy)
@@ -2012,13 +2006,9 @@ root.render(
           const codeBlockCount = (response.match(/```/g) || []).length / 2;
           console.log(`[FILE] No JSON files - parsing ${response.length} chars, ${codeBlockCount} code blocks`);
         }
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:parseAndCreateFiles',message:'fallback parseAndCreateFiles called',data:{responseLen:response?.length,codeBlockCount:(response.match(/```/g)||[]).length/2},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
-        // #endregion
+        // Fallback regex parsing
         createdFiles = await parseAndCreateFiles(response);
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:parseAndCreateFiles',message:'parseAndCreateFiles result',data:{createdCount:createdFiles.length,paths:createdFiles.map(f=>f.path),successCount:createdFiles.filter(f=>f.success).length},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
-        // #endregion
+        // Regex parsing complete
       }
       
       if (createdFiles.length === 0 && codeBlockCount === 0) {
@@ -2069,196 +2059,130 @@ root.render(
       // ============================================
       // INTELLIGENT COMPONENT INTEGRATION
       // ============================================
-      // Skip when agent already provided complete App.jsx (avoids overwriting with stale project.files)
-      // Automatically identify components and integrate into App.jsx
+      // Only integrate components when:
+      //   1. Agent did NOT already provide a complete App.jsx
+      //   2. The existing App.jsx uses ES module imports (not CDN/global style)
+      //   3. New component files were created that need to be wired in
       if (!agentProvidedApp && createdFiles.length > 0 && createdFiles.some((f: FileCreationResult) => f.success)) {
         const successfulFiles = createdFiles.filter((f: FileCreationResult) => f.success);
-        const componentFiles = successfulFiles.filter(f => 
-          f.path.includes('components/') || 
+        const componentFiles = successfulFiles.filter(f =>
+          f.path.includes('components/') ||
           f.path.match(/src\/[A-Z][a-zA-Z0-9]*\.(jsx|js)$/) ||
           (f.path.includes('/') && f.path.split('/').pop()?.match(/^[A-Z]/))
         );
-        
+
         if (componentFiles.length > 0) {
-          console.log('\n' + '='.repeat(80));
-          console.log('🧠 INTELLIGENT COMPONENT INTEGRATION');
-          console.log('='.repeat(80));
-          console.log(`Found ${componentFiles.length} component file(s) to integrate:`);
-          componentFiles.forEach((f: FileCreationResult) => console.log(`  - ${f.path}`));
-          
+          console.log(`🧠 Component integration: found ${componentFiles.length} component file(s)`);
+
           try {
-            // CRITICAL: Fetch FRESH App from DB (project.files is stale - from before our upserts)
+            // Fetch FRESH App from DB (project.files is stale)
             const appFileFromDb = await prisma.appFile.findFirst({
               where: {
                 projectId: id,
                 path: { in: ['src/App.jsx', 'src/App.tsx', 'src/App.js', 'src/App.ts'] },
               },
             });
-            const appFile = appFileFromDb ?? project.files?.find((f: { path: string; isMain?: boolean | null }) =>
-              f.path === `src/App.${fileExtension}` || f.path === 'src/App.jsx' || f.path === 'src/App.tsx' ||
-              (f.isMain && f.path.includes('App.'))
-            );
-            
-            if (appFile) {
-              console.log(`\n📝 Updating App.${fileExtension} to import and render new components...`);
-              
-              // Extract component names from file paths
-              const componentNames: string[] = [];
-              componentFiles.forEach(file => {
-                const fileName = file.path.split('/').pop() || file.path.split('\\').pop() || '';
-                // Handle Header.component.js → Header, Header.jsx → Header
-                let componentName = fileName.replace(/\.(component\.)?(jsx|js|tsx|ts)$/i, '');
-                // If still has dot (e.g., Header.component), take first part
-                if (componentName.includes('.')) {
-                  componentName = componentName.split('.')[0];
-                }
-                if (componentName && componentName.match(/^[A-Z]/)) {
-                  componentNames.push(componentName);
-                }
-              });
-              
-              console.log(`Identified components: ${componentNames.join(', ')}`);
-              
-              
-              // Read component files to verify they export correctly
-              const componentFilesData = await prisma.appFile.findMany({
-                where: {
-                  projectId: id,
-                  path: { in: componentFiles.map(f => f.path) }
-                }
-              });
-              
-              // REVIEW: Validate component files
-              console.log(`\n🔍 REVIEWING COMPONENT FILES...`);
-              const componentReviews: Array<{path: string; valid: boolean; issues: string[]}> = [];
-              componentFilesData.forEach((file: { path: string; content: string }) => {
-                const issues: string[] = [];
-                const hasExport = file.content.includes('export') || file.content.includes('module.exports');
-                const hasComponent = !!file.content.match(/(?:function|const|class|var|let)\s+[A-Z]/);
-                const hasReturn = file.content.includes('return');
-                const hasReactImport = file.content.includes('import') && (file.content.includes('react') || file.content.includes('React'));
-                
-                if (!hasExport) issues.push('missing export');
-                if (!hasComponent) issues.push('no component definition');
-                if (!hasReturn) issues.push('no return statement');
-                if (!hasReactImport) issues.push('missing React import');
-                
-                const isValid = hasExport && hasComponent && hasReturn;
-                componentReviews.push({ path: file.path, valid: isValid, issues });
-                console.log(`  ${isValid ? '✅' : '⚠️'} ${file.path}: ${isValid ? 'valid' : issues.join(', ')}`);
-              });
-              
-              
-              // Update App.jsx with imports and component usage
-              let appContent = appFile.content;
-              let appUpdated = false;
-              
-              // Add imports for new components
-              componentNames.forEach(compName => {
-                const componentFile = componentFilesData.find((f: { path: string }) => {
-                  const fileName = f.path.split('/').pop() || '';
-                  // Match both Header.jsx and Header.component.js → Header
-                  let nameWithoutExt = fileName.replace(/\.(component\.)?(jsx|js|tsx|ts)$/i, '');
-                  // Handle Header.component → Header
-                  if (nameWithoutExt.includes('.')) {
-                    nameWithoutExt = nameWithoutExt.split('.')[0];
+
+            if (appFileFromDb) {
+              // CRITICAL: Only auto-integrate if App.jsx uses ES module imports
+              // CDN-style scaffold files (no imports) should NOT get import statements injected
+              const usesESModules = /^\s*import\s+.+\s+from\s+['"]/m.test(appFileFromDb.content);
+
+              if (!usesESModules) {
+                console.log(`ℹ️ App.jsx uses CDN/global style (no ES imports) — skipping auto-integration to avoid corruption`);
+              } else {
+                const componentNames: string[] = [];
+                componentFiles.forEach(file => {
+                  const fileName = file.path.split('/').pop() || '';
+                  let componentName = fileName.replace(/\.(component\.)?(jsx|js|tsx|ts)$/i, '');
+                  if (componentName.includes('.')) componentName = componentName.split('.')[0];
+                  if (componentName && componentName.match(/^[A-Z]/)) {
+                    componentNames.push(componentName);
                   }
-                  return nameWithoutExt === compName;
                 });
-                
-                if (componentFile) {
-                  // Determine import path (handle Header.component.js → ./components/Header)
+
+                const componentFilesData = await prisma.appFile.findMany({
+                  where: { projectId: id, path: { in: componentFiles.map(f => f.path) } }
+                });
+
+                let appContent = appFileFromDb.content;
+                let appUpdated = false;
+
+                componentNames.forEach(compName => {
+                  const componentFile = componentFilesData.find((f: { path: string }) => {
+                    const fname = f.path.split('/').pop() || '';
+                    let nameWithoutExt = fname.replace(/\.(component\.)?(jsx|js|tsx|ts)$/i, '');
+                    if (nameWithoutExt.includes('.')) nameWithoutExt = nameWithoutExt.split('.')[0];
+                    return nameWithoutExt === compName;
+                  });
+
+                  if (!componentFile) return;
+
+                  // Verify the component file actually exports something valid
+                  const hasExport = componentFile.content.includes('export');
+                  const hasComponent = !!componentFile.content.match(/(?:function|const|class)\s+[A-Z]/);
+                  if (!hasExport || !hasComponent) {
+                    console.log(`  ⏭️ Skipping ${compName}: missing export or component definition`);
+                    return;
+                  }
+
                   let importPath = '';
                   if (componentFile.path.includes('components/')) {
-                    // Extract directory path and component name
                     const pathParts = componentFile.path.split('/');
                     const componentsIndex = pathParts.indexOf('components');
                     if (componentsIndex >= 0) {
                       const afterComponents = pathParts.slice(componentsIndex + 1);
-                      const fileName = afterComponents[afterComponents.length - 1];
-                      const nameWithoutExt = fileName.replace(/\.(component\.)?(jsx|js|tsx|ts)$/i, '');
-                      const baseName = nameWithoutExt.includes('.') ? nameWithoutExt.split('.')[0] : nameWithoutExt;
+                      const fname = afterComponents[afterComponents.length - 1];
+                      const baseName = fname.replace(/\.(component\.)?(jsx|js|tsx|ts)$/i, '').split('.')[0];
                       const subPath = afterComponents.slice(0, -1).join('/');
                       importPath = subPath ? `./components/${subPath}/${baseName}` : `./components/${baseName}`;
                     }
                   } else if (componentFile.path.startsWith('src/')) {
-                    const relativePath = componentFile.path.replace('src/', './');
-                    importPath = relativePath.replace(/\.(component\.)?(jsx|js|tsx|ts)$/i, '');
-                    // Remove .component if present
-                    if (importPath.includes('.component')) {
-                      importPath = importPath.replace(/\.component$/, '');
-                    }
+                    importPath = componentFile.path.replace('src/', './').replace(/\.(component\.)?(jsx|js|tsx|ts)$/i, '');
                   }
-                  
-                  // Check if import already exists
+
+                  if (!importPath) return;
+
                   const importPattern = new RegExp(`import\\s+.*?\\s+from\\s+['"]${importPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]`, 'i');
-                  if (!importPattern.test(appContent) && importPath) {
-                    // Add import after React import or at top
-                    const reactImportMatch = appContent.match(/import\s+React[^;]*;/);
-                    if (reactImportMatch) {
-                      const insertPos = reactImportMatch.index! + reactImportMatch[0].length;
-                      appContent = appContent.slice(0, insertPos) + 
-                        `\nimport ${compName} from '${importPath}';` + 
+                  if (!importPattern.test(appContent)) {
+                    // Add import after the last existing import statement
+                    const lastImportIdx = appContent.lastIndexOf('\nimport ');
+                    if (lastImportIdx >= 0) {
+                      const lineEnd = appContent.indexOf('\n', lastImportIdx + 1);
+                      const insertPos = lineEnd >= 0 ? lineEnd : appContent.length;
+                      appContent = appContent.slice(0, insertPos) +
+                        `\nimport ${compName} from '${importPath}';` +
                         appContent.slice(insertPos);
                       appUpdated = true;
-                      console.log(`  ✅ Added import: import ${compName} from '${importPath}'`);
-                    } else {
-                      // Add at top
-                      appContent = `import ${compName} from '${importPath}';\n${appContent}`;
-                      appUpdated = true;
-                      console.log(`  ✅ Added import at top: import ${compName} from '${importPath}'`);
                     }
                   }
-                  
-                  // Add component to JSX if not already present
-                  const componentUsagePattern = new RegExp(`<${compName}\\s*/?>`, 'i');
+
+                  // Add component JSX only if not already present
+                  const componentUsagePattern = new RegExp(`<${compName}[\\s/>]`, 'i');
                   if (!componentUsagePattern.test(appContent)) {
-                    // Find return statement and add component
-                    const returnMatch = appContent.match(/return\s*\([\s\S]*?\)/);
-                    if (returnMatch) {
-                      const returnContent = returnMatch[0];
-                      // Add component before closing div or at end
-                      if (returnContent.includes('</div>')) {
-                        appContent = appContent.replace(
-                          /(return\s*\([\s\S]*?)(<\/div>\s*\))/,
-                          `$1    <${compName} />\n$2`
-                        );
-                        appUpdated = true;
-                        console.log(`  ✅ Added <${compName} /> to JSX`);
-                      } else {
-                        // Add at end of return
-                        appContent = appContent.replace(
-                          /(return\s*\([\s\S]*?)(\))/,
-                          `$1    <${compName} />\n$2`
-                        );
-                        appUpdated = true;
-                        console.log(`  ✅ Added <${compName} /> to JSX (end)`);
-                      }
+                    // Insert before the last </div> in the return block
+                    const lastDivClose = appContent.lastIndexOf('</div>');
+                    if (lastDivClose >= 0) {
+                      appContent = appContent.slice(0, lastDivClose) +
+                        `      <${compName} />\n      ` +
+                        appContent.slice(lastDivClose);
+                      appUpdated = true;
                     }
                   }
-                }
-              });
-              
-              // Save updated App.jsx
-              if (appUpdated) {
-                await prisma.appFile.update({
-                  where: { id: appFile.id },
-                  data: { content: appContent }
                 });
-                console.log(`\n✅ App.jsx updated successfully with ${componentNames.length} component(s)`);
-                console.log(`   Components integrated: ${componentNames.join(', ')}`);
-                console.log(`   Preview will automatically refresh to show new components`);
-              } else {
-                console.log(`\nℹ️ App.jsx already contains all components or no updates needed`);
+
+                if (appUpdated) {
+                  await prisma.appFile.update({
+                    where: { id: appFileFromDb.id },
+                    data: { content: appContent }
+                  });
+                  console.log(`✅ App.jsx updated with ${componentNames.length} component(s): ${componentNames.join(', ')}`);
+                }
               }
-            } else {
-              console.log(`\n⚠️ App.jsx not found - skipping auto-integration`);
             }
           } catch (integrationError: unknown) {
-            console.error('❌ Error during component integration:', integrationError);
-            // Don't fail the request - files were created successfully
+            console.error('❌ Component integration error (non-fatal):', integrationError);
           }
-          console.log('='.repeat(80) + '\n');
         }
       }
 

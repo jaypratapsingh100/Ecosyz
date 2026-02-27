@@ -175,10 +175,13 @@ export async function POST(
     const stripModuleSyntax = (code: string): string => {
       return (code || '')
         // === ES6 imports ===
-        .replace(/import\s+[\s\S]*?from\s+['"][^'"]*['"]\s*;?\s*/g, '')
-        .replace(/import\s+['"][^'"]*['"]\s*;?\s*/g, '')
+        .replace(/^\s*import\s+[\s\S]*?from\s+['"][^'"]*['"]\s*;?\s*$/gm, '')
+        .replace(/^\s*import\s+['"][^'"]*['"]\s*;?\s*$/gm, '')
         // === ES6 exports ===
-        .replace(/export\s+default\s+/g, '')
+        // "export default function App" → "function App"
+        .replace(/export\s+default\s+(?=function|class)/g, '')
+        // "export default App;" → "" (standalone re-export at end of file)
+        .replace(/^\s*export\s+default\s+\w+\s*;?\s*$/gm, '')
         .replace(/export\s*\{[^}]*\}\s*;?\s*/g, '')
         .replace(/export\s+(const|let|var|function|class)\s+/g, '$1 ')
         // === CommonJS require ===
@@ -245,8 +248,10 @@ export async function POST(
         }
       };
 
-      // Inject src/App.jsx and its component dependencies when we have a main App file
-      if (mainJsFile && !html.includes(mainJsFile.content) && (!hasComponentCode || !hasReactLibs)) {
+      // Inject src/App.jsx and its component dependencies when we have a main App file.
+      // We always inject when mainJsFile exists because Vite module scripts were stripped above
+      // and the iframe has no module system — we must inject React + App directly.
+      if (mainJsFile && !hasComponentCode) {
         // Component files (ToDoList, ToDoForm, etc.) - inject before App so they're in scope
         const componentFiles = project.files.filter(
         (f: { path: string; language: string | null }) =>
@@ -322,7 +327,14 @@ export async function POST(
         ensureReactAndRoot();
 
         // Inject the App.jsx component with proper React rendering
-        let appContent = stripModuleSyntax(mainJsFile.content);
+        // Use the file content, but fallback to default if clearly broken (no function/const/class)
+        let rawAppContent = mainJsFile.content;
+        const hasValidComponent = /(?:function|const|class)\s+\w+/.test(rawAppContent) && /return\s*\(/.test(rawAppContent);
+        if (!hasValidComponent && rawAppContent.trim().length < 50) {
+          console.warn('[preview] App.jsx looks empty/broken, using default content');
+          rawAppContent = DEFAULT_APP_CONTENT;
+        }
+        let appContent = stripModuleSyntax(rawAppContent);
         appContent = appContent.trim();
         // Ensure React hooks are in scope in iframe (same as component files)
         if ((appContent.includes('useState(') || appContent.includes('useEffect(')) && !appContent.includes('React.useState') && !appContent.includes('const { useState')) {

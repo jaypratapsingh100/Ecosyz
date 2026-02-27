@@ -650,7 +650,7 @@ function AppBuilderPageContent() {
                     <ErrorBoundary componentName="App Chat">
                       <AppChat
                         projectId={selectedProjectId || ''}
-                        currentFile={undefined}
+                        currentFile={selectedFile?.path}
                         projectFiles={projectFiles}
                         onFilesCreated={() => {
                         if (!selectedProjectId) return;

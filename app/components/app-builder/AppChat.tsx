@@ -181,6 +181,7 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
         credentials: 'include',
         body: JSON.stringify({
           message: description,
+          currentFile: currentFile || undefined,
           userProvider: selectedProvider,
           userModel: selectedModel || undefined,
         }),

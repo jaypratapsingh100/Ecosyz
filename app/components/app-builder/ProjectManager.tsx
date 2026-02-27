@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { toast } from 'sonner';
 
 export interface ProjectListItem {
   id: string;
@@ -90,7 +91,7 @@ export default function ProjectManager({
       if (!res.ok) {
         const error = await res.json().catch(() => ({ error: 'Failed to update project' }));
         console.error('Failed to update project:', error);
-        alert(error.error || 'Failed to update project name');
+        toast.error(error.error || 'Failed to update project name');
         return;
       }
 
@@ -99,7 +100,7 @@ export default function ProjectManager({
       onProjectUpdated?.();
     } catch (error) {
       console.error('Error updating project:', error);
-      alert('Failed to update project name');
+      toast.error('Failed to update project name');
     } finally {
       setIsUpdating(false);
     }
@@ -123,14 +124,14 @@ export default function ProjectManager({
       if (!res.ok) {
         const error = await res.json().catch(() => ({ error: 'Failed to update visibility' }));
         console.error('Failed to update visibility:', error);
-        alert(error.error || 'Failed to update project visibility');
+        toast.error(error.error || 'Failed to update project visibility');
         return;
       }
 
       onProjectUpdated?.();
     } catch (error) {
       console.error('Error updating visibility:', error);
-      alert('Failed to update project visibility');
+      toast.error('Failed to update project visibility');
     } finally {
       setUpdatingVisibilityId(null);
     }

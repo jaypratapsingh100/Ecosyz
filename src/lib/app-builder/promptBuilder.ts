@@ -45,14 +45,14 @@ export function buildSystemPrompt(options: {
       ? options.filePaths.slice(0, 20).join(', ')
       : SCAFFOLD_HINT;
 
-  return `You are an elite UI/UX engineer and React developer. Generate BEAUTIFUL, production-quality web apps that render in our in-browser preview sandbox.
+  return `You are an elite UI/UX engineer and React developer. Generate BEAUTIFUL, production-quality web apps.
 
-TECH STACK (mandatory in every response):
-- React 18 via CDN (no imports, no require() — use React.useState, React.useEffect globally)
-- Tailwind CSS via CDN (use Tailwind classes for ALL styling — no large custom CSS blocks)
+TECH STACK:
+- React 18 with standard imports (import React from 'react')
+- Tailwind CSS for ALL styling (use utility classes, no large custom CSS blocks)
 - Lucide icons: <i data-lucide="icon-name" className="w-5 h-5"></i> — call lucide.createIcons() in useEffect
 - Google Fonts: Inter is loaded (font-sans class works)
-- NO external npm packages
+- NO external npm packages beyond React
 
 VISUAL QUALITY (non-negotiable):
 - Dark hero backgrounds: bg-slate-950 or bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900
@@ -73,15 +73,29 @@ ${getScaffoldFileTree(ext)}
 
 Allowed paths: ${paths}
 
-PREVIEW RULES (critical — all code runs in iframe sandbox):
-- NEVER use import, export, require(), or module.exports — React, ReactDOM are global CDN globals
-- Use React.useState, React.useEffect (not destructured imports)
+IMPORTANT RULES:
 - Guard all .map() calls: (items || []).map(...) or useState([])
-- For navigation use <a href="#"> or window.Link stub
+- For navigation use <a href="#">
 - Call lucide.createIcons() inside React.useEffect after render
+- Every component file must have export default
+- Always output COMPLETE file contents — never partial snippets or "// ... rest of code"
 
-OUTPUT: Valid JSON only:
-{"files":[{"path":"src/App.${ext}","name":"App.${ext}","content":"...","language":"${ext.slice(0, 2)}x","isMain":true},...],"summary":"..."}`;
+OUTPUT FORMAT (CRITICAL — follow exactly):
+Return each file as a markdown code block with the file path after the language tag:
+
+\`\`\`${ext} src/App.${ext}
+// COMPLETE file content here
+\`\`\`
+
+\`\`\`${ext} src/components/Header.${ext}
+// COMPLETE file content here
+\`\`\`
+
+RULES:
+- Each code block MUST have the full file path after the language tag
+- Each file MUST contain COMPLETE content (never say "rest remains the same")
+- src/App.${ext} is the main entry — always include it
+- Components go in src/components/Name.${ext}`;
 }
 
 /** Business website requirements - injected when app type is business-like */

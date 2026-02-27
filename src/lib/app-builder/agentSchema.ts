@@ -21,12 +21,14 @@ export const ALLOWED_PATHS = [
   'README.md',
 ] as const;
 
-/** Paths matching src/components/*.jsx | *.tsx */
-export const COMPONENT_PATH_PATTERN = /^src\/components\/[A-Z][a-zA-Z0-9]*\.(jsx|tsx)$/;
+/** Paths matching src/components/**\/*.jsx | *.tsx (supports nested dirs) */
+export const COMPONENT_PATH_PATTERN = /^src\/components\/(?:[a-zA-Z0-9_-]+\/)*[A-Z][a-zA-Z0-9]*\.(jsx|tsx)$/;
 /** Paths for components at src root: src/Header.jsx, src/Hero.jsx */
 export const SRC_ROOT_COMPONENT_PATTERN = /^src\/[A-Z][a-zA-Z0-9]*\.(jsx|tsx)$/;
 /** CSS files under src/ or at root */
 export const CSS_PATH_PATTERN = /^(src\/.+\.css|styles\.css)$/;
+/** Utility/hook/data files under src/ (lowercase start) */
+export const SRC_UTIL_PATH_PATTERN = /^src\/(?:utils|hooks|helpers|data|lib|context|services)\/[a-zA-Z][a-zA-Z0-9_-]*\.(jsx?|tsx?|json)$/;
 
 export interface AgentFile {
   path: string;
@@ -86,7 +88,8 @@ function extractFilesLoosely(text: string): AgentFile[] {
       ALLOWED_PATHS.includes(path as (typeof ALLOWED_PATHS)[number]) ||
       COMPONENT_PATH_PATTERN.test(path) ||
       SRC_ROOT_COMPONENT_PATTERN.test(path) ||
-      CSS_PATH_PATTERN.test(path);
+      CSS_PATH_PATTERN.test(path) ||
+      SRC_UTIL_PATH_PATTERN.test(path);
     if (!valid) continue;
 
     const content = contentRaw
@@ -141,11 +144,13 @@ export function extractAgentResponse(text: string): AgentResponse | null {
       try {
         return JSON.parse(jsonStr) as unknown;
       } catch {
-        // 2) Fallback: treat as JS object literal (handles unescaped newlines in strings)
+        // 2) Fallback: repair common LLM JSON issues (unescaped newlines/tabs in strings)
         try {
-          // eslint-disable-next-line no-new-func
-          const fn = new Function(`return (${jsonStr});`);
-          return fn() as unknown;
+          // Replace literal newlines inside JSON string values with \\n
+          const repaired = jsonStr
+            .replace(/[\r\n]+/g, '\\n')
+            .replace(/\t/g, '\\t');
+          return JSON.parse(repaired) as unknown;
         } catch {
           return null;
         }
@@ -173,7 +178,8 @@ export function extractAgentResponse(text: string): AgentResponse | null {
         ALLOWED_PATHS.includes(path as (typeof ALLOWED_PATHS)[number]) ||
         COMPONENT_PATH_PATTERN.test(path) ||
         SRC_ROOT_COMPONENT_PATTERN.test(path) ||
-        CSS_PATH_PATTERN.test(path);
+        CSS_PATH_PATTERN.test(path) ||
+        SRC_UTIL_PATH_PATTERN.test(path);
 
       if (!valid) {
         rejectedPaths.push(path);
