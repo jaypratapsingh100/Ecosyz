@@ -55,6 +55,7 @@ STRATEGY.md
 *.md
 !README.md
 !docs/ATOMIC_PLAN.md
+!docs/ATOMIC_TASKS.md
 
 # Optional: Build artifacts
 build/
