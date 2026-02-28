@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import Link from 'next/link';
 
 interface WelcomeScreenProps {
   onCreateReactSample?: () => void;
@@ -91,10 +92,10 @@ export default function WelcomeScreen({
             </button>
           )}
         </div>
-        {(onCreateLinkedInPortfolio || onCreateInstagramStore) && (
+        {(onCreateLinkedInPortfolio || onCreateInstagramStore || true) && (
           <div className="mt-6">
             <p className="text-gray-400 text-xs uppercase tracking-wide mb-3">
-              Or start from your existing profiles
+              Or start from your profiles / PDF
             </p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               {onCreateLinkedInPortfolio && (
@@ -143,6 +144,20 @@ export default function WelcomeScreen({
                   {isCreatingInstagramStore ? 'Creating store…' : 'Instagram → E‑Store'}
                 </button>
               )}
+              <Link
+                href="/pdf-website"
+                className="px-6 py-2.5 rounded-lg border border-violet-400/40 bg-violet-500/10 hover:bg-violet-500/20 text-violet-100 text-sm font-medium flex items-center justify-center gap-2 transition-all"
+                title="Upload a PDF, fill questionnaire, get an animated vibrant website"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <path d="M14 2v6h6" />
+                  <path d="M16 13H8" />
+                  <path d="M16 17H8" />
+                  <path d="M10 9H8" />
+                </svg>
+                PDF → Animated Website
+              </Link>
             </div>
           </div>
         )}
