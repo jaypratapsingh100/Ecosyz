@@ -1,8 +1,9 @@
 'use client';
 
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useMemo, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
+import Link from 'next/link';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 
@@ -38,8 +39,34 @@ export default function PdfWebsitePage() {
   const [ctaLink, setCtaLink] = useState('');
   const [customColors, setCustomColors] = useState('');
 
+  const [aiOptions, setAiOptions] = useState<{
+    groqAvailable: boolean;
+    openRouterAvailable: boolean;
+    models: { groq: { id: string; label: string }[]; openrouter: { id: string; label: string }[] };
+  } | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<'groq' | 'openrouter'>('groq');
+  const [selectedModel, setSelectedModel] = useState<string>('');
+
   const [generatedFiles, setGeneratedFiles] = useState<GeneratedFile[]>([]);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [aiProvider, setAiProvider] = useState<string | null>(null);
+  const [aiModel, setAiModel] = useState<string | null>(null);
+  const [projectId, setProjectId] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch('/api/app-projects/ai-options')
+      .then((r) => r.json())
+      .then((data) => {
+        setAiOptions(data);
+        if (data.groqAvailable) {
+          setSelectedProvider('groq');
+        } else if (data.openRouterAvailable) {
+          setSelectedProvider('openrouter');
+          setSelectedModel(data.models.openrouter[0]?.id || '');
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const [deploying, setDeploying] = useState(false);
   const [deployResult, setDeployResult] = useState<{
@@ -86,6 +113,9 @@ export default function PdfWebsitePage() {
     setError(null);
     setGeneratedFiles([]);
     setDeployResult(null);
+    setAiProvider(null);
+    setAiModel(null);
+    setProjectId(null);
 
     const form = e.currentTarget;
     const fileInput = form.elements.namedItem('file') as HTMLInputElement | null;
@@ -108,6 +138,8 @@ export default function PdfWebsitePage() {
       ctaText,
       ctaLink: ctaLink || undefined,
       customColors: customColors || undefined,
+      userProvider: selectedProvider,
+      userModel: selectedProvider === 'openrouter' ? (selectedModel || undefined) : undefined,
     };
 
     const formData = new FormData();
@@ -141,6 +173,9 @@ export default function PdfWebsitePage() {
       }
 
       setGeneratedFiles(files);
+      if (data.provider) setAiProvider(data.provider);
+      if (data.model) setAiModel(data.model);
+      if (data.projectId) setProjectId(data.projectId);
       const mainFile =
         files.find((f) => f.isMain) ||
         files.find((f) => f.path === 'src/App.jsx') ||
@@ -288,6 +323,62 @@ ${code}
                   <span className="w-6 h-6 rounded-lg bg-cyan-500/20 flex items-center justify-center text-cyan-300 text-xs">2</span>
                   Questionnaire
                 </h2>
+
+                {aiOptions?.anyAvailable && (aiOptions.groqAvailable || aiOptions.openRouterAvailable) && (
+                  <div className="space-y-2">
+                    <label className="block text-gray-300 mb-1">AI provider</label>
+                    <div className="flex flex-wrap gap-2">
+                      {aiOptions.groqAvailable && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedProvider('groq');
+                            setSelectedModel(aiOptions.models.groq[0]?.id || '');
+                          }}
+                          className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                            selectedProvider === 'groq'
+                              ? 'border-emerald-400/70 bg-emerald-500/20 text-emerald-200'
+                              : 'border-white/15 bg-white/5 text-gray-400 hover:bg-white/10'
+                          }`}
+                        >
+                          Groq (Llama)
+                        </button>
+                      )}
+                      {aiOptions.openRouterAvailable && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedProvider('openrouter');
+                            setSelectedModel(aiOptions.models.openrouter[0]?.id ?? '');
+                          }}
+                          className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                            selectedProvider === 'openrouter'
+                              ? 'border-emerald-400/70 bg-emerald-500/20 text-emerald-200'
+                              : 'border-white/15 bg-white/5 text-gray-400 hover:bg-white/10'
+                          }`}
+                        >
+                          OpenRouter (DeepSeek)
+                        </button>
+                      )}
+                    </div>
+                    {selectedProvider === 'openrouter' && aiOptions.models.openrouter.length > 1 && (
+                      <div className="pt-1">
+                        <label className="block text-[11px] text-gray-400 mb-1">Model</label>
+                        <select
+                          value={selectedModel}
+                          onChange={(e) => setSelectedModel(e.target.value)}
+                          className="w-full rounded-lg glass glass-border px-3 py-2 text-gray-100 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-400/50"
+                        >
+                          {aiOptions.models.openrouter.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 gap-3 text-xs">
                   <div>
@@ -474,6 +565,11 @@ ${code}
                 Last uploaded: <span className="text-gray-200">{fileName}</span>
               </p>
             )}
+            {(aiProvider || aiModel) && (
+              <p className="mt-2 text-[11px] text-gray-500">
+                AI: {aiProvider || '—'} / {aiModel || '—'}
+              </p>
+            )}
 
             {previewHtml && step === 'done' && (
               <motion.div
@@ -481,6 +577,14 @@ ${code}
                 animate={{ opacity: 1, y: 0 }}
                 className="mt-4 space-y-3"
               >
+                {projectId && (
+                  <Link
+                    href={`/studio?project=${projectId}`}
+                    className="block w-full text-center rounded-xl border border-cyan-400/40 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-200 text-sm font-semibold py-2.5 transition-all"
+                  >
+                    View in Studio
+                  </Link>
+                )}
                 <motion.button
                   type="button"
                   onClick={handleDeploy}
@@ -556,7 +660,7 @@ ${code}
               <li>Fill the questionnaire to steer design, colors, and animations.</li>
               <li>AI generates a vibrant, animated single-page React site.</li>
               <li>Deploy to Vercel to get a live link.</li>
-              <li>This is a separate flow — no project in the database.</li>
+              <li>When signed in, projects are saved and appear in Studio.</li>
             </ul>
           </motion.div>
         </motion.div>
