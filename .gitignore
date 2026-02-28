@@ -54,6 +54,7 @@ STRATEGY.md
 # Markdown documentation files
 *.md
 !README.md
+!docs/ATOMIC_PLAN.md
 
 # Optional: Build artifacts
 build/
