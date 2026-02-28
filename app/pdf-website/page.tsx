@@ -217,7 +217,7 @@ ${code}
     <div className="min-h-screen flex flex-col">
       <Header />
       <main className="flex-grow">
-        <section className="relative overflow-hidden bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016] min-h-screen text-white">
+        <section className="relative overflow-hidden bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016] min-h-screen text-white pb-16">
           {/* Globe background - matches home/about/features */}
           <div className="pointer-events-none absolute inset-0 z-0">
             <Image
@@ -230,7 +230,24 @@ ${code}
             <div className="absolute left-1/2 top-1/3 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] bg-gradient-radial from-emerald-400/20 to-transparent opacity-80 blur-3xl" />
           </div>
 
-          <div className="relative z-10 max-w-7xl mx-auto px-4 py-8 lg:py-12 flex flex-col lg:flex-row gap-6 lg:gap-8">
+          <div className="relative z-10 max-w-7xl mx-auto px-4 py-8 lg:py-12">
+            {/* Page title */}
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-8 text-center lg:text-left"
+            >
+              <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-tight text-white mb-2">
+                <span className="bg-gradient-to-r from-emerald-400 via-cyan-400 to-indigo-300 bg-clip-text text-transparent">
+                  PDF → Animated Website
+                </span>
+              </h1>
+              <p className="text-sm sm:text-base text-teal-100/90">
+                Upload a PDF, fill the questionnaire, and get a vibrant animated single-page site. Deploy to Vercel in one click.
+              </p>
+            </motion.div>
+
+            <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
         {/* Left: questionnaire and upload */}
         <motion.div
           initial={{ opacity: 0, x: -20 }}
@@ -280,7 +297,7 @@ ${code}
                       value={documentTitle}
                       onChange={(e) => setDocumentTitle(e.target.value)}
                       placeholder="e.g. My Portfolio · Product Designer"
-                      className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500/50 transition-all"
+                      className="w-full rounded-lg glass glass-border px-3 py-2 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 focus:border-emerald-400/50 transition-all"
                     />
                   </div>
                   <div>
@@ -288,7 +305,7 @@ ${code}
                     <select
                       value={primaryGoal}
                       onChange={(e) => setPrimaryGoal(e.target.value as typeof primaryGoal)}
-                      className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-gray-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                      className="w-full rounded-lg glass glass-border px-3 py-2 text-gray-100 focus:outline-none focus:ring-2 focus:ring-emerald-400/50"
                     >
                       <option value="portfolio">Portfolio / showcase</option>
                       <option value="product">Product / service</option>
@@ -302,7 +319,7 @@ ${code}
                     <select
                       value={designVibe}
                       onChange={(e) => setDesignVibe(e.target.value as typeof designVibe)}
-                      className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-gray-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                      className="w-full rounded-lg glass glass-border px-3 py-2 text-gray-100 focus:outline-none focus:ring-2 focus:ring-emerald-400/50"
                     >
                       <option value="vibrant">Vibrant & colorful</option>
                       <option value="neon">Neon / cyberpunk</option>
@@ -316,7 +333,7 @@ ${code}
                     <select
                       value={colorPalette}
                       onChange={(e) => setColorPalette(e.target.value as typeof colorPalette)}
-                      className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-gray-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                      className="w-full rounded-lg glass glass-border px-3 py-2 text-gray-100 focus:outline-none focus:ring-2 focus:ring-emerald-400/50"
                     >
                       <option value="emerald-cyan">Emerald + cyan</option>
                       <option value="purple-pink">Purple + pink</option>
@@ -337,7 +354,7 @@ ${code}
                         value={customColors}
                         onChange={(e) => setCustomColors(e.target.value)}
                         placeholder="e.g. gold, navy, coral"
-                        className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                        className="w-full rounded-lg glass glass-border px-3 py-2 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-400/50"
                       />
                     </motion.div>
                   )}
@@ -346,7 +363,7 @@ ${code}
                     <select
                       value={animationLevel}
                       onChange={(e) => setAnimationLevel(e.target.value as typeof animationLevel)}
-                      className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-gray-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                      className="w-full rounded-lg glass glass-border px-3 py-2 text-gray-100 focus:outline-none focus:ring-2 focus:ring-emerald-400/50"
                     >
                       <option value="subtle">Subtle (fade, slide)</option>
                       <option value="medium">Medium (smooth transitions)</option>
@@ -378,7 +395,7 @@ ${code}
                         }
                         className={`px-3 py-1.5 rounded-full border text-[11px] transition-colors ${
                           sections[key as keyof typeof sections]
-                            ? 'border-violet-400/70 bg-violet-500/20 text-violet-200'
+                            ? 'border-emerald-400/70 bg-emerald-500/20 text-emerald-200'
                             : 'border-white/15 bg-white/5 text-gray-400'
                         }`}
                       >
@@ -396,7 +413,7 @@ ${code}
                       value={ctaText}
                       onChange={(e) => setCtaText(e.target.value)}
                       placeholder="e.g. Get started"
-                      className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                      className="w-full rounded-lg glass glass-border px-3 py-2 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-400/50"
                     />
                   </div>
                   <div>
@@ -406,7 +423,7 @@ ${code}
                       value={ctaLink}
                       onChange={(e) => setCtaLink(e.target.value)}
                       placeholder="https://..."
-                      className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                      className="w-full rounded-lg glass glass-border px-3 py-2 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-400/50"
                     />
                   </div>
                 </div>
@@ -417,7 +434,7 @@ ${code}
                 disabled={step === 'generating'}
                 whileHover={step !== 'generating' ? { scale: 1.02 } : {}}
                 whileTap={step !== 'generating' ? { scale: 0.98 } : {}}
-                className="w-full mt-4 inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 via-fuchsia-500 to-cyan-500 text-white text-sm font-semibold py-3 shadow-lg shadow-violet-500/30 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+                className="w-full mt-4 inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 font-semibold py-3 shadow-lg disabled:opacity-60 disabled:cursor-not-allowed transition-all hover:shadow-emerald-400/30"
               >
                 {step === 'generating' ? (
                   <>
@@ -551,7 +568,7 @@ ${code}
           transition={{ duration: 0.4, delay: 0.1 }}
           className="flex-1 flex flex-col gap-3 min-h-[500px]"
         >
-          <div className="flex-1 rounded-2xl border border-white/10 bg-black/30 backdrop-blur-xl overflow-hidden flex flex-col md:flex-row shadow-2xl">
+          <div className="flex-1 rounded-2xl glass-card glass-border overflow-hidden flex flex-col md:flex-row border-emerald-400/20">
             {/* File list */}
             <div className="w-full md:w-64 border-b md:border-b-0 md:border-r border-white/10 bg-black/40">
               <div className="px-3 py-2 border-b border-white/10 flex items-center justify-between">
@@ -563,7 +580,7 @@ ${code}
               <div className="max-h-48 md:max-h-none overflow-y-auto text-xs">
                 {generatedFiles.length === 0 ? (
                   <p className="px-3 py-4 text-gray-500">
-                    Generate to see <span className="text-violet-300">src/App.jsx</span> and <span className="text-violet-300">styles.css</span>.
+                    Generate to see <span className="text-emerald-300">src/App.jsx</span> and <span className="text-cyan-300">styles.css</span>.
                   </p>
                 ) : (
                   <ul>
@@ -578,7 +595,7 @@ ${code}
                           type="button"
                           onClick={() => setSelectedPath(file.path)}
                           className={`w-full text-left px-3 py-2 flex items-center justify-between gap-2 border-b border-white/5 hover:bg-white/5 transition-colors ${
-                            selectedPath === file.path ? 'bg-violet-500/20 text-violet-200' : 'text-gray-200'
+                            selectedPath === file.path ? 'bg-emerald-500/20 text-emerald-200' : 'text-gray-200'
                           }`}
                         >
                           <span className="truncate">{file.path}</span>
@@ -622,9 +639,9 @@ ${code}
                     <motion.div
                       animate={{ opacity: [0.5, 1, 0.5] }}
                       transition={{ duration: 2, repeat: Infinity }}
-                      className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500/30 to-fuchsia-500/30 flex items-center justify-center mb-3"
+                      className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500/30 to-cyan-500/30 flex items-center justify-center mb-3"
                     >
-                      <svg className="w-7 h-7 text-violet-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <svg className="w-7 h-7 text-emerald-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                         <path d="M4 4h7v7H4z" />
                         <path d="M13 4h7v7h-7z" />
                         <path d="M4 13h7v7H4z" />
@@ -656,7 +673,7 @@ ${code}
                       <motion.div
                         animate={{ rotate: 360 }}
                         transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
-                        className="w-12 h-12 border-2 border-violet-400/30 border-t-violet-400 rounded-full mb-3"
+                        className="w-12 h-12 border-2 border-emerald-400/30 border-t-emerald-400 rounded-full mb-3"
                       />
                       <p className="text-xs text-gray-200">Building your animated website…</p>
                       <p className="text-[10px] text-gray-500 mt-1">AI is crafting vibrant animations</p>
@@ -667,7 +684,12 @@ ${code}
             </div>
           </div>
         </motion.div>
-      </div>
+            </div>
+          </div>
+          <div className="w-full h-[2px] bg-gradient-to-r from-transparent via-emerald-400 to-transparent opacity-60 absolute bottom-0 left-0" />
+        </section>
+      </main>
+      <Footer />
     </div>
   );
 }
