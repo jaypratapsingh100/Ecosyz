@@ -5,10 +5,12 @@ import Link from 'next/link';
 
 interface WelcomeScreenProps {
   onCreateReactSample?: () => void;
+  onCreateEcommerceSample?: () => void;
   onCreateNew?: () => void;
   onCreateLinkedInPortfolio?: () => void;
   onCreateInstagramStore?: () => void;
   isCreatingReactSample?: boolean;
+  isCreatingEcommerceSample?: boolean;
   isCreatingNew?: boolean;
   isCreatingLinkedInPortfolio?: boolean;
   isCreatingInstagramStore?: boolean;
@@ -17,10 +19,12 @@ interface WelcomeScreenProps {
 
 export default function WelcomeScreen({
   onCreateReactSample,
+  onCreateEcommerceSample,
   onCreateNew,
   onCreateLinkedInPortfolio,
   onCreateInstagramStore,
   isCreatingReactSample = false,
+  isCreatingEcommerceSample = false,
   isCreatingNew = false,
   isCreatingLinkedInPortfolio = false,
   isCreatingInstagramStore = false,
@@ -64,24 +68,37 @@ export default function WelcomeScreen({
         <p className="text-gray-400 text-sm mb-6">
           Get started with a sample project or create a new project from scratch.
         </p>
-        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+        <div className="flex flex-col sm:flex-row gap-3 justify-center flex-wrap">
           {onCreateReactSample && (
             <button
               onClick={onCreateReactSample}
-              disabled={isCreatingReactSample || isCreatingNew || !isAuthenticated}
+              disabled={isCreatingReactSample || isCreatingEcommerceSample || isCreatingNew || !isAuthenticated}
               className="px-8 py-3 bg-gradient-to-r from-blue-500/80 to-indigo-500/80 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold text-lg rounded-lg transition-all shadow-lg shadow-blue-500/20 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 border border-blue-400/30"
               title={!isAuthenticated ? 'Please sign in to create a sample project' : undefined}
             >
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M14.23 12.004a2.236 2.236 0 0 1-2.235 2.236 2.236 2.236 0 0 1-2.236-2.236 2.236 2.236 0 0 1 2.236-2.235 2.236 2.236 0 0 1 2.235 2.235zm2.648-10.69c-1.346 0-3.107.96-4.888 2.622-1.78-1.653-3.542-2.602-4.887-2.602-.41 0-.783.093-1.106.278-1.375.793-1.683 3.264-.973 6.365C1.98 8.917 0 10.42 0 12.004c0 1.59 1.99 3.097 5.043 4.03-.704 3.113-.39 5.588.988 6.38.32.187.69.275 1.102.275 1.345 0 3.107-.96 4.888-2.624 1.78 1.654 3.542 2.603 4.887 2.603.41 0 .783-.09 1.106-.275 1.374-.792 1.683-3.263.973-6.365C22.02 15.096 24 13.59 24 12.004c0-1.59-1.99-3.097-5.043-4.032.704-3.11.39-5.587-.988-6.38a2.33 2.33 0 0 0-1.102-.274zm-9.302 10.717c-.525.303-.965.61-1.317.918-.186-.157-.358-.324-.514-.498-.71-.78-1.157-1.762-1.293-2.81.014-.12.022-.242.022-.365 0-.656.1-1.283.285-1.857.386.76.994 1.465 1.793 2.047.442.323.912.586 1.402.782zm6.1 1.274c.354-.308.792-.615 1.317-.918-.49-.196-.96-.459-1.402-.782-.799-.582-1.407-1.287-1.793-2.047-.185.574-.285 1.2-.285 1.857 0 .123.008.245.022.365-.136 1.048-.583 2.03-1.293 2.81-.156.174-.328.34-.514.498.352-.307.792-.614 1.317-.917.49.196.96.459 1.402.782.799.582 1.407 1.287 1.793 2.047.185-.574.285-1.2.285-1.857 0-.123-.008-.245-.022-.365.136-1.048.583-2.03 1.293-2.81.156-.174.328-.34.514-.498z" />
               </svg>
-              {isCreatingReactSample ? 'Creating...' : 'Sample project'}
+              {isCreatingReactSample ? 'Creating...' : 'Saree Store'}
+            </button>
+          )}
+          {onCreateEcommerceSample && (
+            <button
+              onClick={onCreateEcommerceSample}
+              disabled={isCreatingReactSample || isCreatingEcommerceSample || isCreatingNew || !isAuthenticated}
+              className="px-8 py-3 bg-gradient-to-r from-amber-500/80 to-orange-500/80 hover:from-amber-500 hover:to-orange-500 text-white font-semibold text-lg rounded-lg transition-all shadow-lg shadow-amber-500/20 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 border border-amber-400/30"
+              title={!isAuthenticated ? 'Please sign in to create an e-commerce sample' : undefined}
+            >
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.59-1.35 2.45c-.16.28-.25.61-.25.96 0 1.1.9 2 2 2h12v-2H7.42c-.14 0-.25-.11-.25-.25l.03-.12.9-1.63h7.45c.75 0 1.41-.41 1.75-1.03l3.58-6.49c.08-.14.12-.31.12-.48 0-.55-.45-1-1-1H5.21l-.94-2H1zm16 16c-1.1 0-1.99.9-1.99 2s.89 2 1.99 2 2-.9 2-2-.9-2-2-2z" />
+              </svg>
+              {isCreatingEcommerceSample ? 'Creating...' : 'E-commerce Marketplace'}
             </button>
           )}
           {onCreateNew && (
             <button
               onClick={onCreateNew}
-              disabled={isCreatingReactSample || isCreatingNew || !isAuthenticated}
+              disabled={isCreatingReactSample || isCreatingEcommerceSample || isCreatingNew || !isAuthenticated}
               className="px-8 py-3 bg-gradient-to-r from-emerald-500/80 to-cyan-500/80 hover:from-emerald-500 hover:to-cyan-500 text-white font-semibold text-lg rounded-lg transition-all shadow-lg shadow-emerald-500/20 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 border border-emerald-400/30"
               title={!isAuthenticated ? 'Please sign in to create a new project' : undefined}
             >
@@ -104,6 +121,7 @@ export default function WelcomeScreen({
                   disabled={
                     isCreatingLinkedInPortfolio ||
                     isCreatingReactSample ||
+                    isCreatingEcommerceSample ||
                     isCreatingNew ||
                     !isAuthenticated
                   }
@@ -127,6 +145,7 @@ export default function WelcomeScreen({
                   disabled={
                     isCreatingInstagramStore ||
                     isCreatingReactSample ||
+                    isCreatingEcommerceSample ||
                     isCreatingNew ||
                     !isAuthenticated
                   }

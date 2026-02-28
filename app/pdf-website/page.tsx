@@ -2,6 +2,9 @@
 
 import { FormEvent, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import Image from 'next/image';
+import Header from '../components/Header';
+import Footer from '../components/Footer';
 
 interface GeneratedFile {
   path: string;
@@ -211,50 +214,23 @@ ${code}
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0a0a0f] via-[#0f0f1a] to-[#050510] text-white overflow-hidden">
-      {/* Animated background orbs */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-1/4 -left-32 w-96 h-96 bg-violet-500/20 rounded-full blur-[128px] animate-pulse" />
-        <div className="absolute bottom-1/4 -right-32 w-96 h-96 bg-cyan-500/20 rounded-full blur-[128px] animate-pulse" style={{ animationDelay: '1s' }} />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-fuchsia-500/10 rounded-full blur-[150px]" />
-      </div>
-
-      <motion.header
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="relative border-b border-white/10 bg-black/30 backdrop-blur-xl"
-      >
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <motion.div
-              animate={{ rotate: [0, 5, -5, 0], scale: [1, 1.05, 1] }}
-              transition={{ duration: 3, repeat: Infinity, repeatDelay: 2 }}
-              className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-violet-500/40"
-            >
-              <span className="text-sm font-bold tracking-tight text-white">PDF</span>
-            </motion.div>
-            <div>
-              <h1 className="text-base font-semibold tracking-tight bg-gradient-to-r from-violet-200 via-fuchsia-200 to-cyan-200 bg-clip-text text-transparent">
-                PDF → Animated Website
-              </h1>
-              <p className="text-xs text-gray-400">
-                Upload a PDF, fill the questionnaire, get a vibrant animated single-page site.
-              </p>
-            </div>
+    <div className="min-h-screen flex flex-col">
+      <Header />
+      <main className="flex-grow">
+        <section className="relative overflow-hidden bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016] min-h-screen text-white">
+          {/* Globe background - matches home/about/features */}
+          <div className="pointer-events-none absolute inset-0 z-0">
+            <Image
+              src="/hero-globe.png"
+              alt=""
+              fill
+              className="object-cover object-right opacity-30"
+              quality={100}
+            />
+            <div className="absolute left-1/2 top-1/3 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] bg-gradient-radial from-emerald-400/20 to-transparent opacity-80 blur-3xl" />
           </div>
-          <motion.span
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.5 }}
-            className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border border-violet-500/30 bg-violet-500/10 text-xs text-violet-200"
-          >
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            Separate flow
-          </motion.span>
-        </div>
-      </motion.header>
 
-      <div className="relative max-w-7xl mx-auto px-4 py-6 lg:py-8 flex flex-col lg:flex-row gap-6 lg:gap-8">
+          <div className="relative z-10 max-w-7xl mx-auto px-4 py-8 lg:py-12 flex flex-col lg:flex-row gap-6 lg:gap-8">
         {/* Left: questionnaire and upload */}
         <motion.div
           initial={{ opacity: 0, x: -20 }}
@@ -266,12 +242,12 @@ ${code}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl p-5 shadow-2xl shadow-violet-500/5"
+            className="rounded-2xl glass-card glass-border p-5 border-emerald-400/20"
           >
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <h2 className="text-sm font-semibold mb-1 flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-lg bg-violet-500/20 flex items-center justify-center text-violet-300 text-xs">1</span>
+                  <span className="w-6 h-6 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-300 text-xs">1</span>
                   Upload PDF
                 </h2>
                 <p className="text-xs text-gray-400 mt-0.5">
@@ -286,13 +262,13 @@ ${code}
                   type="file"
                   name="file"
                   accept=".pdf,application/pdf"
-                  className="block w-full text-xs text-gray-300 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-gradient-to-r file:from-violet-500 file:to-fuchsia-500 file:text-white hover:file:from-violet-400 hover:file:to-fuchsia-400 file:transition-all"
+                  className="block w-full text-xs text-gray-300 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-gradient-to-r file:from-emerald-500 file:to-cyan-500 file:text-white hover:file:from-emerald-400 hover:file:to-cyan-400 file:transition-all"
                 />
               </motion.div>
 
               <div className="border-t border-white/10 pt-4 space-y-3">
                 <h2 className="text-sm font-semibold flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-lg bg-fuchsia-500/20 flex items-center justify-center text-fuchsia-300 text-xs">2</span>
+                  <span className="w-6 h-6 rounded-lg bg-cyan-500/20 flex items-center justify-center text-cyan-300 text-xs">2</span>
                   Questionnaire
                 </h2>
 

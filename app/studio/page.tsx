@@ -20,6 +20,7 @@ import WelcomeScreen from '../components/app-builder/WelcomeScreen';
 import { useAuthCheck } from '../hooks/useAuthCheck';
 import FeedbackForm from '../components/FeedbackForm';
 import { SAMPLE_REACT_PROJECT, SAMPLE_REACT_FILES } from './sampleReactProject';
+import { SAMPLE_ECOMMERCE_PROJECT, SAMPLE_ECOMMERCE_FILES } from './sampleEcommerceProject';
 
 function AppBuilderPageContent() {
   const router = useRouter();
@@ -39,6 +40,7 @@ function AppBuilderPageContent() {
   const [isResizing, setIsResizing] = useState(false);
   const [showTabMenu, setShowTabMenu] = useState(false);
   const [isCreatingReactSample, setIsCreatingReactSample] = useState(false);
+  const [isCreatingEcommerceSample, setIsCreatingEcommerceSample] = useState(false);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [isCreatingLinkedInPortfolio, setIsCreatingLinkedInPortfolio] = useState(false);
   const [isCreatingInstagramStore, setIsCreatingInstagramStore] = useState(false);
@@ -937,8 +939,61 @@ function AppBuilderPageContent() {
                   setIsCreatingReactSample(false);
                 }
               }}
+              onCreateEcommerceSample={async () => {
+                setIsCreatingEcommerceSample(true);
+                try {
+                  const projectRes = await fetch('/api/app-projects', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(SAMPLE_ECOMMERCE_PROJECT),
+                    credentials: 'include',
+                  });
+
+                  if (!projectRes.ok) {
+                    const errBody = await projectRes.json().catch(() => ({}));
+                    const errMsg = (errBody as { error?: string; details?: string })?.error
+                      || (errBody as { message?: string })?.message
+                      || projectRes.statusText
+                      || 'Failed to create project';
+                    const details = (errBody as { details?: string })?.details;
+                    throw new Error(details ? `${errMsg}: ${details}` : errMsg);
+                  }
+
+                  const project = await projectRes.json();
+                  const projectId = project.id;
+
+                  for (const file of SAMPLE_ECOMMERCE_FILES) {
+                    const fileRes = await fetch(`/api/app-projects/${projectId}/files`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(file),
+                      credentials: 'include',
+                    });
+                    if (!fileRes.ok) {
+                      console.warn('Failed to add file:', file.path, await fileRes.text());
+                    }
+                  }
+
+                  setSelectedProjectId(projectId);
+                  await fetchProjects();
+                  toast.success('E-commerce Marketplace Created', {
+                    description: 'Your Amazon/Flipkart-style e-commerce sample has been created!',
+                    duration: 3000,
+                  });
+                } catch (error) {
+                  const message = error instanceof Error ? error.message : 'Unknown error';
+                  console.error('Error creating e-commerce sample project:', error);
+                  toast.error('Failed to Create E-commerce Sample', {
+                    description: message,
+                    duration: 5000,
+                  });
+                } finally {
+                  setIsCreatingEcommerceSample(false);
+                }
+              }}
               onCreateNew={handleCreateNewProject}
               isCreatingReactSample={isCreatingReactSample}
+              isCreatingEcommerceSample={isCreatingEcommerceSample}
               isCreatingNew={isCreatingNew}
               isAuthenticated={isAuthenticated === true}
               onCreateLinkedInPortfolio={handleLinkedInPortfolioClick}
