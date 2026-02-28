@@ -26,6 +26,8 @@ interface Workspace {
   shareLink: { id: string; token: string; createdAt: string; expiresAt?: string } | null
 }
 
+export const dynamic = 'force-dynamic';
+
 export async function generateStaticParams() {
   return []
 }

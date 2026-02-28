@@ -3,6 +3,8 @@ import { getCurrentUser } from '../../src/lib/auth';
 import { ensureUserInDb } from '../../src/lib/auth/core/user';
 import { prisma } from '../../src/lib/db';
 
+export const dynamic = 'force-dynamic';
+
 export default async function WorkspacesPage() {
   const supabaseUser = await getCurrentUser();
   
