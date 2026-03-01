@@ -24,30 +24,10 @@ interface SaveToWorkspaceProps {
     source?: string
   }
   onSaved?: () => void
-  /**
-   * When true, the modal opens immediately on mount.
-   * Useful when the parent controls when this component is rendered.
-   */
-  initiallyOpen?: boolean
-  /**
-   * When false, the inline trigger button is hidden and only the modal is rendered.
-   * Defaults to true to preserve existing behaviour.
-   */
-  showTriggerButton?: boolean
-  /**
-   * Called whenever the modal is closed (via backdrop, Cancel, X, or successful save).
-   */
-  onClose?: () => void
 }
 
-export default function SaveToWorkspace({
-  result,
-  onSaved,
-  initiallyOpen = false,
-  showTriggerButton = true,
-  onClose,
-}: SaveToWorkspaceProps) {
-  const [isOpen, setIsOpen] = useState(initiallyOpen)
+export default function SaveToWorkspace({ result, onSaved }: SaveToWorkspaceProps) {
+  const [isOpen, setIsOpen] = useState(false)
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -56,11 +36,6 @@ export default function SaveToWorkspace({
       fetchWorkspace()
     }
   }, [isOpen])
-
-  const closeModal = () => {
-    setIsOpen(false)
-    onClose?.()
-  }
 
   const fetchWorkspace = async () => {
     try {
@@ -97,7 +72,6 @@ export default function SaveToWorkspace({
       toast.success(`Saved "${result.title}" to workspace!`)
       setIsOpen(false)
       onSaved?.()
-      onClose?.()
     } catch (error) {
       toast.error('Failed to save to workspace')
       console.error('Save error:', error)
@@ -108,19 +82,17 @@ export default function SaveToWorkspace({
 
   return (
     <>
-      {showTriggerButton && (
-        <button
-          onClick={() => setIsOpen(true)}
-          className={cn(
-            "px-4 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300",
-            "rounded-lg text-xs font-semibold border border-emerald-600/30",
-            "hover:shadow-lg hover:shadow-emerald-500/20 transition-all"
-          )}
-        >
-          <Save className="w-3 h-3 inline mr-1" />
-          Save
-        </button>
-      )}
+      <button
+        onClick={() => setIsOpen(true)}
+        className={cn(
+          "px-4 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300",
+          "rounded-lg text-xs font-semibold border border-emerald-600/30",
+          "hover:shadow-lg hover:shadow-emerald-500/20 transition-all"
+        )}
+      >
+        <Save className="w-3 h-3 inline mr-1" />
+        Save
+      </button>
 
       <AnimatePresence>
         {isOpen && (
@@ -129,7 +101,7 @@ export default function SaveToWorkspace({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={closeModal}
+            onClick={() => setIsOpen(false)}
           >
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
@@ -145,7 +117,7 @@ export default function SaveToWorkspace({
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-lg font-semibold text-zinc-100">Save to Workspace</h3>
                   <button
-                    onClick={closeModal}
+                    onClick={() => setIsOpen(false)}
                     className="text-zinc-400 hover:text-zinc-200"
                   >
                     <X className="w-5 h-5" />
@@ -174,7 +146,7 @@ export default function SaveToWorkspace({
 
                 <div className="flex gap-3">
                   <button
-                    onClick={closeModal}
+                    onClick={() => setIsOpen(false)}
                     className={cn(
                       "flex-1 px-4 py-2 rounded-lg font-medium transition-colors",
                       "bg-zinc-700/50 hover:bg-zinc-600/50 text-zinc-300 border border-zinc-600/30"

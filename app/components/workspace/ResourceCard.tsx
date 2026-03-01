@@ -14,7 +14,6 @@ interface Resource {
   url?: string
   notes?: string
   createdAt: string
-  type?: string
   tags?: string[]
   annotationCount?: number
    plagiarismScore?: number
@@ -73,17 +72,6 @@ export default function ResourceCard({ resource, onDeleted, onAnnotationCreated 
     }
   }
 
-  const handlePlagiarismClick = () => {
-    if (checking) return
-
-    if (resource.type && resource.type !== 'paper') {
-      toast.error('Plagiarism check is only available for research papers.')
-      return
-    }
-
-    void handlePlagiarismCheck()
-  }
-
   const handleCopyLink = async () => {
     if (!resource.url) {
       toast.error('No URL to copy')
@@ -124,7 +112,7 @@ export default function ResourceCard({ resource, onDeleted, onAnnotationCreated 
 
         <div className="flex gap-2">
           <button
-            onClick={handlePlagiarismClick}
+            onClick={handlePlagiarismCheck}
             disabled={checking}
             className={cn(
               "flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors",
