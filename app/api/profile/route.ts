@@ -57,6 +57,7 @@ export async function GET() {
         displayName: profile.displayName,
         bio: profile.bio,
         avatarUrl: profile.avatarUrl,
+        portfolioImageUrl: profile.portfolioImageUrl,
         // Extended basics
         location: profile.location,
         affiliation: profile.affiliation,
@@ -242,6 +243,7 @@ export async function PUT(req: NextRequest) {
         displayName: profile.displayName,
         bio: profile.bio,
         avatarUrl: profile.avatarUrl,
+        portfolioImageUrl: profile.portfolioImageUrl,
         // Extended basics
         location: profile.location,
         affiliation: profile.affiliation,

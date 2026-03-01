@@ -63,6 +63,7 @@ model Profile {
   displayName String?
   bio         String?  @db.Text
   avatarUrl   String?
+  portfolioImageUrl String? // Optional cover/banner image for portfolio
   preferences Json? // { theme: "system"|"light"|"dark", language: "en-IN", emailNotifications: boolean, marketingEmails: boolean }
 
   // Enhanced Profile Fields

@@ -362,6 +362,7 @@ ${appJsx}
                     placeholder="https://linkedin.com/in/you"
                     className="w-full rounded-lg bg-black/40 border border-white/15 px-3 py-2 text-xs text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
                   />
+                  <p className="text-[10px] text-gray-500 mt-0.5">We&apos;ll fetch your profile photo for the hero.</p>
                 </div>
                 <div>
                   <label className="block text-gray-300 mb-1">GitHub</label>

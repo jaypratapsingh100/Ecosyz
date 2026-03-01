@@ -8,6 +8,7 @@ export interface CommunityProfile {
   displayName?: string | null;
   bio?: string | null;
   avatarUrl?: string | null;
+  portfolioImageUrl?: string | null;
   // Extended basics
   location?: string | null;
   affiliation?: string | null;
@@ -82,12 +83,26 @@ export function UserProfileView({
   const primaryRole = user.profile?.primaryRole;
   const headline = user.profile?.headline;
   const location = user.profile?.location;
+  const portfolioImageUrl = user.profile?.portfolioImageUrl;
   const affiliation = user.profile?.affiliation;
   const website = user.profile?.website;
   const expertiseTags = user.profile?.expertiseTags ?? [];
 
   return (
     <div className="max-w-5xl mx-auto space-y-10 text-white">
+      {/* Portfolio cover image (optional) */}
+      {portfolioImageUrl && (
+        <div className="relative w-full aspect-[21/9] max-h-48 rounded-xl overflow-hidden -mx-4 sm:mx-0">
+          <Image
+            src={portfolioImageUrl}
+            alt={`${displayName} portfolio cover`}
+            fill
+            className="object-cover"
+            unoptimized={portfolioImageUrl.includes('/storage/') || portfolioImageUrl.includes('licdn.com') || portfolioImageUrl.includes('dicebear.com')}
+          />
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center gap-6">
         <div className="flex items-center gap-4">

@@ -38,6 +38,7 @@ export default function PdfWebsitePage() {
   const [ctaText, setCtaText] = useState('Get started');
   const [ctaLink, setCtaLink] = useState('');
   const [customColors, setCustomColors] = useState('');
+  const [linkedinUrl, setLinkedinUrl] = useState('');
 
   const [aiOptions, setAiOptions] = useState<{
     groqAvailable: boolean;
@@ -138,6 +139,7 @@ export default function PdfWebsitePage() {
       ctaText,
       ctaLink: ctaLink || undefined,
       customColors: customColors || undefined,
+      linkedinUrl: linkedinUrl.trim() || undefined,
       userProvider: selectedProvider,
       userModel: selectedProvider === 'openrouter' ? (selectedModel || undefined) : undefined,
     };
@@ -324,7 +326,7 @@ ${code}
                   Questionnaire
                 </h2>
 
-                {aiOptions?.anyAvailable && (aiOptions.groqAvailable || aiOptions.openRouterAvailable) && (
+                {aiOptions && (aiOptions.groqAvailable || aiOptions.openRouterAvailable) && (
                   <div className="space-y-2">
                     <label className="block text-gray-300 mb-1">AI provider</label>
                     <div className="flex flex-wrap gap-2">
@@ -494,6 +496,20 @@ ${code}
                       </motion.button>
                     ))}
                   </div>
+                </div>
+
+                <div className="pt-2">
+                  <label className="block text-gray-300 mb-1">LinkedIn profile URL (optional)</label>
+                  <input
+                    type="url"
+                    value={linkedinUrl}
+                    onChange={(e) => setLinkedinUrl(e.target.value)}
+                    placeholder="https://linkedin.com/in/your-username"
+                    className="w-full rounded-lg glass glass-border px-3 py-2 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 text-xs"
+                  />
+                  <p className="text-[11px] text-gray-500 mt-0.5">
+                    We&apos;ll fetch your profile photo for the hero section.
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-1 gap-2 pt-2">

@@ -276,6 +276,12 @@ export default function Header() {
               PDF → Website
             </Link>
             <Link
+              href="/pdf-website-3d"
+              className="focus:outline-none hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-fuchsia-400/30 text-fuchsia-200 text-xs font-medium hover:bg-fuchsia-500/10 transition-all whitespace-nowrap"
+            >
+              PDF → 3D
+            </Link>
+            <Link
               href="/studio"
               className="focus:outline-none focus:ring-2 focus:ring-emerald-400/60 px-3 md:px-4 py-1.5 md:py-2 bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 font-semibold rounded-lg hover:shadow-lg transition-all text-sm md:text-base whitespace-nowrap"
             >

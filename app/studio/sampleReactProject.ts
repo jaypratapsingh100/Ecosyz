@@ -6,9 +6,9 @@
 import { REACT_MAIN_JSX } from '@/lib/app-builder/canonicalReact';
 
 export const SAMPLE_REACT_PROJECT = {
-  title: 'ORAA — Saree E-Commerce',
+  title: 'ORAA — Ethnic Wear',
   description:
-    'A vibrant e-commerce website for sarees with jewel-tone aesthetics and shopping cart',
+    'Vibrant ethnic wear for women — suit sets, kurtas, dresses, sarees. Bold colors and rich imagery like premium fashion stores.',
   type: 'web' as const,
   framework: 'react',
   appType: 'react',
@@ -20,7 +20,7 @@ const INDEX_HTML = `<!DOCTYPE html>
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ORAA • Sarees</title>
+  <title>ORAA • Ethnic Wear for Women</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -32,32 +32,34 @@ const INDEX_HTML = `<!DOCTYPE html>
     const { createRoot } = ReactDOM;
     const { useState } = React;
 
-    const SAREES = [
-      { id: 's1', name: 'Royal Silk Banarasi', price: 12999, originalPrice: 15999, category: 'Banarasi', image: 'https://images.unsplash.com/photo-1617127365659-c47fa927d264?auto=format&fit=crop&w=800&q=80', badge: 'Bestseller' },
-      { id: 's2', name: 'Saffron Cotton Print', price: 2499, originalPrice: 2999, category: 'Cotton', image: 'https://images.unsplash.com/photo-1582555172866-f73bb12a2ab3?auto=format&fit=crop&w=800&q=80', badge: 'New' },
-      { id: 's3', name: 'Emerald Chiffon Drape', price: 4499, originalPrice: null, category: 'Chiffon', image: 'https://images.unsplash.com/photo-1582552938357-32b906df40cb?auto=format&fit=crop&w=800&q=80', badge: null },
-      { id: 's4', name: 'Gold Zari Silk', price: 18999, originalPrice: 22999, category: 'Silk', image: 'https://images.unsplash.com/photo-1558171813-4b74a2f7f4e1?auto=format&fit=crop&w=800&q=80', badge: 'Luxe' },
-      { id: 's5', name: 'Coral Georgette', price: 3299, originalPrice: null, category: 'Georgette', image: 'https://images.unsplash.com/photo-1515886652393-9c5f01e1e5f6?auto=format&fit=crop&w=800&q=80', badge: null },
-      { id: 's6', name: 'Fuchsia Silk Blend', price: 6999, originalPrice: 8499, category: 'Silk', image: 'https://images.unsplash.com/photo-1490481461827-8c496aba61b7?auto=format&fit=crop&w=800&q=80', badge: 'Sale' },
-      { id: 's7', name: 'Indigo Cotton Handloom', price: 3999, originalPrice: null, category: 'Cotton', image: 'https://images.unsplash.com/photo-1558618662-d8c38c9631e?auto=format&fit=crop&w=800&q=80', badge: null },
-      { id: 's8', name: 'Pearl Banarasi', price: 15999, originalPrice: 18999, category: 'Banarasi', image: 'https://images.unsplash.com/photo-1519699047748-7e42932eef30?auto=format&fit=crop&w=800&q=80', badge: 'Limited' },
-      { id: 's9', name: 'Mint Chiffon', price: 3799, originalPrice: null, category: 'Chiffon', image: 'https://images.unsplash.com/photo-1515886652393-9c5f01e1e5f6?auto=format&fit=crop&w=800&q=80', badge: null },
+    const img = (url) => '/api/image-proxy?url=' + encodeURIComponent(url);
+
+    const PRODUCTS = [
+      { id: 'p1', name: 'Anarkali Suit Set', price: 3499, originalPrice: 4299, category: 'Suit Sets', image: img('https://placehold.co/800x600/8B2252/FFE4B5?text=Anarkali'), badge: 'Bestseller' },
+      { id: 'p2', name: 'Floral Print Kurti', price: 1299, originalPrice: 1599, category: 'Kurtas', image: img('https://placehold.co/800x600/2E8B57/F5F5DC?text=Kurti'), badge: 'New' },
+      { id: 'p3', name: 'Casual Cotton Dress', price: 1999, originalPrice: null, category: 'Dresses', image: img('https://placehold.co/800x600/CD853F/FFF8DC?text=Dress'), badge: null },
+      { id: 'p4', name: 'Silk Banarasi Saree', price: 8999, originalPrice: 10999, category: 'Sarees', image: img('https://placehold.co/800x600/8B0000/FFD700?text=Saree'), badge: 'Festive' },
+      { id: 'p5', name: 'Straight Cut Suit Set', price: 2799, originalPrice: null, category: 'Suit Sets', image: img('https://placehold.co/800x600/4B0082/FFE4E1?text=Suit+Set'), badge: null },
+      { id: 'p6', name: 'Embroidered Kurta', price: 2499, originalPrice: 2999, category: 'Kurtas', image: img('https://placehold.co/800x600/C41E3A/FFFACD?text=Kurta'), badge: 'Sale' },
+      { id: 'p7', name: 'Festive Lehenga Set', price: 5999, originalPrice: null, category: 'Suit Sets', image: img('https://placehold.co/800x600/800080/FFE4B5?text=Lehenga'), badge: null },
+      { id: 'p8', name: 'Chiffon Printed Saree', price: 3299, originalPrice: 3999, category: 'Sarees', image: img('https://placehold.co/800x600/2F4F4F/F0E68C?text=Chiffon'), badge: 'Limited' },
+      { id: 'p9', name: 'Workwear Dress', price: 1699, originalPrice: null, category: 'Dresses', image: img('https://placehold.co/800x600/4682B4/FFFFFF?text=Workwear'), badge: null },
     ];
 
-    const CATEGORIES = ['All', 'Silk', 'Cotton', 'Banarasi', 'Chiffon', 'Georgette'];
+    const CATEGORIES = ['All', 'Suit Sets', 'Kurtas', 'Dresses', 'Sarees'];
 
     function App() {
       const [activeFilter, setActiveFilter] = useState('All');
       const [cart, setCart] = useState([]);
 
-      const filteredSarees = activeFilter === 'All' ? SAREES : SAREES.filter((s) => s.category === activeFilter);
+      const filteredProducts = activeFilter === 'All' ? PRODUCTS : PRODUCTS.filter((p) => p.category === activeFilter);
 
-      const addToCart = (saree) => {
-        const existing = cart.find((c) => c.id === saree.id);
+      const addToCart = (product) => {
+        const existing = cart.find((c) => c.id === product.id);
         if (existing) {
-          setCart(cart.map((c) => c.id === saree.id ? { ...c, qty: c.qty + 1 } : c));
+          setCart(cart.map((c) => c.id === product.id ? { ...c, qty: c.qty + 1 } : c));
         } else {
-          setCart([...cart, { ...saree, qty: 1 }]);
+          setCart([...cart, { ...product, qty: 1 }]);
         }
       };
 
@@ -78,61 +80,62 @@ const INDEX_HTML = `<!DOCTYPE html>
         <div className="app">
           <header className="nav">
             <div className="brand">
-              <div className="brand-mark">O</div>
+              <div className="brand-mark">ORAA</div>
               <div className="brand-text">
-                <div className="brand-name">ORAA</div>
-                <div className="brand-tagline">For Sarees</div>
+                <div className="brand-name">Ethnic Wear</div>
+                <div className="brand-tagline">For Women & Girls</div>
               </div>
             </div>
-            <div className="nav-pill">E-commerce • Saree store</div>
+            <nav className="nav-links">
+              <a href="#products">Suit Sets</a>
+              <a href="#products">Kurtas</a>
+              <a href="#products">Dresses</a>
+              <a href="#products">Sarees</a>
+            </nav>
           </header>
 
           <main>
             <section className="hero">
-              <div className="hero-grid">
-                <div>
-                  <div className="hero-eyebrow">
-                    <span className="hero-dot" />
-                    Premium handpicked sarees
-                  </div>
-                  <h1 className="hero-title">
-                    Wrap yourself in
-                    <span className="highlight"> timeless elegance.</span>
-                  </h1>
-                  <p className="hero-subtitle">
-                    Silk, cotton, Banarasi and more — curated for every occasion. Free shipping on orders above ₹2,999.
-                  </p>
-                  <div className="hero-actions">
-                    <button className="btn-primary" onClick={() => scrollTo('products')}>Shop collection</button>
-                    <button className="btn-secondary" onClick={() => scrollTo('cart-bar')}>View cart</button>
-                  </div>
-                  <div className="hero-badges">
-                    <div className="hero-badge">100% authentic</div>
-                    <div className="hero-badge">Easy returns</div>
-                    <div className="hero-badge">Handcrafted</div>
-                  </div>
-                </div>
-                <aside className="hero-card">
-                  <div className="hero-card-title">Featured pick</div>
-                  <div className="hero-card-grid">
-                    {SAREES.slice(0, 3).map((s) => (
-                      <div key={s.id} className="mini-card">
-                        <div><div className="mini-card-name">{s.name}</div><div className="mini-card-label">{s.category}</div></div>
-                        <div><div className="mini-card-price">₹{s.price.toLocaleString('en-IN')}</div><div className="mini-card-badge">{s.badge || '—'}</div></div>
-                      </div>
-                    ))}
-                  </div>
-                </aside>
+              <div className="hero-banner">
+                <img src={img('https://placehold.co/1200x400/8B2252/FFE4B5?text=ORAA+Ethnic+Wear')} alt="ORAA Ethnic Wear" className="hero-banner-img" referrerPolicy="no-referrer" loading="eager" />
               </div>
+              <div className="hero-content">
+                <h1 className="hero-title">
+                  Welcome to ORAA – Where Every Day is a Celebration of Style
+                </h1>
+                <p className="hero-subtitle">
+                  Step into the world of ORAA, where fashion meets tradition. Discover vibrant suit sets, kurtas, dresses, and sarees that redefine contemporary Indian fashion for every occasion.
+                </p>
+                <div className="hero-actions">
+                  <button className="btn-primary" onClick={() => scrollTo('products')}>Shop Collection</button>
+                  <button className="btn-secondary" onClick={() => scrollTo('cart-bar')}>View Cart</button>
+                </div>
+                <div className="hero-badges">
+                  <div className="hero-badge">Free Shipping</div>
+                  <div className="hero-badge">Secure Payments</div>
+                  <div className="hero-badge">Easy Return</div>
+                </div>
+              </div>
+              <aside className="hero-featured">
+                <div className="hero-featured-title">Top Categories</div>
+                <div className="hero-featured-grid">
+                  <div className="category-chip">Anarkali Suit Sets</div>
+                  <div className="category-chip">Kurtas</div>
+                  <div className="category-chip">Straight Suit Sets</div>
+                  <div className="category-chip">Dresses</div>
+                  <div className="category-chip">Sarees</div>
+                  <div className="category-chip">Palazzos</div>
+                </div>
+              </aside>
             </section>
 
             <section id="products" className="section">
               <div className="section-header">
                 <div>
-                  <div className="section-eyebrow">collection</div>
-                  <h2 className="section-title">Shop by fabric</h2>
+                  <div className="section-eyebrow">Collection</div>
+                  <h2 className="section-title">Shop by Category</h2>
                 </div>
-                <p className="section-subtitle">Filter by category and add to cart.</p>
+                <p className="section-subtitle">Indian wear that blends tradition with contemporary style.</p>
               </div>
               <div className="gallery-filters">
                 {CATEGORIES.map((cat) => (
@@ -140,22 +143,22 @@ const INDEX_HTML = `<!DOCTYPE html>
                 ))}
               </div>
               <div className="products-grid">
-                {filteredSarees.map((s) => (
-                  <article key={s.id} className="product-card">
-                    <div className="product-media"><img src={s.image} alt={s.name} className="product-image" /></div>
+                {filteredProducts.map((p) => (
+                  <article key={p.id} className="product-card">
+                    <div className="product-media"><img src={p.image} alt={p.name} className="product-image" referrerPolicy="no-referrer" loading="eager" /></div>
                     <div className="product-body">
-                      <div className="product-name">{s.name}</div>
-                      <div className="product-subtitle">{s.category} • Premium quality</div>
+                      <div className="product-name">{p.name}</div>
+                      <div className="product-subtitle">{p.category}</div>
                       <div className="product-meta">
-                        {s.badge && <span className="pill">{s.badge}</span>}
+                        {p.badge && <span className="pill">{p.badge}</span>}
                         <span className="pill">Free shipping</span>
                       </div>
                       <div className="product-footer">
                         <div>
-                          <span className="product-price-main">₹{s.price.toLocaleString('en-IN')}</span>
-                          {s.originalPrice && <span className="product-price-strike">₹{s.originalPrice.toLocaleString('en-IN')}</span>}
+                          <span className="product-price-main">₹{p.price.toLocaleString('en-IN')}</span>
+                          {p.originalPrice && <span className="product-price-strike">₹{p.originalPrice.toLocaleString('en-IN')}</span>}
                         </div>
-                        <button className="btn-cart" onClick={() => addToCart(s)}>Add to cart</button>
+                        <button className="btn-cart" onClick={() => addToCart(p)}>Add to cart</button>
                       </div>
                     </div>
                   </article>
@@ -188,7 +191,7 @@ const INDEX_HTML = `<!DOCTYPE html>
           </div>
 
           <div className="bottom-note">
-            ORAA sample — vibrant saree e-commerce for Sarees. Clone in App Studio and add your own products.
+            ORAA sample — vibrant ethnic wear e-commerce for women. Clone in App Studio and add your own products.
           </div>
         </div>
       );
@@ -209,12 +212,12 @@ const STYLES_CSS = `* {
 
 body {
   font-family: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-  background: radial-gradient(ellipse at top, #4a1942 0%, #1a0a2e 40%, #0d0518 70%, #050308 100%);
+  background: #faf9f7;
   min-height: 100vh;
-  color: #fef7ed;
+  color: #1a1a1a;
 }
 
-/* ORAA vibrant palette: saffron #ff6b35, gold #f4c430, coral #ff7f50, fuchsia #e91e63, jewel purple #6b21a8 */
+/* ORAA: vibrant ethnic wear, coral accent #c41e3a */
 
 .app {
   min-height: 100vh;
@@ -229,30 +232,26 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.75rem 1.25rem;
-  border-bottom: 1px solid rgba(255, 107, 53, 0.35);
-  background: linear-gradient(90deg, rgba(26, 11, 46, 0.97), rgba(74, 25, 66, 0.95), rgba(26, 11, 46, 0.97));
-  backdrop-filter: blur(18px);
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #e8e6e3;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.75rem;
 }
 
 .brand-mark {
-  width: 38px;
-  height: 38px;
-  border-radius: 999px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 800;
-  font-size: 1.2rem;
-  background: conic-gradient(from 220deg, #ff6b35, #f4c430, #e91e63, #ff6b35);
+  padding: 0.35rem 0.65rem;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: 0.05em;
+  background: #c41e3a;
   color: #fff;
-  box-shadow: 0 0 24px rgba(233, 30, 99, 0.6);
 }
 
 .brand-text {
@@ -260,91 +259,75 @@ body {
 }
 
 .brand-name {
-  font-size: 1.3rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  background: linear-gradient(90deg, #ff6b35, #f4c430, #e91e63);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #1a1a1a;
 }
 
 .brand-tagline {
-  font-size: 0.65rem;
-  text-transform: uppercase;
-  letter-spacing: 0.22em;
-  padding: 0.2rem 0.5rem;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 107, 53, 0.5);
-  color: rgba(255, 247, 237, 0.9);
+  font-size: 0.7rem;
+  color: #666;
 }
 
-.nav-pill {
-  font-size: 0.7rem;
-  padding: 0.4rem 0.7rem;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 107, 53, 0.45);
-  background: rgba(5, 3, 8, 0.7);
-  color: rgba(255, 247, 237, 0.85);
+.nav-links {
+  display: flex;
+  gap: 1.5rem;
+}
+
+.nav-links a {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #444;
+  text-decoration: none;
+}
+
+.nav-links a:hover {
+  color: #c41e3a;
 }
 
 .hero {
-  padding: 2.5rem 1.5rem 2rem;
+  padding: 0 1.5rem 2rem;
   max-width: 1040px;
   margin: 0 auto;
+  position: relative;
 }
 
-.hero-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.1fr);
-  gap: 2rem;
+.hero-banner {
+  height: 280px;
+  margin: 0 -1.5rem 1.5rem;
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
 }
 
-.hero-eyebrow,
-.hero-left-eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.3rem 0.6rem;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 107, 53, 0.6);
-  background: rgba(26, 11, 30, 0.9);
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
-  font-size: 0.64rem;
-  color: rgba(255, 247, 237, 0.9);
+.hero-banner-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  filter: saturate(1.3) contrast(1.05);
 }
 
-.hero-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: linear-gradient(135deg, #ff6b35, #e91e63);
+.hero-content {
+  max-width: 42rem;
 }
 
 .hero-title {
-  margin-top: 1.2rem;
-  font-size: clamp(2.2rem, 4vw, 3.1rem);
-  line-height: 1.04;
-  font-weight: 680;
-}
-
-.hero-title span.highlight {
-  color: #f4c430;
-  display: block;
-  text-shadow: 0 0 30px rgba(244, 196, 48, 0.5);
+  font-size: clamp(1.75rem, 3.5vw, 2.5rem);
+  line-height: 1.2;
+  font-weight: 600;
+  color: #1a1a1a;
 }
 
 .hero-subtitle {
-  margin-top: 0.9rem;
-  font-size: 0.95rem;
-  max-width: 32rem;
-  color: rgba(245, 226, 197, 0.86);
+  margin-top: 1rem;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: #555;
 }
 
 .hero-actions {
-  margin-top: 1.4rem;
+  margin-top: 1.5rem;
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
@@ -352,103 +335,85 @@ body {
 }
 
 .btn-primary {
-  padding: 0.65rem 1.4rem;
-  border-radius: 999px;
+  padding: 0.65rem 1.5rem;
+  border-radius: 4px;
   border: none;
   cursor: pointer;
   font-size: 0.9rem;
   font-weight: 600;
-  background: linear-gradient(90deg, #ff6b35, #e91e63, #ff7f50);
+  background: #c41e3a;
   color: #fff;
-  box-shadow: 0 0 26px rgba(233, 30, 99, 0.6);
+}
+
+.btn-primary:hover {
+  background: #a31930;
 }
 
 .btn-secondary {
   padding: 0.6rem 1.2rem;
-  border-radius: 999px;
-  border: 1px solid rgba(245, 226, 197, 0.45);
-  background: rgba(5, 3, 8, 0.7);
-  color: rgba(245, 226, 197, 0.86);
-  font-size: 0.8rem;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  background: #fff;
+  color: #444;
+  font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
 }
 
+.btn-secondary:hover {
+  border-color: #c41e3a;
+  color: #c41e3a;
+}
+
 .hero-badges {
-  margin-top: 1.4rem;
+  margin-top: 1.5rem;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.7rem;
-  font-size: 0.7rem;
-  color: rgba(245, 226, 197, 0.86);
+  gap: 0.75rem;
+  font-size: 0.8rem;
+  color: #555;
 }
 
 .hero-badge {
-  border-radius: 999px;
-  border: 1px solid rgba(245, 226, 197, 0.35);
-  background: rgba(26, 11, 30, 0.9);
-  padding: 0.45rem 0.75rem;
+  padding: 0.4rem 0.8rem;
+  background: #fff;
+  border: 1px solid #e8e6e3;
+  border-radius: 4px;
 }
 
-.hero-card,
-.hero-right-card {
-  border-radius: 1.6rem;
-  padding: 1.2rem;
-  border: 1px solid rgba(255, 107, 53, 0.4);
-  background: radial-gradient(circle at top, rgba(233, 30, 99, 0.25), rgba(107, 33, 168, 0.2), rgba(5, 3, 8, 0.95));
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.85), 0 0 40px rgba(233, 30, 99, 0.15);
+.hero-featured {
+  margin-top: 2rem;
+  padding: 1.25rem;
+  background: #fff;
+  border: 1px solid #e8e6e3;
+  border-radius: 8px;
 }
 
-.hero-card-title,
-.hero-right-title {
-  font-size: 0.75rem;
+.hero-featured-title {
+  font-size: 0.8rem;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.18em;
-  color: rgba(255, 247, 237, 0.9);
-  margin-bottom: 0.8rem;
+  letter-spacing: 0.08em;
+  color: #666;
+  margin-bottom: 0.75rem;
 }
 
-.hero-card-grid,
-.hero-right-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.6rem;
-}
-
-.mini-card {
-  border-radius: 1.1rem;
-  padding: 0.6rem 0.55rem;
-  background: rgba(26, 11, 30, 0.92);
-  border: 1px solid rgba(245, 226, 197, 0.35);
+.hero-featured-grid {
   display: flex;
-  flex-direction: column;
-  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
-.mini-card-name {
-  font-size: 0.68rem;
-  font-weight: 600;
-  color: #fef7ed;
+.category-chip {
+  padding: 0.4rem 0.85rem;
+  font-size: 0.8rem;
+  background: #f5f4f2;
+  border-radius: 4px;
+  color: #444;
 }
 
-.mini-card-label {
-  font-size: 0.6rem;
-  color: rgba(245, 226, 197, 0.78);
-}
-
-.mini-card-price {
-  font-size: 0.7rem;
-  font-weight: 600;
-  color: #f4c430;
-}
-
-.mini-card-badge {
-  font-size: 0.6rem;
-  padding: 0.15rem 0.4rem;
-  border-radius: 999px;
-  background: rgba(233, 30, 99, 0.3);
-  color: #ff7f50;
-  align-self: flex-start;
+.category-chip:hover {
+  background: #ebe9e6;
 }
 
 .section {
@@ -466,50 +431,50 @@ body {
 }
 
 .section-eyebrow {
-  font-size: 0.66rem;
+  font-size: 0.7rem;
   text-transform: uppercase;
-  letter-spacing: 0.18em;
-  color: rgba(245, 226, 197, 0.8);
+  letter-spacing: 0.12em;
+  color: #888;
 }
 
 .section-title {
   margin-top: 0.1rem;
-  font-size: 1.1rem;
+  font-size: 1.25rem;
   font-weight: 600;
-  background: linear-gradient(90deg, #ff6b35, #f4c430, #e91e63);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: #1a1a1a;
 }
 
 .section-subtitle {
-  font-size: 0.8rem;
-  max-width: 20rem;
-  color: rgba(245, 226, 197, 0.82);
+  font-size: 0.85rem;
+  max-width: 24rem;
+  color: #666;
 }
 
 .products-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1rem;
+  gap: 1.25rem;
 }
 
 .product-card {
-  border-radius: 1.4rem;
+  border-radius: 8px;
   overflow: hidden;
-  border: 1px solid rgba(255, 107, 53, 0.35);
-  background: radial-gradient(circle at top, rgba(233, 30, 99, 0.15), rgba(5, 3, 8, 0.98));
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.9), 0 0 30px rgba(233, 30, 99, 0.08);
+  border: 1px solid #e8e6e3;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
   display: flex;
   flex-direction: column;
 }
 
+.product-card:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
 .product-media {
-  height: 160px;
+  height: 220px;
   position: relative;
   overflow: hidden;
-  border-bottom: 1px solid rgba(255, 107, 53, 0.3);
-  background: linear-gradient(135deg, rgba(233, 30, 99, 0.2), rgba(107, 33, 168, 0.15));
+  background: #f5f4f2;
 }
 
 .product-image {
@@ -517,164 +482,150 @@ body {
   height: 100%;
   object-fit: cover;
   display: block;
+  filter: saturate(1.4) contrast(1.08);
+  transition: filter 0.2s ease, transform 0.3s ease;
 }
 
-.product-media-inner {
-  position: absolute;
-  inset: 10px;
-  border-radius: 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.32);
+.product-card:hover .product-image {
+  filter: saturate(1.55) contrast(1.12);
+  transform: scale(1.03);
 }
 
 .product-body {
-  padding: 0.8rem 0.9rem 0.9rem;
+  padding: 1rem;
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.35rem;
 }
 
 .product-name {
-  font-size: 0.78rem;
+  font-size: 0.9rem;
   font-weight: 600;
-  color: #fef7ed;
+  color: #1a1a1a;
 }
 
 .product-subtitle {
-  font-size: 0.72rem;
-  color: rgba(245, 226, 197, 0.86);
+  font-size: 0.78rem;
+  color: #666;
 }
 
 .product-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.3rem;
+  gap: 0.35rem;
   margin-top: 0.25rem;
 }
 
 .pill {
-  border-radius: 999px;
-  padding: 0.15rem 0.55rem;
-  font-size: 0.62rem;
-  border: 1px solid rgba(245, 226, 197, 0.4);
-  color: rgba(245, 226, 197, 0.86);
-  background: rgba(26, 11, 30, 0.9);
+  border-radius: 4px;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.68rem;
+  border: 1px solid #e8e6e3;
+  color: #666;
+  background: #faf9f7;
 }
 
 .product-footer {
-  margin-top: 0.4rem;
+  margin-top: 0.5rem;
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
 }
 
 .product-price-main {
-  font-size: 0.9rem;
+  font-size: 1rem;
   font-weight: 600;
-  color: #f4c430;
+  color: #1a1a1a;
 }
 
 .product-price-strike {
-  font-size: 0.7rem;
-  color: rgba(245, 226, 197, 0.65);
+  font-size: 0.8rem;
+  color: #999;
   text-decoration: line-through;
 }
 
-.product-ship {
-  margin-top: 0.1rem;
-  font-size: 0.65rem;
-  color: rgba(245, 226, 197, 0.8);
-}
-
-.product-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.25rem;
-}
-
 .btn-cart {
-  padding: 0.4rem 0.9rem;
-  border-radius: 999px;
+  padding: 0.45rem 0.9rem;
+  border-radius: 4px;
   border: none;
   cursor: pointer;
-  font-size: 0.7rem;
+  font-size: 0.78rem;
   font-weight: 600;
-  background: linear-gradient(90deg, #ff6b35, #e91e63);
+  background: #c41e3a;
   color: #fff;
 }
 
-.btn-link {
-  font-size: 0.66rem;
-  color: rgba(245, 226, 197, 0.8);
+.btn-cart:hover {
+  background: #a31930;
 }
 
 .cart-bar {
   position: sticky;
   bottom: 0;
   margin-top: auto;
-  padding: 0.7rem 1.25rem 0.9rem;
-  border-top: 1px solid rgba(255, 107, 53, 0.35);
-  background: linear-gradient(180deg, rgba(26, 11, 46, 0.98), rgba(5, 3, 8, 1));
+  padding: 1rem 1.5rem;
+  border-top: 1px solid #e8e6e3;
+  background: #fff;
+  box-shadow: 0 -2px 8px rgba(0,0,0,0.04);
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   gap: 0.75rem;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
 }
 
 .cart-summary {
   display: flex;
   flex-direction: column;
-  gap: 0.1rem;
+  gap: 0.15rem;
 }
 
 .cart-count-pill {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  padding: 0.2rem 0.55rem;
-  border-radius: 999px;
-  background: rgba(26, 11, 30, 0.9);
-  border: 1px solid rgba(245, 226, 197, 0.4);
-  font-size: 0.7rem;
-  color: rgba(245, 226, 197, 0.9);
+  padding: 0.25rem 0.6rem;
+  border-radius: 4px;
+  background: #f5f4f2;
+  border: 1px solid #e8e6e3;
+  font-size: 0.8rem;
+  color: #444;
 }
 
 .cart-count-badge {
-  width: 18px;
-  height: 18px;
-  border-radius: 999px;
-  display: flex;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 0.35rem;
+  border-radius: 4px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   font-weight: 600;
-  background: linear-gradient(135deg, #ff6b35, #e91e63);
+  background: #c41e3a;
   color: #fff;
 }
 
 .cart-total {
-  font-size: 0.8rem;
-  color: #f4c430;
+  font-size: 0.9rem;
+  color: #1a1a1a;
   font-weight: 600;
-}
-
-.cart-secondary {
-  font-size: 0.7rem;
-  color: rgba(245, 226, 197, 0.8);
 }
 
 .cart-button {
-  padding: 0.45rem 1.2rem;
-  border-radius: 999px;
+  padding: 0.5rem 1.25rem;
+  border-radius: 4px;
   border: none;
   cursor: pointer;
-  font-size: 0.75rem;
+  font-size: 0.85rem;
   font-weight: 600;
-  background: linear-gradient(90deg, #ff6b35, #e91e63);
+  background: #c41e3a;
   color: #fff;
-  box-shadow: 0 0 22px rgba(233, 30, 99, 0.6);
+}
+
+.cart-button:hover:not(:disabled) {
+  background: #a31930;
 }
 
 .cart-button:disabled {
@@ -683,14 +634,14 @@ body {
 }
 
 .cart-panel {
-  margin-top: 0.9rem;
-  padding: 0.7rem 0.85rem;
-  border-radius: 1rem;
-  border: 1px solid rgba(245, 226, 197, 0.3);
-  background: rgba(26, 11, 30, 0.96);
-  font-size: 0.72rem;
+  margin-top: 0.75rem;
+  padding: 0.85rem 1rem;
+  border-radius: 8px;
+  border: 1px solid #e8e6e3;
+  background: #faf9f7;
+  font-size: 0.8rem;
   display: grid;
-  gap: 0.4rem;
+  gap: 0.5rem;
 }
 
 .cart-item-row {
@@ -700,17 +651,17 @@ body {
 }
 
 .cart-item-meta {
-  max-width: 12rem;
+  max-width: 14rem;
 }
 
 .cart-item-name {
   font-weight: 500;
-  color: #fef7ed;
+  color: #1a1a1a;
 }
 
 .cart-item-detail {
-  font-size: 0.7rem;
-  color: rgba(245, 226, 197, 0.8);
+  font-size: 0.75rem;
+  color: #666;
 }
 
 .cart-item-controls {
@@ -720,45 +671,45 @@ body {
 }
 
 .qty-pill {
-  padding: 0.1rem 0.5rem;
-  border-radius: 999px;
-  border: 1px solid rgba(245, 226, 197, 0.4);
-  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid #e8e6e3;
+  font-size: 0.75rem;
+  background: #fff;
 }
 
 .cart-qty-btn {
-  border-radius: 999px;
-  border: 1px solid rgba(245, 226, 197, 0.4);
-  padding: 0.1rem 0.35rem;
-  font-size: 0.7rem;
-  background: rgba(5, 3, 8, 0.9);
-  color: rgba(245, 226, 197, 0.9);
+  border-radius: 4px;
+  border: 1px solid #e8e6e3;
+  padding: 0.15rem 0.4rem;
+  font-size: 0.75rem;
+  background: #fff;
+  color: #444;
   cursor: pointer;
 }
 
+.cart-qty-btn:hover {
+  border-color: #c41e3a;
+  color: #c41e3a;
+}
+
 .cart-item-price {
-  font-size: 0.72rem;
-  color: #f4c430;
+  font-size: 0.8rem;
+  color: #1a1a1a;
+  font-weight: 600;
 }
 
 .bottom-note {
   padding: 0 1.5rem 1.5rem;
   max-width: 1040px;
   margin: 0 auto;
-  font-size: 0.7rem;
-  color: rgba(245, 226, 197, 0.7);
+  font-size: 0.75rem;
+  color: #888;
 }
 
 @media (max-width: 768px) {
   .hero {
     padding-inline: 1rem;
-  }
-  .hero-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .hero-right-card,
-  .hero-card {
-    margin-top: 1.4rem;
   }
   .section {
     padding-inline: 1rem;
@@ -766,7 +717,7 @@ body {
   .products-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .nav-pill {
+  .nav-links {
     display: none;
   }
 }
@@ -784,25 +735,30 @@ body {
 .gallery-filters {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  gap: 0.5rem;
   margin-bottom: 1rem;
 }
 
 .gallery-filter-btn {
-  padding: 0.3rem 0.8rem;
-  border-radius: 999px;
-  border: 1px solid rgba(245, 226, 197, 0.4);
-  background: rgba(5, 3, 8, 0.8);
-  color: rgba(245, 226, 197, 0.86);
-  font-size: 0.7rem;
+  padding: 0.4rem 0.9rem;
+  border-radius: 4px;
+  border: 1px solid #e8e6e3;
+  background: #fff;
+  color: #444;
+  font-size: 0.8rem;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
+.gallery-filter-btn:hover {
+  border-color: #c41e3a;
+  color: #c41e3a;
+}
+
 .gallery-filter-btn.is-active {
-  background: linear-gradient(90deg, #ff6b35, #e91e63);
+  background: #c41e3a;
   color: #fff;
-  border-color: transparent;
+  border-color: #c41e3a;
 }
 
 .gallery-grid {
@@ -1237,32 +1193,34 @@ body {
 
 const APP_JSX = `import { useState } from 'react';
 
-const SAREES = [
-  { id: 's1', name: 'Royal Silk Banarasi', price: 12999, originalPrice: 15999, category: 'Banarasi', image: 'https://images.unsplash.com/photo-1617127365659-c47fa927d264?auto=format&fit=crop&w=800&q=80', badge: 'Bestseller' },
-  { id: 's2', name: 'Saffron Cotton Print', price: 2499, originalPrice: 2999, category: 'Cotton', image: 'https://images.unsplash.com/photo-1582555172866-f73bb12a2ab3?auto=format&fit=crop&w=800&q=80', badge: 'New' },
-  { id: 's3', name: 'Emerald Chiffon Drape', price: 4499, originalPrice: null, category: 'Chiffon', image: 'https://images.unsplash.com/photo-1582552938357-32b906df40cb?auto=format&fit=crop&w=800&q=80', badge: null },
-  { id: 's4', name: 'Gold Zari Silk', price: 18999, originalPrice: 22999, category: 'Silk', image: 'https://images.unsplash.com/photo-1558171813-4b74a2f7f4e1?auto=format&fit=crop&w=800&q=80', badge: 'Luxe' },
-  { id: 's5', name: 'Coral Georgette', price: 3299, originalPrice: null, category: 'Georgette', image: 'https://images.unsplash.com/photo-1515886652393-9c5f01e1e5f6?auto=format&fit=crop&w=800&q=80', badge: null },
-  { id: 's6', name: 'Fuchsia Silk Blend', price: 6999, originalPrice: 8499, category: 'Silk', image: 'https://images.unsplash.com/photo-1490481461827-8c496aba61b7?auto=format&fit=crop&w=800&q=80', badge: 'Sale' },
-  { id: 's7', name: 'Indigo Cotton Handloom', price: 3999, originalPrice: null, category: 'Cotton', image: 'https://images.unsplash.com/photo-1558618662-d8c38c9631e?auto=format&fit=crop&w=800&q=80', badge: null },
-  { id: 's8', name: 'Pearl Banarasi', price: 15999, originalPrice: 18999, category: 'Banarasi', image: 'https://images.unsplash.com/photo-1519699047748-7e42932eef30?auto=format&fit=crop&w=800&q=80', badge: 'Limited' },
-  { id: 's9', name: 'Mint Chiffon', price: 3799, originalPrice: null, category: 'Chiffon', image: 'https://images.unsplash.com/photo-1515886652393-9c5f01e1e5f6?auto=format&fit=crop&w=800&q=80', badge: null },
+const img = (url) => '/api/image-proxy?url=' + encodeURIComponent(url);
+
+const PRODUCTS = [
+  { id: 'p1', name: 'Anarkali Suit Set', price: 3499, originalPrice: 4299, category: 'Suit Sets', image: img('https://placehold.co/800x600/8B2252/FFE4B5?text=Anarkali'), badge: 'Bestseller' },
+  { id: 'p2', name: 'Floral Print Kurti', price: 1299, originalPrice: 1599, category: 'Kurtas', image: img('https://placehold.co/800x600/2E8B57/F5F5DC?text=Kurti'), badge: 'New' },
+  { id: 'p3', name: 'Casual Cotton Dress', price: 1999, originalPrice: null, category: 'Dresses', image: img('https://placehold.co/800x600/CD853F/FFF8DC?text=Dress'), badge: null },
+  { id: 'p4', name: 'Silk Banarasi Saree', price: 8999, originalPrice: 10999, category: 'Sarees', image: img('https://placehold.co/800x600/8B0000/FFD700?text=Saree'), badge: 'Festive' },
+  { id: 'p5', name: 'Straight Cut Suit Set', price: 2799, originalPrice: null, category: 'Suit Sets', image: img('https://placehold.co/800x600/4B0082/FFE4E1?text=Suit+Set'), badge: null },
+  { id: 'p6', name: 'Embroidered Kurta', price: 2499, originalPrice: 2999, category: 'Kurtas', image: img('https://placehold.co/800x600/C41E3A/FFFACD?text=Kurta'), badge: 'Sale' },
+  { id: 'p7', name: 'Festive Lehenga Set', price: 5999, originalPrice: null, category: 'Suit Sets', image: img('https://placehold.co/800x600/800080/FFE4B5?text=Lehenga'), badge: null },
+  { id: 'p8', name: 'Chiffon Printed Saree', price: 3299, originalPrice: 3999, category: 'Sarees', image: img('https://placehold.co/800x600/2F4F4F/F0E68C?text=Chiffon'), badge: 'Limited' },
+  { id: 'p9', name: 'Workwear Dress', price: 1699, originalPrice: null, category: 'Dresses', image: img('https://placehold.co/800x600/4682B4/FFFFFF?text=Workwear'), badge: null },
 ];
 
-const CATEGORIES = ['All', 'Silk', 'Cotton', 'Banarasi', 'Chiffon', 'Georgette'];
+const CATEGORIES = ['All', 'Suit Sets', 'Kurtas', 'Dresses', 'Sarees'];
 
 function App() {
   const [activeFilter, setActiveFilter] = useState('All');
   const [cart, setCart] = useState([]);
 
-  const filteredSarees = activeFilter === 'All' ? SAREES : SAREES.filter((s) => s.category === activeFilter);
+  const filteredProducts = activeFilter === 'All' ? PRODUCTS : PRODUCTS.filter((p) => p.category === activeFilter);
 
-  const addToCart = (saree) => {
-    const existing = cart.find((c) => c.id === saree.id);
+  const addToCart = (product) => {
+    const existing = cart.find((c) => c.id === product.id);
     if (existing) {
-      setCart(cart.map((c) => c.id === saree.id ? { ...c, qty: c.qty + 1 } : c));
+      setCart(cart.map((c) => c.id === product.id ? { ...c, qty: c.qty + 1 } : c));
     } else {
-      setCart([...cart, { ...saree, qty: 1 }]);
+      setCart([...cart, { ...product, qty: 1 }]);
     }
   };
 
@@ -1283,61 +1241,62 @@ function App() {
     <div className="app">
       <header className="nav">
         <div className="brand">
-          <div className="brand-mark">O</div>
+          <div className="brand-mark">ORAA</div>
           <div className="brand-text">
-            <div className="brand-name">ORAA</div>
-            <div className="brand-tagline">For Sarees</div>
+            <div className="brand-name">Ethnic Wear</div>
+            <div className="brand-tagline">For Women & Girls</div>
           </div>
         </div>
-        <div className="nav-pill">E-commerce • Saree store</div>
+        <nav className="nav-links">
+          <a href="#products">Suit Sets</a>
+          <a href="#products">Kurtas</a>
+          <a href="#products">Dresses</a>
+          <a href="#products">Sarees</a>
+        </nav>
       </header>
 
       <main>
         <section className="hero">
-          <div className="hero-grid">
-            <div>
-              <div className="hero-eyebrow">
-                <span className="hero-dot" />
-                Premium handpicked sarees
-              </div>
-              <h1 className="hero-title">
-                Wrap yourself in
-                <span className="highlight"> timeless elegance.</span>
-              </h1>
-              <p className="hero-subtitle">
-                Silk, cotton, Banarasi and more — curated for every occasion. Free shipping on orders above ₹2,999.
-              </p>
-              <div className="hero-actions">
-                <button className="btn-primary" onClick={() => scrollTo('products')}>Shop collection</button>
-                <button className="btn-secondary" onClick={() => scrollTo('cart-bar')}>View cart</button>
-              </div>
-              <div className="hero-badges">
-                <div className="hero-badge">100% authentic</div>
-                <div className="hero-badge">Easy returns</div>
-                <div className="hero-badge">Handcrafted</div>
-              </div>
-            </div>
-            <aside className="hero-card">
-              <div className="hero-card-title">Featured pick</div>
-              <div className="hero-card-grid">
-                {SAREES.slice(0, 3).map((s) => (
-                  <div key={s.id} className="mini-card">
-                    <div><div className="mini-card-name">{s.name}</div><div className="mini-card-label">{s.category}</div></div>
-                    <div><div className="mini-card-price">₹{s.price.toLocaleString('en-IN')}</div><div className="mini-card-badge">{s.badge || '—'}</div></div>
-                  </div>
-                ))}
-              </div>
-            </aside>
+          <div className="hero-banner">
+            <img src={img('https://placehold.co/1200x400/8B2252/FFE4B5?text=ORAA+Ethnic+Wear')} alt="ORAA Ethnic Wear" className="hero-banner-img" referrerPolicy="no-referrer" loading="eager" />
           </div>
+          <div className="hero-content">
+            <h1 className="hero-title">
+              Welcome to ORAA – Where Every Day is a Celebration of Style
+            </h1>
+            <p className="hero-subtitle">
+              Step into the world of ORAA, where fashion meets tradition. Discover vibrant suit sets, kurtas, dresses, and sarees that redefine contemporary Indian fashion for every occasion.
+            </p>
+            <div className="hero-actions">
+              <button className="btn-primary" onClick={() => scrollTo('products')}>Shop Collection</button>
+              <button className="btn-secondary" onClick={() => scrollTo('cart-bar')}>View Cart</button>
+            </div>
+            <div className="hero-badges">
+              <div className="hero-badge">Free Shipping</div>
+              <div className="hero-badge">Secure Payments</div>
+              <div className="hero-badge">Easy Return</div>
+            </div>
+          </div>
+          <aside className="hero-featured">
+            <div className="hero-featured-title">Top Categories</div>
+            <div className="hero-featured-grid">
+              <div className="category-chip">Anarkali Suit Sets</div>
+              <div className="category-chip">Kurtas</div>
+              <div className="category-chip">Straight Suit Sets</div>
+              <div className="category-chip">Dresses</div>
+              <div className="category-chip">Sarees</div>
+              <div className="category-chip">Palazzos</div>
+            </div>
+          </aside>
         </section>
 
         <section id="products" className="section">
           <div className="section-header">
             <div>
-              <div className="section-eyebrow">collection</div>
-              <h2 className="section-title">Shop by fabric</h2>
+              <div className="section-eyebrow">Collection</div>
+              <h2 className="section-title">Shop by Category</h2>
             </div>
-            <p className="section-subtitle">Filter by category and add to cart.</p>
+            <p className="section-subtitle">Indian wear that blends tradition with contemporary style.</p>
           </div>
           <div className="gallery-filters">
             {CATEGORIES.map((cat) => (
@@ -1345,22 +1304,22 @@ function App() {
             ))}
           </div>
           <div className="products-grid">
-            {filteredSarees.map((s) => (
-              <article key={s.id} className="product-card">
-                <div className="product-media"><img src={s.image} alt={s.name} className="product-image" /></div>
+            {filteredProducts.map((p) => (
+              <article key={p.id} className="product-card">
+                <div className="product-media"><img src={p.image} alt={p.name} className="product-image" referrerPolicy="no-referrer" loading="eager" /></div>
                 <div className="product-body">
-                  <div className="product-name">{s.name}</div>
-                  <div className="product-subtitle">{s.category} • Premium quality</div>
+                  <div className="product-name">{p.name}</div>
+                  <div className="product-subtitle">{p.category}</div>
                   <div className="product-meta">
-                    {s.badge && <span className="pill">{s.badge}</span>}
+                    {p.badge && <span className="pill">{p.badge}</span>}
                     <span className="pill">Free shipping</span>
                   </div>
                   <div className="product-footer">
                     <div>
-                      <span className="product-price-main">₹{s.price.toLocaleString('en-IN')}</span>
-                      {s.originalPrice && <span className="product-price-strike">₹{s.originalPrice.toLocaleString('en-IN')}</span>}
+                      <span className="product-price-main">₹{p.price.toLocaleString('en-IN')}</span>
+                      {p.originalPrice && <span className="product-price-strike">₹{p.originalPrice.toLocaleString('en-IN')}</span>}
                     </div>
-                    <button className="btn-cart" onClick={() => addToCart(s)}>Add to cart</button>
+                    <button className="btn-cart" onClick={() => addToCart(p)}>Add to cart</button>
                   </div>
                 </div>
               </article>
@@ -1393,7 +1352,7 @@ function App() {
       </div>
 
       <div className="bottom-note">
-        ORAA sample — vibrant saree e-commerce for Sarees. Clone in App Studio and add your own products.
+        ORAA sample — vibrant ethnic wear e-commerce for women. Clone in App Studio and add your own products.
       </div>
     </div>
   );

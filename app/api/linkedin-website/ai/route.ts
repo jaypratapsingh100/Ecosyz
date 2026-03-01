@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAIClient, hasAIClient } from '@/lib/ai/provider';
 import { extractAgentResponse, type AgentFile } from '@/lib/app-builder/agentSchema';
+import { fetchLinkedInProfileImage } from '@/lib/linkedin/fetchProfileImage';
 
 async function extractTextFromFile(file: Blob, fileName?: string): Promise<string> {
   const type = (file as any).type || '';
@@ -65,6 +66,17 @@ export async function POST(req: NextRequest) {
     const rawText = await extractTextFromFile(file as Blob, (file as any).name);
     const snippet = rawText ? rawText.slice(0, 8000) : '';
 
+    let profileImageUrl: string | null = null;
+    const socials = questionnaire.socials as { linkedin?: string } | undefined;
+    const linkedinUrl = socials?.linkedin?.trim();
+    if (linkedinUrl) {
+      profileImageUrl = await fetchLinkedInProfileImage(linkedinUrl);
+    }
+
+    const profileImageInstruction = profileImageUrl
+      ? `Use this EXACT profile image URL for the hero avatar: ${profileImageUrl}. Display it prominently (e.g. 200x200 or 250x250) in the hero section.`
+      : '';
+
     const { client, model, provider } = createAIClient();
 
     const systemPrompt = [
@@ -81,6 +93,7 @@ export async function POST(req: NextRequest) {
       'CONTENT REQUIREMENTS:',
       '- Use the questionnaire and resume/LinkedIn text to fill in name, headline, summary, experience, projects, and contact details.',
       '- If information is missing, use tasteful placeholders but keep them obviously editable.',
+      profileImageInstruction,
       '- Experience should be a short vertical timeline with roles and descriptions.',
       '- Projects should be cards with title, short description, and tech stack tags.',
       '',

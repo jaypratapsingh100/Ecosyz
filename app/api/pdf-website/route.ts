@@ -4,6 +4,7 @@ import { extractAgentResponse, type AgentFile } from '@/lib/app-builder/agentSch
 import { parsePdfSections } from '@/lib/pdf-website/parseSections';
 import { prisma } from '@/lib/db';
 import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
+import { fetchLinkedInProfileImage } from '@/lib/linkedin/fetchProfileImage';
 
 async function extractTextFromFile(file: Blob, fileName?: string): Promise<string> {
   const type = (file as { type?: string }).type || '';
@@ -84,12 +85,23 @@ export async function POST(req: NextRequest) {
     const colorPalette = (questionnaire.colorPalette as string) || 'emerald-cyan';
     const customColors = (questionnaire.customColors as string) || '';
 
+    let profileImageUrl: string | null = null;
+    const linkedinUrl = questionnaire.linkedinUrl as string | undefined;
+    if (linkedinUrl?.trim()) {
+      profileImageUrl = await fetchLinkedInProfileImage(linkedinUrl.trim());
+    }
+
+    const profileImageInstruction = profileImageUrl
+      ? `- Hero: Use this EXACT profile/avatar image URL: ${profileImageUrl}. Use it for the main hero profile image (e.g. 200x200 or 250x250). Add dark overlay (rgba(0,0,0,0.5)) for text readability.`
+      : '';
+
     const portfolioStructure = isPortfolio
       ? [
           '',
           'PLACEHOLDER IMAGES (MANDATORY — use LOTS of BIG images throughout):',
+          profileImageInstruction,
           '- Hero: LARGE full-screen background image (min-height: 100vh). Use background-image with https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=1920 or https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=1920 or https://picsum.photos/1920/1080. Add dark overlay (rgba(0,0,0,0.5)) for text readability. background-size: cover.',
-          '- Hero: Also add a LARGE profile/avatar image (e.g. 200x200 or 250x250) — https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400.',
+          profileImageUrl ? '' : '- Hero: Also add a LARGE profile/avatar image (e.g. 200x200 or 250x250) — https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400.',
           '- About section: Include a BIG image (e.g. 600x400 or full-width) — https://picsum.photos/800/500?random=2 or Unsplash workspace/team photo.',
           '- Skills section: Use a wide background image or a large decorative image — https://picsum.photos/1200/400?random=3.',
           '- Experience: Each job card should have a LARGE placeholder image (e.g. 300x200 or 400x250) — https://picsum.photos/400/250?random=4, ?random=5, etc.',

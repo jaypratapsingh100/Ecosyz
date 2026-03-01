@@ -8,12 +8,10 @@ interface WelcomeScreenProps {
   onCreateEcommerceSample?: () => void;
   onCreateNew?: () => void;
   onCreateLinkedInPortfolio?: () => void;
-  onCreateInstagramStore?: () => void;
   isCreatingReactSample?: boolean;
   isCreatingEcommerceSample?: boolean;
   isCreatingNew?: boolean;
   isCreatingLinkedInPortfolio?: boolean;
-  isCreatingInstagramStore?: boolean;
   isAuthenticated?: boolean;
 }
 
@@ -22,12 +20,10 @@ export default function WelcomeScreen({
   onCreateEcommerceSample,
   onCreateNew,
   onCreateLinkedInPortfolio,
-  onCreateInstagramStore,
   isCreatingReactSample = false,
   isCreatingEcommerceSample = false,
   isCreatingNew = false,
   isCreatingLinkedInPortfolio = false,
-  isCreatingInstagramStore = false,
   isAuthenticated = true,
 }: WelcomeScreenProps) {
   return (
@@ -79,7 +75,7 @@ export default function WelcomeScreen({
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M14.23 12.004a2.236 2.236 0 0 1-2.235 2.236 2.236 2.236 0 0 1-2.236-2.236 2.236 2.236 0 0 1 2.236-2.235 2.236 2.236 0 0 1 2.235 2.235zm2.648-10.69c-1.346 0-3.107.96-4.888 2.622-1.78-1.653-3.542-2.602-4.887-2.602-.41 0-.783.093-1.106.278-1.375.793-1.683 3.264-.973 6.365C1.98 8.917 0 10.42 0 12.004c0 1.59 1.99 3.097 5.043 4.03-.704 3.113-.39 5.588.988 6.38.32.187.69.275 1.102.275 1.345 0 3.107-.96 4.888-2.624 1.78 1.654 3.542 2.603 4.887 2.603.41 0 .783-.09 1.106-.275 1.374-.792 1.683-3.263.973-6.365C22.02 15.096 24 13.59 24 12.004c0-1.59-1.99-3.097-5.043-4.032.704-3.11.39-5.587-.988-6.38a2.33 2.33 0 0 0-1.102-.274zm-9.302 10.717c-.525.303-.965.61-1.317.918-.186-.157-.358-.324-.514-.498-.71-.78-1.157-1.762-1.293-2.81.014-.12.022-.242.022-.365 0-.656.1-1.283.285-1.857.386.76.994 1.465 1.793 2.047.442.323.912.586 1.402.782zm6.1 1.274c.354-.308.792-.615 1.317-.918-.49-.196-.96-.459-1.402-.782-.799-.582-1.407-1.287-1.793-2.047-.185.574-.285 1.2-.285 1.857 0 .123.008.245.022.365-.136 1.048-.583 2.03-1.293 2.81-.156.174-.328.34-.514.498.352-.307.792-.614 1.317-.917.49.196.96.459 1.402.782.799.582 1.407 1.287 1.793 2.047.185-.574.285-1.2.285-1.857 0-.123-.008-.245-.022-.365.136-1.048.583-2.03 1.293-2.81.156-.174.328-.34.514-.498z" />
               </svg>
-              {isCreatingReactSample ? 'Creating...' : 'Saree Store'}
+              {isCreatingReactSample ? 'Creating...' : 'ORAA Store'}
             </button>
           )}
           {onCreateEcommerceSample && (
@@ -109,7 +105,7 @@ export default function WelcomeScreen({
             </button>
           )}
         </div>
-        {(onCreateLinkedInPortfolio || onCreateInstagramStore || true) && (
+        {(onCreateLinkedInPortfolio || true) && (
           <div className="mt-6">
             <p className="text-gray-400 text-xs uppercase tracking-wide mb-3">
               Or start from your profiles / PDF
@@ -139,30 +135,21 @@ export default function WelcomeScreen({
                   {isCreatingLinkedInPortfolio ? 'Creating portfolio…' : 'LinkedIn → Portfolio'}
                 </button>
               )}
-              {onCreateInstagramStore && (
-                <button
-                  onClick={onCreateInstagramStore}
-                  disabled={
-                    isCreatingInstagramStore ||
-                    isCreatingReactSample ||
-                    isCreatingEcommerceSample ||
-                    isCreatingNew ||
-                    !isAuthenticated
-                  }
-                  className="px-6 py-2.5 rounded-lg border border-pink-400/40 bg-pink-500/10 hover:bg-pink-500/20 text-pink-100 text-sm font-medium flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  title={!isAuthenticated ? 'Please sign in to create an e‑store from Instagram' : undefined}
+              <Link
+                href="/instagram-store"
+                className="px-6 py-2.5 rounded-lg border border-pink-400/40 bg-pink-500/10 hover:bg-pink-500/20 text-pink-100 text-sm font-medium flex items-center justify-center gap-2 transition-all"
+                title="Paste Instagram URL, get a deployable e‑store template"
+              >
+                <svg
+                  className="w-4 h-4"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  aria-hidden="true"
                 >
-                  <svg
-                    className="w-4 h-4"
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                    aria-hidden="true"
-                  >
-                    <path d="M7.5 2h9A5.5 5.5 0 0 1 22 7.5v9A5.5 5.5 0 0 1 16.5 22h-9A5.5 5.5 0 0 1 2 16.5v-9A5.5 5.5 0 0 1 7.5 2zm0 2A3.5 3.5 0 0 0 4 7.5v9A3.5 3.5 0 0 0 7.5 20h9a3.5 3.5 0 0 0 3.5-3.5v-9A3.5 3.5 0 0 0 16.5 4h-9zm4.5 2.5a5 5 0 1 1 0 10 5 5 0 0 1 0-10zm0 2A3 3 0 1 0 12 15a3 3 0 0 0 0-6zm5.25-2.75a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5z" />
-                  </svg>
-                  {isCreatingInstagramStore ? 'Creating store…' : 'Instagram → E‑Store'}
-                </button>
-              )}
+                  <path d="M7.5 2h9A5.5 5.5 0 0 1 22 7.5v9A5.5 5.5 0 0 1 16.5 22h-9A5.5 5.5 0 0 1 2 16.5v-9A5.5 5.5 0 0 1 7.5 2zm0 2A3.5 3.5 0 0 0 4 7.5v9A3.5 3.5 0 0 0 7.5 20h9a3.5 3.5 0 0 0 3.5-3.5v-9A3.5 3.5 0 0 0 16.5 4h-9zm4.5 2.5a5 5 0 1 1 0 10 5 5 0 0 1 0-10zm0 2A3 3 0 1 0 12 15a3 3 0 0 0 0-6zm5.25-2.75a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5z" />
+                </svg>
+                Instagram → E‑Store
+              </Link>
               <Link
                 href="/pdf-website"
                 className="px-6 py-2.5 rounded-lg border border-violet-400/40 bg-violet-500/10 hover:bg-violet-500/20 text-violet-100 text-sm font-medium flex items-center justify-center gap-2 transition-all"
@@ -176,6 +163,17 @@ export default function WelcomeScreen({
                   <path d="M10 9H8" />
                 </svg>
                 PDF → Animated Website
+              </Link>
+              <Link
+                href="/pdf-website-3d"
+                className="px-6 py-2.5 rounded-lg border border-fuchsia-400/40 bg-fuchsia-500/10 hover:bg-fuchsia-500/20 text-fuchsia-100 text-sm font-medium flex items-center justify-center gap-2 transition-all"
+                title="Upload a PDF, get an immersive 3D portfolio website"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                  <path d="M2 17l10 5 10-5" />
+                </svg>
+                PDF → 3D Portfolio
               </Link>
             </div>
           </div>

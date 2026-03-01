@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
 import { UpdateProfile } from '../../../src/lib/validation';
 import AvatarUploader from './AvatarUploader';
+import PortfolioImageUploader from './PortfolioImageUploader';
 
 interface ProfileFormData {
   displayName: string;
@@ -50,6 +51,7 @@ interface ProfileFormProps {
     displayName: string;
     bio?: string;
     avatarUrl?: string;
+    portfolioImageUrl?: string | null;
     // Extended basics
     location?: string;
     affiliation?: string;
@@ -89,6 +91,7 @@ interface ProfileFormProps {
 export default function ProfileForm({ initialData }: ProfileFormProps) {
   const [loading, setLoading] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(initialData.avatarUrl);
+  const [portfolioImageUrl, setPortfolioImageUrl] = useState(initialData.portfolioImageUrl ?? null);
   const [expertiseText, setExpertiseText] = useState(
     (initialData.expertiseTags || []).join(', ')
   );
@@ -190,6 +193,10 @@ export default function ProfileForm({ initialData }: ProfileFormProps) {
     setAvatarUrl(newAvatarUrl);
   };
 
+  const handlePortfolioImageUpdate = (newUrl: string | null) => {
+    setPortfolioImageUrl(newUrl);
+  };
+
   return (
     <div className="space-y-8">
       {/* Avatar Section */}
@@ -200,6 +207,17 @@ export default function ProfileForm({ initialData }: ProfileFormProps) {
         <AvatarUploader
           currentAvatarUrl={avatarUrl}
           onAvatarUpdate={handleAvatarUpdate}
+        />
+      </div>
+
+      {/* Portfolio Image Section */}
+      <div>
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+          Portfolio Cover Image
+        </h2>
+        <PortfolioImageUploader
+          currentImageUrl={portfolioImageUrl}
+          onImageUpdate={handlePortfolioImageUpdate}
         />
       </div>
 

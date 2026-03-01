@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -24,6 +24,7 @@ import { SAMPLE_ECOMMERCE_PROJECT, SAMPLE_ECOMMERCE_FILES } from './sampleEcomme
 
 function AppBuilderPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { isAuthenticated, isLoading } = useAuthCheck();
   
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
@@ -43,7 +44,6 @@ function AppBuilderPageContent() {
   const [isCreatingEcommerceSample, setIsCreatingEcommerceSample] = useState(false);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [isCreatingLinkedInPortfolio, setIsCreatingLinkedInPortfolio] = useState(false);
-  const [isCreatingInstagramStore, setIsCreatingInstagramStore] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [isLoadingProject, setIsLoadingProject] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -122,6 +122,18 @@ function AppBuilderPageContent() {
     }
   }, []);
 
+  // Select project from URL (?project=id) when projects load
+  const projectFromUrl = searchParams.get('project');
+  useEffect(() => {
+    if (!projectFromUrl || projects.length === 0) return;
+    const exists = projects.some((p) => p.id === projectFromUrl);
+    if (exists) {
+      setSelectedProjectId(projectFromUrl);
+      fetchProjectFiles(projectFromUrl);
+      router.replace('/studio', { scroll: false });
+    }
+  }, [projectFromUrl, projects, fetchProjectFiles, router]);
+
   const saveFileContent = useCallback(
     async (path: string, name: string, content: string, language?: string, isMain?: boolean) => {
       if (!selectedProjectId) return;
@@ -181,75 +193,6 @@ function AppBuilderPageContent() {
       linkedInFileInputRef.current.click();
     }
   }, [isAuthenticated, router]);
-
-  const handleInstagramStoreCreate = useCallback(async () => {
-    if (!isAuthenticated) {
-      toast.error('Please sign in to create an e‑store from Instagram.', {
-        description: 'Sign in to link your Instagram and generate an e‑store project.',
-        duration: 4000,
-      });
-      router.push('/auth');
-      return;
-    }
-
-    const url = typeof window !== 'undefined'
-      ? window.prompt('Paste your Instagram profile or product link:')
-      : null;
-
-    if (!url) return;
-
-    setIsCreatingInstagramStore(true);
-    try {
-      const projectRes = await fetch('/api/app-projects', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: 'Instagram E‑Store',
-          description: 'Starter e‑store generated from an Instagram link. Use the Chat tab to pull in products and customize pages.',
-          type: 'web',
-          framework: 'react',
-          appType: 'estore',
-          previewVersion: 'v2',
-          questionnaireData: {
-            source: 'instagram-link',
-            instagramUrl: url,
-          },
-        }),
-        credentials: 'include',
-      });
-
-      if (!projectRes.ok) {
-        const errBody = await projectRes.json().catch(() => ({}));
-        const errMsg =
-          (errBody as { error?: string; details?: string })?.error ||
-          (errBody as { message?: string })?.message ||
-          projectRes.statusText ||
-          'Failed to create Instagram e‑store';
-        const details = (errBody as { details?: string })?.details;
-        throw new Error(details ? `${errMsg}: ${details}` : errMsg);
-      }
-
-      const project = await projectRes.json();
-      const projectId = project.id as string;
-
-      setSelectedProjectId(projectId);
-      await fetchProjects();
-
-      toast.success('Instagram E‑Store Created', {
-        description: 'We created a new e‑store project from your Instagram link.',
-        duration: 4000,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      console.error('Error creating Instagram e‑store project:', error);
-      toast.error('Failed to Create E‑Store', {
-        description: message,
-        duration: 5000,
-      });
-    } finally {
-      setIsCreatingInstagramStore(false);
-    }
-  }, [isAuthenticated, router, fetchProjects]);
 
   const handleLinkedInFileChange = useCallback(
     async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -998,8 +941,6 @@ function AppBuilderPageContent() {
               isAuthenticated={isAuthenticated === true}
               onCreateLinkedInPortfolio={handleLinkedInPortfolioClick}
               isCreatingLinkedInPortfolio={isCreatingLinkedInPortfolio}
-              onCreateInstagramStore={handleInstagramStoreCreate}
-              isCreatingInstagramStore={isCreatingInstagramStore}
             />
             <input
               ref={linkedInFileInputRef}
