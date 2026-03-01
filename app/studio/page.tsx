@@ -48,6 +48,7 @@ function AppBuilderPageContent() {
   const [isLoadingProject, setIsLoadingProject] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [createModalInitialName, setCreateModalInitialName] = useState('');
   const [projectToDelete, setProjectToDelete] = useState<{ ids: string[]; title: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [projectFiles, setProjectFiles] = useState<{ id: string; path: string; name: string; content: string; language?: string; isMain?: boolean }[]>([]);
@@ -133,6 +134,17 @@ function AppBuilderPageContent() {
       router.replace('/studio', { scroll: false });
     }
   }, [projectFromUrl, projects, fetchProjectFiles, router]);
+
+  // Open Create New Project modal when coming from Hero (?description=... or ?new=1)
+  const descriptionFromUrl = searchParams.get('description');
+  const newFromUrl = searchParams.get('new');
+  useEffect(() => {
+    if (descriptionFromUrl || newFromUrl === '1') {
+      setCreateModalInitialName(descriptionFromUrl ?? '');
+      setCreateModalOpen(true);
+      router.replace('/studio', { scroll: false });
+    }
+  }, [descriptionFromUrl, newFromUrl, router]);
 
   const saveFileContent = useCallback(
     async (path: string, name: string, content: string, language?: string, isMain?: boolean) => {
@@ -306,7 +318,7 @@ function AppBuilderPageContent() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             title: projectName || 'New Project',
-            description: 'Describe your app in the Chat tab to generate it',
+            description: createModalInitialName || 'Describe your app in the Chat tab to generate it',
             type: 'web',
             framework: 'react',
             appType: 'react',
@@ -322,6 +334,7 @@ function AppBuilderPageContent() {
         }
         const project = await projectRes.json();
         setCreateModalOpen(false);
+        setCreateModalInitialName('');
         setSelectedProjectId(project.id);
         setLeftSidebarOpen(true);
         setLeftSidebarTab('chat');
@@ -334,7 +347,7 @@ function AppBuilderPageContent() {
         setIsCreatingNew(false);
       }
     },
-    [fetchProjects],
+    [fetchProjects, createModalInitialName],
   );
 
   const handleDeleteProject = useCallback(
@@ -985,10 +998,12 @@ function AppBuilderPageContent() {
         onClose={() => {
           if (!isCreatingNew) {
             setCreateModalOpen(false);
+            setCreateModalInitialName('');
           }
         }}
         onCreate={confirmCreateProject}
         isLoading={isCreatingNew}
+        initialProjectName={createModalInitialName}
       />
 
       {/* Feedback Modal */}

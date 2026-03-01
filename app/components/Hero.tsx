@@ -188,8 +188,7 @@ export default function Hero() {
   }, [buildQuery]);
 
 
-  const handleBuild = (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitBuild = () => {
     if (buildQuery.trim()) {
       // Process search query first, then redirect
       if (selectedAction === 'discover') {
@@ -213,10 +212,15 @@ export default function Hero() {
       } else if (selectedAction === 'discover') {
         router.push(`/openresources`);
       } else if (selectedAction === 'build') {
-        // Redirect to studio to start chat wizard
-        router.push(`/studio`);
+        // Redirect to studio and open Create New Project modal
+        router.push(`/studio?new=1`);
       }
     }
+  };
+
+  const handleBuild = (e: React.FormEvent) => {
+    e.preventDefault();
+    submitBuild();
   };
 
   return (
@@ -346,6 +350,23 @@ export default function Hero() {
                         baseTextRef.current = newValue;
                       }
                     }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Tab') {
+                        e.preventDefault();
+                        const target = e.target as HTMLTextAreaElement;
+                        const start = target.selectionStart;
+                        const end = target.selectionEnd;
+                        const newValue = buildQuery.slice(0, start) + '\n' + buildQuery.slice(end);
+                        setBuildQuery(newValue);
+                        if (!isListening) baseTextRef.current = newValue;
+                        requestAnimationFrame(() => {
+                          target.selectionStart = target.selectionEnd = start + 1;
+                        });
+                      } else if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        submitBuild();
+                      }
+                    }}
                     className="flex-1 bg-transparent text-white text-base sm:text-lg md:text-xl focus:outline-none resize-none overflow-hidden rounded-lg placeholder-gray-400"
                     style={{ 
                       minHeight: 'auto', 
@@ -451,8 +472,11 @@ export default function Hero() {
                     )}
                   </div>
 
-                    {/* Right side buttons */}
+                    {/* Right side: hint + buttons */}
                     <div className="flex items-center gap-2 sm:gap-3">
+                      <span className="hidden sm:inline text-xs text-gray-500" aria-hidden>
+                        Tab new line · Enter to go
+                      </span>
                       {/* Microphone Icon */}
                   <button
                     type="button"

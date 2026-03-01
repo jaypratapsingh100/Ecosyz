@@ -7,6 +7,7 @@ interface CreateProjectModalProps {
   onClose: () => void;
   onCreate: (projectName: string) => Promise<void>;
   isLoading?: boolean;
+  initialProjectName?: string;
 }
 
 export default function CreateProjectModal({
@@ -14,20 +15,21 @@ export default function CreateProjectModal({
   onClose,
   onCreate,
   isLoading = false,
+  initialProjectName = '',
 }: CreateProjectModalProps) {
   const [projectName, setProjectName] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Reset form when modal opens/closes
+  // Reset form when modal opens/closes; use initialProjectName when provided
   useEffect(() => {
     if (isOpen) {
-      setProjectName('');
+      setProjectName(initialProjectName);
       // Focus input after a short delay to ensure modal is rendered
       setTimeout(() => {
         inputRef.current?.focus();
       }, 100);
     }
-  }, [isOpen]);
+  }, [isOpen, initialProjectName]);
 
   // Handle Escape key to close
   useEffect(() => {
