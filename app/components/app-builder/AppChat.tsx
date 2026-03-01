@@ -113,6 +113,7 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
         const res = await fetch(`/api/app-projects/${projectId}/chat`, {
           method: 'GET',
           credentials: 'include',
+          cache: 'no-store',
         });
         
         if (res.ok) {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { QuestionnaireData } from '@/app/types/app-builder';
 
 const TOTAL_STEPS = 8;
@@ -141,8 +141,26 @@ export default function ChatQuestionnaire({
   const toggleFeature = (f: string) =>
     setFeatures((prev) => (prev.includes(f) ? prev.filter((x) => x !== f) : [...prev, f]));
 
+  // Sync initialData into state when it loads (e.g. Hero summary from API)
+  useEffect(() => {
+    if (!initialData) return;
+    if (initialData.projectGoal) setProjectGoal((prev) => prev || (initialData.projectGoal as string) || '');
+    if (initialData.appType) setAppType((prev) => prev || (initialData.appType as string) || '');
+    if (initialData.targetAudience) setTargetAudience((prev) => prev || (initialData.targetAudience as string) || '');
+    if (initialData.primaryGoal) setPrimaryGoal((prev) => prev || (initialData.primaryGoal as string) || '');
+    if (initialData.requiredFeatures?.length || initialData.specialFeatures?.length) {
+      setFeatures((prev) => prev.length ? prev : (initialData.requiredFeatures as string[]) || (initialData.specialFeatures as string[]) || []);
+    }
+    if (initialData.designStyle) setDesignStyle((prev) => prev || (initialData.designStyle as string) || '');
+    if (initialData.colorScheme) setColorScheme((prev) => prev || (initialData.colorScheme as string) || '');
+    if (initialData.brandName) setBrandName((prev) => prev || (initialData.brandName as string) || '');
+    if (initialData.tagline) setTagline((prev) => prev || (initialData.tagline as string) || '');
+    if (initialData.language) setLanguage((initialData.language as 'javascript' | 'typescript') || 'typescript');
+    if (initialData.frameworkPreference) setFramework((initialData.frameworkPreference as string) || 'No preference');
+  }, [initialData]);
+
   const canNext = () => {
-    if (step === 1) return appType !== '';
+    if (step === 2) return appType !== '';
     return true;
   };
 
@@ -214,8 +232,22 @@ export default function ChatQuestionnaire({
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Step 1: App Type */}
+        {/* Step 1: Project Goal / Vision (Hero summary pasted here) */}
         {step === 1 && (
+          <div>
+            <p className="text-xs text-gray-400 mb-2">What problem does your app solve? Describe your project vision. <span className="text-gray-600">(optional)</span></p>
+            <textarea
+              value={projectGoal}
+              onChange={(e) => setProjectGoal(e.target.value)}
+              placeholder="e.g., A SaaS dashboard for small businesses to track inventory and sales..."
+              className="w-full px-3 py-2 rounded-lg text-sm bg-white/5 text-gray-300 border border-white/10 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30 placeholder-gray-600 outline-none transition-all resize-none"
+              rows={3}
+            />
+          </div>
+        )}
+
+        {/* Step 2: App Type */}
+        {step === 2 && (
           <div>
             <p className="text-xs text-gray-400 mb-2">What type of app are you building? <span className="text-red-400">*</span></p>
             <div className="grid grid-cols-2 gap-1.5">
@@ -235,20 +267,6 @@ export default function ChatQuestionnaire({
                 </button>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* Step 2: Project Goal / Vision */}
-        {step === 2 && (
-          <div>
-            <p className="text-xs text-gray-400 mb-2">What problem does your app solve? Describe your project vision. <span className="text-gray-600">(optional)</span></p>
-            <textarea
-              value={projectGoal}
-              onChange={(e) => setProjectGoal(e.target.value)}
-              placeholder="e.g., A SaaS dashboard for small businesses to track inventory and sales..."
-              className="w-full px-3 py-2 rounded-lg text-sm bg-white/5 text-gray-300 border border-white/10 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30 placeholder-gray-600 outline-none transition-all resize-none"
-              rows={3}
-            />
           </div>
         )}
 

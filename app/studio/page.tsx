@@ -25,7 +25,7 @@ import { SAMPLE_ECOMMERCE_PROJECT, SAMPLE_ECOMMERCE_FILES } from './sampleEcomme
 function AppBuilderPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { isAuthenticated, isLoading } = useAuthCheck();
+  const { isAuthenticated, isLoading, checkAuth } = useAuthCheck();
   
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
@@ -318,7 +318,7 @@ function AppBuilderPageContent() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             title: projectName || 'New Project',
-            description: createModalInitialName || 'Describe your app in the Chat tab to generate it',
+            description: 'Describe your app in the Chat tab to generate it',
             type: 'web',
             framework: 'react',
             appType: 'react',
@@ -334,7 +334,26 @@ function AppBuilderPageContent() {
         }
         const project = await projectRes.json();
         setCreateModalOpen(false);
+        const heroSummary = createModalInitialName;
         setCreateModalInitialName('');
+
+        // Put Hero summary into chat questionnaire (projectGoal) before opening chat
+        if (heroSummary?.trim()) {
+          try {
+            const patchRes = await fetch(`/api/app-projects/${project.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({
+                questionnaireData: { projectGoal: heroSummary.trim() },
+              }),
+            });
+            if (!patchRes.ok) console.warn('Failed to save Hero summary to questionnaire');
+          } catch (e) {
+            console.warn('Failed to save Hero summary to questionnaire:', e);
+          }
+        }
+
         setSelectedProjectId(project.id);
         setLeftSidebarOpen(true);
         setLeftSidebarTab('chat');
@@ -648,6 +667,7 @@ function AppBuilderPageContent() {
                       <DeploymentPanel
                         projectId={selectedProjectId}
                         projectName="Untitled Project"
+                        onAuthRequired={checkAuth}
                       />
                     </ErrorBoundary>
                   )}
@@ -1003,7 +1023,7 @@ function AppBuilderPageContent() {
         }}
         onCreate={confirmCreateProject}
         isLoading={isCreatingNew}
-        initialProjectName={createModalInitialName}
+        initialProjectName=""
       />
 
       {/* Feedback Modal */}
