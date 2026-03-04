@@ -108,7 +108,6 @@ export async function getCurrentUser(): Promise<SupabaseUser | null> {
 
     console.log('✅ Session validated successfully', {
       userId: user.id,
-      email: user.email,
     });
     return user;
   } catch (error: any) {

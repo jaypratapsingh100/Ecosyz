@@ -10,7 +10,6 @@ export async function GET() {
     console.log('📥 Session check request received', {
       hasAccessToken: !!accessToken,
       hasRefreshToken: !!refreshToken,
-      accessTokenPreview: accessToken?.substring(0, 20) + '...' || 'none',
     });
     
     const user = await getCurrentUser();
@@ -33,7 +32,6 @@ export async function GET() {
 
     console.log('✅ Session validated, returning user data', {
       userId: user.id,
-      email: user.email,
     });
 
     return NextResponse.json({
@@ -45,11 +43,7 @@ export async function GET() {
       },
     });
   } catch (error: any) {
-    console.error('❌ Session error:', error);
-    console.error('Error details:', {
-      message: error?.message,
-      stack: error?.stack,
-    });
+    console.error('❌ Session error:', error?.message);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

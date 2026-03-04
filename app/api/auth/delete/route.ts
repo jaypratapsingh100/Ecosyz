@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/db';
-import { supabase } from '@/lib/supabase';
+import { clearSessionTokens } from '@/lib/auth/core/tokens';
 
 export async function DELETE() {
   try {
@@ -11,6 +12,17 @@ export async function DELETE() {
       return NextResponse.json(
         { error: 'Not authenticated' },
         { status: 401 }
+      );
+    }
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      console.error('Missing SUPABASE_SERVICE_ROLE_KEY for account deletion');
+      return NextResponse.json(
+        { error: 'Authentication service unavailable' },
+        { status: 503 }
       );
     }
 
@@ -24,23 +36,26 @@ export async function DELETE() {
       // Continue with Supabase deletion even if Prisma deletion fails
     }
 
-    // Delete user from Supabase
-    if (!supabase) {
-      return NextResponse.json(
-        { error: 'Authentication service unavailable' },
-        { status: 503 }
-      );
-    }
+    // Create an admin client with the service role key (required for admin.deleteUser)
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    });
 
-    const { error: supabaseError } = await supabase.auth.admin.deleteUser(user.id);
+    const { error: supabaseError } = await supabaseAdmin.auth.admin.deleteUser(user.id);
 
     if (supabaseError) {
-      console.error('Error deleting user from Supabase:', supabaseError);
+      console.error('Error deleting user from Supabase:', supabaseError.message);
       return NextResponse.json(
         { error: 'Failed to delete user from authentication service' },
         { status: 500 }
       );
     }
+
+    // Clear session cookies after successful deletion
+    await clearSessionTokens();
 
     return NextResponse.json({
       message: 'User deleted successfully'

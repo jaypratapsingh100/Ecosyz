@@ -90,7 +90,17 @@ function ResetPasswordContent() {
   const onSubmit = async (data: ResetPasswordForm) => {
     setLoading(true);
     try {
-      // Update password via API
+      if (!supabase) {
+        throw new Error('Authentication service unavailable');
+      }
+
+      // Get the access token from the client-side recovery session
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('Session expired. Please request a new password reset link.');
+      }
+
+      // Update password via API, sending the access token for server-side validation
       const response = await fetch('/api/auth/update-password', {
         method: 'POST',
         headers: {
@@ -98,6 +108,7 @@ function ResetPasswordContent() {
         },
         body: JSON.stringify({
           password: data.password,
+          accessToken: session.access_token,
         }),
       });
 

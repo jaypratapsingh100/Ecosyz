@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/src/lib/supabase';
-import { cookies } from 'next/headers';
+import { createClient } from '@supabase/supabase-js';
+import { getTokens, clearSessionTokens } from '@/lib/auth/core/tokens';
 
 export async function POST() {
-  if (!supabase) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
     return NextResponse.json(
       { error: 'Authentication service unavailable' },
       { status: 503 }
@@ -11,21 +14,46 @@ export async function POST() {
   }
 
   try {
-    // Sign out from Supabase
-    const { error } = await supabase.auth.signOut();
+    // Get current tokens so we can properly invalidate the session on Supabase's side
+    const { accessToken, refreshToken } = await getTokens();
 
-    if (error) {
-      console.error('Sign out error:', error);
+    if (accessToken && refreshToken) {
+      // Create a per-request client with the user's actual session
+      const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+        auth: {
+          flowType: 'pkce',
+          autoRefreshToken: false,
+          persistSession: false,
+          detectSessionInUrl: false,
+        },
+      });
+
+      // Set the session so signOut() actually invalidates it on Supabase's side
+      await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      });
+
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error('Sign out error:', error.message);
+      }
     }
 
     // Clear session cookies regardless of Supabase response
-    const { clearSessionTokens } = await import('@/lib/auth/core/tokens');
     await clearSessionTokens();
 
     return NextResponse.json({
       message: 'Signed out successfully',
     });
   } catch (error) {
+    // Still clear cookies even if Supabase signout fails
+    try {
+      await clearSessionTokens();
+    } catch {
+      // ignore cleanup errors
+    }
+
     console.error('Sign out error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },

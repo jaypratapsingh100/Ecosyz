@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
+import { rateLimit, getClientKey } from '@/app/lib/utils/rate-limit';
+import { maskEmail } from '@/lib/auth/core/validation';
 
 const ResetPasswordSchema = z.object({
   email: z.string().email(),
@@ -11,6 +13,15 @@ const ResetPasswordSchema = z.object({
  * Uses Supabase's built-in resetPasswordForEmail which sends emails via Resend SMTP
  */
 export async function POST(req: NextRequest) {
+  // Rate limit: 3 requests per minute per IP
+  const clientKey = getClientKey(req);
+  if (!rateLimit(`reset-password:${clientKey}`, 3)) {
+    return NextResponse.json(
+      { error: 'Too many requests. Please try again later.', code: 'RATE_LIMITED' },
+      { status: 429 }
+    );
+  }
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -36,22 +47,18 @@ export async function POST(req: NextRequest) {
     const { email } = parse.data;
 
     // Get the base URL for redirect
-    // Use the request origin if NEXT_PUBLIC_BASE_URL is not set
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 
-                    req.headers.get('origin') || 
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ||
+                    req.headers.get('origin') ||
                     'http://localhost:3000';
     const redirectTo = `${baseUrl}/auth/reset-password`;
 
-    console.log('[ResetPassword] Requesting password reset:', { 
-      email,
+    console.log('[ResetPassword] Requesting password reset:', {
+      email: maskEmail(email),
       redirectTo,
-      baseUrl: process.env.NEXT_PUBLIC_BASE_URL,
-      requestOrigin: req.headers.get('origin'),
-      isDev: process.env.NODE_ENV !== 'production' 
+      isDev: process.env.NODE_ENV !== 'production'
     });
 
     // Create a fresh Supabase client for this request
-    // This ensures proper server-side configuration
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         flowType: 'pkce',
@@ -60,42 +67,24 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Use Supabase's built-in password reset
-    // This will send an email via Resend SMTP (configured in Supabase)
-    console.log('[ResetPassword] Calling Supabase resetPasswordForEmail...');
     const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo,
     });
 
-    console.log('[ResetPassword] Supabase response:', {
-      hasData: !!data,
-      hasError: !!error,
-      errorType: error?.constructor?.name,
-      errorKeys: error ? Object.keys(error) : [],
-    });
-
     if (error) {
-      // Log the error in multiple formats to catch all possible structures
-      console.error('[ResetPassword] Supabase error (stringified):', JSON.stringify(error, null, 2));
-      console.error('[ResetPassword] Supabase error (object):', {
+      console.error('[ResetPassword] Supabase error:', {
         message: error.message,
         status: error.status,
-        name: error.name,
-        email,
-        redirectTo,
-        errorObject: error,
-        errorString: String(error),
+        email: maskEmail(email),
       });
-      
-      // Provide helpful error messages
+
       let errorMessage = 'Failed to send password reset email';
       let statusCode = 400;
-      
-      // Check for specific error types
+
       if (error.status === 429 || error.message?.toLowerCase().includes('rate limit')) {
         errorMessage = 'Too many requests. Please wait a few minutes before trying again.';
         statusCode = 429;
-      } else if (error.message?.toLowerCase().includes('redirect') || 
+      } else if (error.message?.toLowerCase().includes('redirect') ||
                  error.message?.toLowerCase().includes('url') ||
                  error.message?.toLowerCase().includes('whitelist')) {
         errorMessage = 'Invalid redirect URL configuration. Please ensure the redirect URL is whitelisted in Supabase dashboard.';
@@ -104,71 +93,47 @@ export async function POST(req: NextRequest) {
           redirectTo,
           message: 'Ensure this URL is added to Supabase Dashboard → Authentication → URL Configuration → Redirect URLs',
         });
-      } else if (error.message?.toLowerCase().includes('email') || 
+      } else if (error.message?.toLowerCase().includes('email') ||
                  error.message?.toLowerCase().includes('not found') ||
                  error.message?.toLowerCase().includes('user')) {
         // Don't reveal if email exists (security best practice)
-        // But in development, show the actual error
         if (process.env.NODE_ENV === 'development') {
           errorMessage = `Failed to send password reset email: ${error.message}`;
         } else {
           errorMessage = 'If an account exists with this email, a password reset link will be sent.';
         }
       } else {
-        // Generic error - show details in development
         if (process.env.NODE_ENV === 'development') {
           errorMessage = `Failed to send password reset email: ${error.message || 'Unknown error'}`;
         }
-        console.error('[ResetPassword] Full error details:', error);
       }
-      
+
       const errorResponse = {
         error: errorMessage,
-        ...(process.env.NODE_ENV === 'development' && { 
+        ...(process.env.NODE_ENV === 'development' && {
           details: error.message,
           status: error.status,
           name: error.name,
           redirectTo,
         })
       };
-      
-      console.log('[ResetPassword] Returning error response:', errorResponse);
-      
-      return NextResponse.json(
-        errorResponse,
-        { 
-          status: statusCode,
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+
+      return NextResponse.json(errorResponse, { status: statusCode });
     }
 
     console.log('[ResetPassword] Password reset email sent successfully');
 
-    // Success - Supabase will send the email via Resend SMTP
-    const successResponse = {
+    return NextResponse.json({
       message: 'Password reset email sent successfully. Please check your inbox.',
       success: true,
-    };
-    
-    console.log('[ResetPassword] Returning success response:', successResponse);
-    
-    return NextResponse.json(successResponse, {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-      },
     });
   } catch (error: any) {
     console.error('[ResetPassword] Unexpected error:', {
       message: error?.message,
-      stack: error?.stack,
     });
-    
+
     return NextResponse.json(
-      { 
+      {
         error: 'Internal server error',
         ...(process.env.NODE_ENV === 'development' && { details: error?.message })
       },

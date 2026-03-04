@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/src/lib/supabase';
 import { z } from 'zod';
-import { cookies } from 'next/headers';
+import { rateLimit, getClientKey } from '@/app/lib/utils/rate-limit';
+import { maskEmail } from '@/lib/auth/core/validation';
 
 const SignInSchema = z.object({
   email: z.string().email(),
@@ -9,11 +10,20 @@ const SignInSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  // Rate limit: 5 requests per minute per IP
+  const clientKey = getClientKey(req);
+  if (!rateLimit(`signin:${clientKey}`, 5)) {
+    return NextResponse.json(
+      { error: 'Too many requests. Please try again later.', code: 'RATE_LIMITED' },
+      { status: 429 }
+    );
+  }
+
   // Check if Supabase is configured
   if (!supabase) {
-    console.error('Supabase client not initialized. Check NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables.');
+    console.error('Supabase client not initialized');
     return NextResponse.json(
-      { 
+      {
         error: 'Authentication service unavailable',
         message: 'The authentication service is not properly configured. Please contact support.',
         code: 'SERVICE_UNAVAILABLE'
@@ -28,9 +38,8 @@ export async function POST(req: NextRequest) {
     try {
       body = await req.json();
     } catch (parseError) {
-      console.error('Failed to parse request body:', parseError);
       return NextResponse.json(
-        { 
+        {
           error: 'Invalid request format',
           message: 'The request body is not valid JSON.',
           code: 'INVALID_REQUEST'
@@ -42,12 +51,10 @@ export async function POST(req: NextRequest) {
     // Validate input
     const parse = SignInSchema.safeParse(body);
     if (!parse.success) {
-      console.error('Validation error:', parse.error);
       return NextResponse.json(
-        { 
+        {
           error: 'Invalid input',
           message: parse.error.issues.map(e => e.message).join(', '),
-          details: parse.error.message,
           code: 'VALIDATION_ERROR'
         },
         { status: 400 }
@@ -55,6 +62,18 @@ export async function POST(req: NextRequest) {
     }
 
     const { email, password } = parse.data;
+
+    // Per-account rate limiting: 5 attempts per minute per email
+    const emailKey = `signin-email:${email.toLowerCase()}`;
+    if (!rateLimit(emailKey, 5)) {
+      return NextResponse.json(
+        {
+          error: 'Account temporarily locked due to too many failed attempts. Please try again in a minute.',
+          code: 'ACCOUNT_LOCKED',
+        },
+        { status: 429 }
+      );
+    }
 
     // Sign in with Supabase
     let authResult;
@@ -95,7 +114,7 @@ export async function POST(req: NextRequest) {
       console.error('Sign in error:', {
         message: error.message,
         status: error.status,
-        email: email,
+        email: maskEmail(email),
       });
       
       return NextResponse.json(

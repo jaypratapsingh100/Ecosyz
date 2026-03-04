@@ -5,6 +5,7 @@
 
 import { User as SupabaseUser } from '@supabase/supabase-js';
 import { prisma } from '@/src/lib/db';
+import { sanitizeString, sanitizeUrl } from './validation';
 
 /**
  * Ensure user has exactly one workspace (create if doesn't exist, consolidate if multiple exist)
@@ -92,10 +93,11 @@ export async function ensureUserInDb(
       },
     });
 
+    const rawName = user.user_metadata?.name || user.user_metadata?.full_name || user.email.split('@')[0];
     const updateData = {
       email: user.email,
-      name: user.user_metadata?.name || user.user_metadata?.full_name || user.email.split('@')[0],
-      avatarUrl: user.user_metadata?.avatar_url,
+      name: sanitizeString(rawName),
+      avatarUrl: sanitizeUrl(user.user_metadata?.avatar_url),
       updatedAt: new Date(),
     };
 
@@ -151,13 +153,14 @@ export async function ensureUserInDb(
           },
         });
         if (existingUser) {
+          const retryName = user.user_metadata?.name || user.user_metadata?.full_name || user.email!.split('@')[0];
           await prisma.user.update({
             where: { id: existingUser.id },
             data: {
               supabaseId: user.id,
               email: user.email,
-              name: user.user_metadata?.name || user.user_metadata?.full_name || user.email.split('@')[0],
-              avatarUrl: user.user_metadata?.avatar_url,
+              name: sanitizeString(retryName),
+              avatarUrl: sanitizeUrl(user.user_metadata?.avatar_url),
               updatedAt: new Date(),
             },
           });
