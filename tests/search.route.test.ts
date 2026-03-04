@@ -8,7 +8,7 @@ vi.mock('../src/lib/auth', () => ({ getCurrentUser: vi.fn().mockResolvedValue(nu
 vi.mock('../src/lib/db', () => ({ prisma: { searchLog: { create: vi.fn().mockResolvedValue({}) } } }));
 vi.mock('../src/lib/api-usage', () => ({ trackApiRequest: vi.fn() }));
 
-// Mock provider modules
+// Mock provider modules (only providers used by tests; others may run but are wrapped in try/catch)
 vi.mock('../app/api/search/providers/openalex', () => ({ searchOpenAlex: vi.fn() }));
 vi.mock('../app/api/search/providers/arxiv', () => ({ searchArxiv: vi.fn() }));
 vi.mock('../app/api/search/providers/zenodo', () => ({ searchZenodo: vi.fn() }));
@@ -19,6 +19,9 @@ vi.mock('../app/api/search/providers/youtube', () => ({ searchYouTubeVideos: vi.
 vi.mock('../app/api/search/providers/hardware', () => ({ searchHardware: vi.fn().mockResolvedValue([]) }));
 vi.mock('../app/api/search/providers/oshwa', () => ({ searchOshwaHardware: vi.fn().mockResolvedValue([]) }));
 vi.mock('../app/api/search/providers/wikifactory', () => ({ searchWikifactoryDesigns: vi.fn().mockResolvedValue([]) }));
+vi.mock('@/lib/auth', () => ({ getCurrentUser: vi.fn().mockResolvedValue(null) }));
+vi.mock('@/lib/db', () => ({ prisma: { searchLog: { create: vi.fn().mockResolvedValue({}) } } }));
+vi.mock('@/lib/api-usage', () => ({ trackApiRequest: vi.fn() }));
 
 import { GET } from '../app/api/search/route';
 import { searchOpenAlex } from '../app/api/search/providers/openalex';
@@ -28,7 +31,7 @@ import { searchSoftwareHeritage } from '../app/api/search/providers/swh';
 
 function makeReq(q = 'test', type = 'all', cacheBust?: string) {
   const params = new URLSearchParams({ q, type });
-  if (cacheBust) params.set('_', cacheBust);
+  if (cacheBust) params.set('_', cacheBust); // bypass cache so each test gets fresh results
   return { url: `http://localhost/api/search?${params}` } as any;
 }
 

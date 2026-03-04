@@ -2,6 +2,9 @@ import '@testing-library/jest-dom';
 import { cleanup } from '@testing-library/react';
 import { afterEach, vi } from 'vitest';
 
+// Mock scrollIntoView for jsdom (used by AppChat and other components)
+Element.prototype.scrollIntoView = vi.fn();
+
 // Cleanup after each test
 afterEach(() => {
   cleanup();

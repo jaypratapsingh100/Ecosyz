@@ -11,6 +11,10 @@ vi.mock('sonner', () => ({
   },
 }));
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
 // Mock fetch
 global.fetch = vi.fn();
 
@@ -23,7 +27,7 @@ describe('DeploymentPanel Error Handling', () => {
     const user = userEvent.setup();
     const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
     fetchMock
-      .mockResolvedValueOnce(new Response(JSON.stringify({}))) // loadDeploymentInfo on mount
+      .mockResolvedValueOnce({ ok: true, json: async () => ({}) }) // loadDeploymentInfo
       .mockRejectedValueOnce(new Error('Network error occurred')); // download
 
     render(<DeploymentPanel projectId="test-id" projectName="Test" />);
@@ -49,8 +53,10 @@ describe('DeploymentPanel Error Handling', () => {
   it('shows toast on deployment failure with network error', async () => {
     const user = userEvent.setup();
     const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
+    // loadDeploymentInfo (mount), session check, then deploy fails
     fetchMock
-      .mockResolvedValueOnce(new Response(JSON.stringify({}))) // loadDeploymentInfo on mount
+      .mockResolvedValueOnce({ ok: true, json: async () => ({}) }) // loadDeploymentInfo
+      .mockResolvedValueOnce({ ok: true }) // session
       .mockRejectedValueOnce(new Error('network fetch failed')); // deploy
 
     render(<DeploymentPanel projectId="test-id" projectName="Test" />);
@@ -77,12 +83,12 @@ describe('DeploymentPanel Error Handling', () => {
     const user = userEvent.setup();
     const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
     fetchMock
-      .mockResolvedValueOnce(new Response(JSON.stringify({}))) // loadDeploymentInfo on mount
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ error: 'Deployment configuration error' }), {
-          status: 400,
-        })
-      ); // deploy
+      .mockResolvedValueOnce({ ok: true, json: async () => ({}) }) // loadDeploymentInfo
+      .mockResolvedValueOnce({ ok: true }) // session
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'Deployment configuration error' }),
+      }); // deploy
 
     render(<DeploymentPanel projectId="test-id" projectName="Test" />);
 
