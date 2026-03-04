@@ -25,7 +25,9 @@ interface AIOption {
 interface AIOptionsState {
   groqAvailable: boolean;
   openRouterAvailable: boolean;
-  models: { groq: AIOption[]; openrouter: AIOption[] };
+  openaiAvailable: boolean;
+  anthropicAvailable: boolean;
+  models: { groq: AIOption[]; openrouter: AIOption[]; openai: AIOption[]; anthropic: AIOption[] };
 }
 
 interface AppChatProps {
@@ -48,7 +50,7 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const [aiOptions, setAiOptions] = useState<AIOptionsState | null>(null);
-  const [selectedProvider, setSelectedProvider] = useState<'groq' | 'openrouter'>('groq');
+  const [selectedProvider, setSelectedProvider] = useState<'groq' | 'openrouter' | 'openai' | 'anthropic'>('groq');
   const [selectedModel, setSelectedModel] = useState<string>('');
 
   const [extractingMessageId, setExtractingMessageId] = useState<string | null>(null);
@@ -71,11 +73,22 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
         setAiOptions({
           groqAvailable: !!data.groqAvailable,
           openRouterAvailable: !!data.openRouterAvailable,
-          models: data.models ?? { groq: [], openrouter: [] },
+          openaiAvailable: !!data.openaiAvailable,
+          anthropicAvailable: !!data.anthropicAvailable,
+          models: data.models ?? { groq: [], openrouter: [], openai: [], anthropic: [] },
         });
         const groq = data.models?.groq ?? [];
         const openrouter = data.models?.openrouter ?? [];
-        if (data.groqAvailable && groq.length > 0) {
+        const openai = data.models?.openai ?? [];
+        const anthropic = data.models?.anthropic ?? [];
+        // Default to best available provider (Claude > OpenAI > Groq > OpenRouter)
+        if (data.anthropicAvailable && anthropic.length > 0) {
+          setSelectedProvider('anthropic');
+          setSelectedModel((m) => m || anthropic[0].id);
+        } else if (data.openaiAvailable && openai.length > 0) {
+          setSelectedProvider('openai');
+          setSelectedModel((m) => m || openai[0].id);
+        } else if (data.groqAvailable && groq.length > 0) {
           setSelectedProvider('groq');
           setSelectedModel((m) => m || groq[0].id);
         } else if (data.openRouterAvailable && openrouter.length > 0) {
@@ -92,11 +105,9 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
 
   useEffect(() => {
     if (!aiOptions) return;
-    if (selectedProvider === 'groq' && aiOptions.models.groq?.length && !aiOptions.models.groq.some((m) => m.id === selectedModel)) {
-      setSelectedModel(aiOptions.models.groq[0].id);
-    }
-    if (selectedProvider === 'openrouter' && aiOptions.models.openrouter?.length && !aiOptions.models.openrouter.some((m) => m.id === selectedModel)) {
-      setSelectedModel(aiOptions.models.openrouter[0].id);
+    const providerModels = aiOptions.models[selectedProvider];
+    if (providerModels?.length && !providerModels.some((m) => m.id === selectedModel)) {
+      setSelectedModel(providerModels[0].id);
     }
   }, [aiOptions, selectedProvider, selectedModel]);
 
@@ -610,15 +621,17 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
       </div>
 
       <div className="border-t border-white/10 p-4 flex-shrink-0 bg-[#0a0a0a] z-10">
-        {aiOptions && (aiOptions.groqAvailable || aiOptions.openRouterAvailable) && (
+        {aiOptions && (aiOptions.groqAvailable || aiOptions.openRouterAvailable || aiOptions.openaiAvailable || aiOptions.anthropicAvailable) && (
           <div className="flex flex-wrap items-center gap-2 mb-3">
             <span className="text-xs text-gray-500">Model:</span>
             <select
               value={selectedProvider}
-              onChange={(e) => setSelectedProvider(e.target.value as 'groq' | 'openrouter')}
+              onChange={(e) => setSelectedProvider(e.target.value as 'groq' | 'openrouter' | 'openai' | 'anthropic')}
               className="bg-[#1a1a1a] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
               aria-label="AI Provider"
             >
+              {aiOptions.anthropicAvailable && <option value="anthropic">Claude (Anthropic)</option>}
+              {aiOptions.openaiAvailable && <option value="openai">OpenAI</option>}
               {aiOptions.groqAvailable && <option value="groq">Groq (Llama)</option>}
               {aiOptions.openRouterAvailable && <option value="openrouter">OpenRouter (DeepSeek)</option>}
             </select>
@@ -628,18 +641,11 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
               className="bg-[#1a1a1a] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 min-w-[180px]"
               aria-label="AI Model"
             >
-              {selectedProvider === 'groq' &&
-                aiOptions.models.groq?.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label}
-                  </option>
-                ))}
-              {selectedProvider === 'openrouter' &&
-                aiOptions.models.openrouter?.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label}
-                  </option>
-                ))}
+              {(aiOptions.models[selectedProvider] || []).map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
             </select>
           </div>
         )}

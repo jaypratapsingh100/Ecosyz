@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
 import { getScaffoldFiles, DEFAULT_APP_CONTENT } from '@/app/lib/app-builder/scaffolds';
-import { createAIClient, hasAIClient } from '@/lib/ai/provider';
+import { createAIClient, hasAIClient, getMaxOutputTokens } from '@/lib/ai/provider';
+import type { AIProvider } from '@/lib/ai/provider';
 import { trackApiRequest } from '@/lib/api-usage';
 import {
   extractAgentResponse,
+  parseCodeBlocksToFiles,
   ALLOWED_PATHS,
   COMPONENT_PATH_PATTERN,
   SRC_ROOT_COMPONENT_PATTERN,
@@ -467,11 +469,12 @@ export async function POST(
       });
     }
     
-    // Step 6: Create AI client (Groq or OpenRouter; user can select via userProvider/userModel)
+    // Step 6: Create AI client (Groq, OpenRouter, OpenAI, or Anthropic; user can select via userProvider/userModel)
+    const validProviders: AIProvider[] = ['groq', 'openrouter', 'openai', 'anthropic'];
     let client;
     try {
       const clientResult = createAIClient({
-        userProvider: userProvider === 'openrouter' || userProvider === 'groq' ? userProvider : undefined,
+        userProvider: validProviders.includes(userProvider as AIProvider) ? (userProvider as AIProvider) : undefined,
         userModel: typeof userModel === 'string' ? userModel : undefined,
       });
       client = clientResult.client;
@@ -507,11 +510,10 @@ export async function POST(
       });
     }
     
-    // Both Groq and OpenRouter (DeepSeek V3) support 8192 output tokens for consistent multi-file responses
-    const maxOutputTokens = 8192;
+    // Dynamic max output tokens per provider — Claude/OpenAI support higher limits for more complete apps
+    const maxOutputTokens = getMaxOutputTokens(provider as AIProvider);
     console.log(`✅ Using ${provider.toUpperCase()}:`, {
       model: model,
-      maxContext: provider === 'groq' ? '128K tokens' : '128K tokens (DeepSeek V3)',
       maxNewTokens: maxOutputTokens
     });
     
@@ -520,7 +522,9 @@ export async function POST(
     let taskPlan: ArchitectTaskPlan | null = null;
 
     // Optional: run Planner + Architect for new projects (agentic pipeline)
-    if (existingFilePaths.length === 0) {
+    // Use hasScaffoldFiles (captured BEFORE scaffold creation) instead of existingFilePaths
+    // which includes scaffold files we just created and would never be empty.
+    if (!hasScaffoldFiles) {
       try {
         const plannerUserPrompt = buildPlannerPrompt(message, questionnaireData);
         const plannerRes = await client.chat.completions.create({
@@ -677,253 +681,38 @@ export async function POST(
       console.log(responseText.substring(0, 500));
       console.log('-'.repeat(40));
 
-      // ============================================
-      // TWO-PASS PARSING: explicit paths first, then infer from content
-      // ============================================
-      const KNOWN_LANG_TAGS = new Set([
-        'jsx', 'javascript', 'typescript', 'tsx', 'js', 'ts', 'css', 'html',
-        'json', 'markdown', 'python', 'java', 'cpp', 'c', 'bash', 'sh',
-        'sql', 'yaml', 'yml', 'xml', 'text', 'plaintext', 'diff', 'md',
-      ]);
-      const VALID_FILE_EXTENSIONS = ['.js', '.jsx', '.ts', '.tsx', '.css', '.html', '.json', '.md'];
-
+      // Use shared parsing from agentSchema.ts (single source of truth)
       const allMatches: Array<{ path: string; content: string }> = [];
 
       console.log('📝 Parsing response for file creation...');
       console.log('Response length:', responseText.length);
 
-      // Extract ALL code blocks with a simple, reliable regex
-      const codeBlockRegex = /```([^\n`]*)\n([\s\S]*?)```/g;
-      let match;
-      const rawBlocks: Array<{ header: string; content: string }> = [];
-
-      while ((match = codeBlockRegex.exec(responseText)) !== null) {
-        const header = (match[1] || '').trim();
-        const content = (match[2] || '').trim();
-        if (content.length > 0) {
-          rawBlocks.push({ header, content });
+      // Use shared parsing from agentSchema.ts — single source of truth
+      // Try structured JSON extraction first, then fall back to markdown code blocks
+      const agentResult = extractAgentResponse(responseText);
+      if (agentResult && agentResult.files.length > 0) {
+        for (const f of agentResult.files) {
+          allMatches.push({ path: f.path, content: f.content });
         }
+        console.log(`✅ Extracted ${agentResult.files.length} files via JSON parsing`);
+      } else {
+        // Fallback: parse markdown code blocks
+        const codeBlockFiles = parseCodeBlocksToFiles(responseText);
+        for (const f of codeBlockFiles) {
+          allMatches.push({ path: f.path, content: f.content });
+        }
+        console.log(`✅ Extracted ${codeBlockFiles.length} files via code block parsing`);
       }
 
-      console.log(`📊 Extracted ${rawBlocks.length} non-empty code blocks`);
-
-      // Helper: clean and normalize a file path
-      const normalizePath = (p: string): string => {
-        return p
-          .replace(/\s+/g, '')       // Remove spaces
-          .replace(/\\/g, '/')       // Backslash → forward slash
-          .replace(/\/+/g, '/')      // Collapse double slashes
-          .replace(/\.jxs$/i, '.jsx') // Fix typos
-          .replace(/\.tsxs$/i, '.tsx')
-          .replace(/^\.\//, '')      // Remove leading ./
-          .trim();
-      };
-
-      // Helper: check if a string looks like a file path
-      const isFilePath = (s: string): boolean => {
-        if (!s) return false;
-        const cleaned = normalizePath(s);
-        const hasExt = cleaned.includes('.');
-        const hasSep = cleaned.includes('/');
-        // Must have a valid extension
-        const hasValidExt = VALID_FILE_EXTENSIONS.some(ext => cleaned.toLowerCase().endsWith(ext));
-        return hasValidExt || (hasExt && hasSep);
-      };
-
-      // Helper: infer file path from code content
-      const inferPathFromContent = (content: string, langTag: string): string | null => {
-        // Determine extension
-        let ext = '.jsx';
-        if (langTag === 'tsx' || langTag === 'typescript') ext = '.tsx';
-        else if (langTag === 'ts') ext = '.ts';
-        else if (langTag === 'css') ext = '.css';
-        else if (langTag === 'html') ext = '.html';
-        else if (langTag === 'json') ext = '.json';
-        else if (content.includes('interface ') || content.match(/:\s*(string|number|boolean|React)/)) ext = '.tsx';
-
-        // For CSS files
-        if (ext === '.css') {
-          if (content.includes('.App')) return 'src/App.css';
-          return 'src/styles.css';
-        }
-
-        // For HTML files
-        if (ext === '.html') return 'index.html';
-
-        // For JSON files
-        if (content.includes('"name"') && content.includes('"version"')) return 'package.json';
-
-        // Find the FIRST component/function name defined in the file
-        // Order matters: check specific patterns first
-        const patterns = [
-          // export default function ComponentName
-          /export\s+default\s+function\s+([A-Z][a-zA-Z0-9]*)/,
-          // function ComponentName
-          /(?:^|\n)\s*function\s+([A-Z][a-zA-Z0-9]*)/,
-          // const ComponentName = 
-          /(?:^|\n)\s*(?:export\s+)?const\s+([A-Z][a-zA-Z0-9]*)\s*=/,
-          // class ComponentName
-          /(?:^|\n)\s*(?:export\s+)?class\s+([A-Z][a-zA-Z0-9]*)/,
-          // export default ComponentName (at end of file)
-          /export\s+default\s+([A-Z][a-zA-Z0-9]*)\s*;?\s*$/,
-        ];
-
-        let componentName: string | null = null;
-        for (const pattern of patterns) {
-          const m = content.match(pattern);
-          if (m) {
-            componentName = m[1];
-            break;
-          }
-        }
-
-        if (!componentName) return null;
-
-        // Map component name to path
-        if (componentName === 'App') {
-          return `src/App${ext}`;
-        }
-        // Everything else goes into components/
-        return `src/components/${componentName}${ext}`;
-      };
-
-      // ---- PASS 1: Extract blocks with explicit file paths ----
-      const inferredBlocks: Array<{ header: string; content: string }> = [];
-
-      for (const block of rawBlocks) {
-        let { header, content } = block;
-        let filePath: string | null = null;
-
-        // Format 1: ```file:src/components/Todo.jsx
-        if (header.startsWith('file:')) {
-          filePath = header.substring(5).trim();
-        }
-        // Format 2: ```jsx:src/components/Todo.jsx  or ```javascript:src/App.jsx
-        else if (header.includes(':') && !KNOWN_LANG_TAGS.has(header.split(':')[0].toLowerCase())) {
-          filePath = header; // entire header is path-like
-        }
-        else if (header.includes(':')) {
-          // e.g. "jsx:src/components/Todo.jsx"
-          const afterColon = header.split(':').slice(1).join(':').trim();
-          if (isFilePath(afterColon)) {
-            filePath = afterColon;
-          }
-        }
-
-        // Format 3: ```jsx src/components/Todo.jsx  (language + space + path)
-        if (!filePath && header.includes(' ')) {
-          const parts = header.split(/\s+/);
-          if (parts.length >= 2) {
-            const possiblePath = parts.slice(1).join(' ').trim();
-            if (isFilePath(possiblePath)) {
-              filePath = possiblePath;
-            }
-          }
-        }
-
-        // Format 4: header IS the file path directly  (e.g. ```src/App.jsx)
-        if (!filePath && isFilePath(header)) {
-          filePath = header;
-        }
-
-        // Format 5: first non-empty line inside the block is a path
-        // Many models emit:
-        //   src/components/Contact.jsx
-        //   import React from 'react';
-        //   ...
-        // so treat that leading line as the file path and strip it.
-        if (!filePath) {
-          const lines = content.split('\n');
-          const firstNonEmptyIndex = lines.findIndex((line) => line.trim().length > 0);
-          if (firstNonEmptyIndex !== -1) {
-            const firstLine = lines[firstNonEmptyIndex].trim();
-            if (isFilePath(firstLine)) {
-              filePath = firstLine;
-              content = [
-                ...lines.slice(0, firstNonEmptyIndex),
-                ...lines.slice(firstNonEmptyIndex + 1),
-              ]
-                .join('\n')
-                .trim();
-            }
-          }
-        }
-
-        if (filePath) {
-          const normalized = normalizePath(filePath);
-          console.log(`✅ [PASS1] Explicit path: ${normalized} (header: "${header}")`);
-          // Deduplicate: keep longer content
-          const existing = allMatches.findIndex(m => m.path === normalized);
-          if (existing >= 0) {
-            if (content.length > allMatches[existing].content.length) {
-              allMatches[existing].content = content;
-            }
-          } else {
-            allMatches.push({ path: normalized, content });
-          }
-        } else {
-          // No explicit path found — queue for inference
-          inferredBlocks.push(block);
-        }
-      }
-
-      console.log(`📁 PASS 1 result: ${allMatches.length} files with explicit paths, ${inferredBlocks.length} blocks need inference`);
-
-      // ---- PASS 2: Infer paths from code content ----
-      for (const block of inferredBlocks) {
-        const { header, content } = block;
-
-        // Determine language tag
-        const langTag = KNOWN_LANG_TAGS.has(header.toLowerCase()) ? header.toLowerCase() : '';
-
-        // Skip non-code blocks (plain text explanations, etc.)
-        const looksLikeCode = content.includes('import ') || content.includes('export ') ||
-          content.includes('function ') || content.includes('const ') || content.includes('class ') ||
-          content.includes('return ') || content.includes('{') || content.includes('<');
-
-        if (!looksLikeCode) {
-          console.log(`⏭️ [PASS2] Skipping non-code block (header: "${header}", preview: "${content.substring(0, 60)}")`);
-          continue;
-        }
-
-        const inferredPath = inferPathFromContent(content, langTag);
-
-        if (inferredPath) {
-          const normalized = normalizePath(inferredPath);
-          console.log(`✅ [PASS2] Inferred path: ${normalized} (header: "${header}")`);
-          const existing = allMatches.findIndex(m => m.path === normalized);
-          if (existing >= 0) {
-            if (content.length > allMatches[existing].content.length) {
-              allMatches[existing].content = content;
-              console.log(`   ↳ Replaced with longer content (${content.length} > ${allMatches[existing].content.length})`);
-            }
-          } else {
-            allMatches.push({ path: normalized, content });
-          }
-        } else {
-          console.log(`⚠️ [PASS2] Could not infer path (header: "${header}", preview: "${content.substring(0, 80)}")`);
-        }
-      }
-
-      // ---- Final results ----
-      console.log('\n' + '='.repeat(60));
-      console.log(`📁 FILE PARSING RESULTS`);
-      console.log('='.repeat(60));
-      console.log(`Total files found: ${allMatches.length}`);
-      
+      console.log(`📁 Total files found: ${allMatches.length}`);
       if (allMatches.length > 0) {
-        console.log('\n📋 Files to create:');
         allMatches.forEach((m, idx) => {
           console.log(`  ${idx + 1}. ${m.path} (${m.content.length} chars)`);
         });
       } else {
-        console.warn('\n⚠️ NO FILES FOUND IN RESPONSE!');
-        console.warn('Raw blocks extracted:', rawBlocks.length);
-        rawBlocks.slice(0, 3).forEach((b, idx) => {
-          console.warn(`  Block ${idx + 1}: header="${b.header}", content preview: "${b.content.substring(0, 150)}"`);
-        });
+        console.warn('⚠️ NO FILES FOUND IN RESPONSE!');
+        console.warn('Response preview:', responseText.substring(0, 300));
       }
-      console.log('='.repeat(60));
 
       // Process each match — paths are already normalized from PASS 1/PASS 2
       for (const fileMatch of allMatches) {
@@ -1014,69 +803,24 @@ export async function POST(
           fixesApplied.push('Fixed typo: exprot → export');
         }
         
-        // Fix 2: Malformed JSX tags (spaces in closing tags)
-        processedContent = processedContent.replace(/<\s*\/\s*(\w+)\s*>/g, '</$1>');
-        processedContent = processedContent.replace(/<\s*(\w+)\s*\/\s*>/g, '<$1 />');
-        
-        // Fix 3: Fix malformed self-closing tags with spaces
-        processedContent = processedContent.replace(/<\s*(\w+)\s+([^>]*?)\s*\/\s*>/g, '<$1 $2 />');
-        
-        // Fix 4: Fix broken closing tags like </option> -> </option>
-        processedContent = processedContent.replace(/<\s*\/\s*(\w+)\s*>/g, '</$1>');
-        
-        // Fix 5: Fix malformed attributes (spaces around =)
-        processedContent = processedContent.replace(/\s*=\s*["']/g, '="');
-        processedContent = processedContent.replace(/["']\s*>/g, '">');
-        
-        // Fix 6: Remove extra spaces in JSX
-        processedContent = processedContent.replace(/\s+>/g, '>');
-        processedContent = processedContent.replace(/<\s+/g, '<');
-        
-        // Fix 7: Fix broken imports (spaces in import paths)
+        // Fix 2: Fix broken imports (spaces in import paths)
         processedContent = processedContent.replace(/import\s+.*?from\s+["']\s*([^"']+?)\s*["']/g, (match, path) => {
           return match.replace(path, path.trim());
         });
-        
-        // Fix 8: Fix React import (lowercase 'react' should be 'React')
+
+        // Fix 3: Fix React import (lowercase 'react' should be 'React')
         if (processedContent.includes("import react from") && !processedContent.includes("import React from")) {
           processedContent = processedContent.replace(/import\s+react\s+from\s+["']react["']/gi, "import React from 'react'");
           fixesApplied.push('Fixed: import react → import React');
         }
-        
-        // Fix 9: Fix malformed component names in JSX (spaces)
-        processedContent = processedContent.replace(/<\s*(\w+)\s+([^>]*?)\s*>/g, '<$1 $2>');
-        
-        // Fix 10: Fix broken export statements
-        processedContent = processedContent.replace(/export\s+default\s+(\w+)\s*;/g, 'export default $1;');
-        
-        // Fix 11: Fix classname → className (common React error)
-        if (processedContent.includes('classname') && !processedContent.includes('className')) {
-          processedContent = processedContent.replace(/classname\s*=/gi, 'className=');
-          processedContent = processedContent.replace(/classname-/gi, 'className-');
-          processedContent = processedContent.replace(/classname\s*:/gi, 'className:');
+
+        // Fix 4: Fix classname → className (common React error)
+        if (processedContent.includes('classname=') && !processedContent.includes('className=')) {
+          processedContent = processedContent.replace(/\bclassname\s*=/gi, 'className=');
           fixesApplied.push('Fixed: classname → className');
         }
-        
-        // Fix 12: Fix uppercase closing tags (</H1> → </h1>)
-        processedContent = processedContent.replace(/<\/([A-Z][a-zA-Z0-9]+)>/g, (match, tag) => {
-          const lowerTag = tag.toLowerCase();
-          if (lowerTag !== tag) {
-            fixesApplied.push(`Fixed: </${tag}> → </${lowerTag}>`);
-            return `</${lowerTag}>`;
-          }
-          return match;
-        });
-        
-        // Fix 13: Fix malformed attribute syntax (classname-"text-3xl → className="text-3xl")
-        processedContent = processedContent.replace(/(\w+)-("[\w\s-]+)/g, (match, attr, value) => {
-          if (attr === 'classname') {
-            fixesApplied.push(`Fixed malformed attribute: ${match}`);
-            return `className=${value}`;
-          }
-          return match;
-        });
-        
-        // Fix 14: Fix export name mismatches (export default Headername when component is Header)
+
+        // Fix 5: Fix export name mismatches (export default Headername when component is Header)
         const componentMatch = processedContent.match(/(?:const|function|var|let)\s+(\w+)\s*[=(]/);
         const exportMatch = processedContent.match(/export\s+default\s+(\w+)\s*;/);
         if (componentMatch && exportMatch) {
@@ -1087,9 +831,6 @@ export async function POST(
             fixesApplied.push(`Fixed export mismatch: ${exportName} → ${componentName}`);
           }
         }
-        
-        // Fix 15: Fix incomplete return statements (return( → return ())
-        processedContent = processedContent.replace(/return\(/g, 'return (');
         
         // Update fileContent with processed content if fixes were applied
         if (fixesApplied.length > 0) {

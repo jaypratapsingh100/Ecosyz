@@ -16,44 +16,71 @@ const SCAFFOLD_HINT = 'Paths: package.json, vite.config.js, index.html, src/main
  */
 const VIBE_DESIGN_SYSTEM = `
 VIBE CODING PLATFORM DESIGN SYSTEM (UI/UX RULES):
-- Overall vibe: modern, minimal, production-quality, "polished SaaS" feel.
-- Layout & spacing:
-  - Use a centered content container (approx max-width 1024–1200px) with horizontal padding.
-  - Apply generous vertical padding between sections (roughly 48–96px).
-  - Use a consistent spacing scale (4, 8, 12, 16, 24, 32, 48px) for gaps, padding and margins.
+- Overall vibe: modern, minimal, production-quality, "polished SaaS" feel. Think Linear, Vercel, Stripe quality.
+- Layout & spacing (USE THESE EXACT TAILWIND CLASSES):
+  - Container: max-w-7xl mx-auto px-4 sm:px-6 lg:px-8
+  - Section spacing: py-16 sm:py-20 lg:py-24 (generous vertical padding between sections)
+  - Spacing scale: gap-2, gap-4, gap-6, gap-8, gap-12, gap-16 (consistent throughout)
   - Avoid random floating elements; align content to a clear grid.
 - Navigation:
-  - Top navigation bar with horizontal links, brand/logo on the left, links on the right.
-  - Provide hover and active states for nav links; keep nav height comfortable (48–64px).
-  - On mobile, collapse nav into a simple stacked list or menu button.
+  - Sticky top nav: className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100"
+  - Nav links: className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
+  - CTA in nav: className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors"
+  - Mobile: use useState for menu toggle, simple slide-down menu.
 - Hero section:
-  - Strong visual hierarchy: large headline, secondary subheadline, and 1 primary + 1 secondary CTA.
-  - Keep text width comfortable (max-width around 640px) and center content on simple pages.
-  - Use subtle background treatments (light gradients or soft neutral backgrounds) instead of harsh colors.
+  - Strong visual hierarchy: text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-gray-900
+  - Subheadline: text-lg sm:text-xl text-gray-600 max-w-2xl mx-auto
+  - Primary CTA: className="bg-gray-900 text-white px-8 py-3 rounded-lg text-base font-semibold hover:bg-gray-800 shadow-lg hover:shadow-xl transition-all"
+  - Secondary CTA: className="border border-gray-300 text-gray-700 px-8 py-3 rounded-lg text-base font-semibold hover:bg-gray-50 transition-colors"
+  - Background: bg-gradient-to-b from-white to-gray-50 or bg-gradient-to-br from-blue-50 via-white to-indigo-50
 - Grids & cards:
-  - Use cards with rounded corners and subtle shadows for projects, features, testimonials, etc.
-  - Use consistent gap between cards (e.g. 16–32px) and responsive grids (1 column on mobile, 2–3 on desktop).
-  - Card content: title, short description, optional meta (tags, tech stack) and clear actions.
-- Color system:
-  - Define 1 primary brand color, 1 accent color and a neutral gray scale for text/backgrounds.
-  - Prefer light backgrounds with dark text; keep contrast high for accessibility.
-  - Use the primary color for CTAs, links and key highlights only (avoid over-saturation).
+  - Grid: className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
+  - Card: className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-md hover:border-gray-200 transition-all"
+  - Card icon area: className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center mb-4"
+  - Card title: className="text-lg font-semibold text-gray-900 mb-2"
+  - Card description: className="text-sm text-gray-600 leading-relaxed"
+- COLOR PALETTE (use these exact Tailwind classes consistently):
+  - Primary: bg-blue-600, text-blue-600, hover:bg-blue-700, ring-blue-500
+  - Primary light: bg-blue-50, text-blue-700
+  - Surface: bg-white, bg-gray-50 (alternate sections)
+  - Dark surface: bg-gray-900, bg-gray-950
+  - Text primary: text-gray-900
+  - Text secondary: text-gray-600
+  - Text muted: text-gray-400
+  - Border: border-gray-100, border-gray-200
+  - Shadow: shadow-sm, shadow-md, shadow-xl
+  - Radius: rounded-lg, rounded-xl, rounded-2xl
+  - Accent (for highlights/badges): bg-emerald-50 text-emerald-700, bg-amber-50 text-amber-700
 - Typography:
-  - Use a modern sans-serif font (e.g. Inter or system UI).
-  - Base font size 16–18px with relaxed line-height (~1.5).
-  - Clear heading scale: H1 > H2 > H3 with consistent spacing above/below.
-  - Avoid all-caps paragraphs; keep copy scannable with short sentences and lists.
-- Components:
-  - Buttons: medium border radius, visible focus ring, hover and active states.
-  - Inputs/forms: full-width fields with labels, placeholders and error states.
-  - Sections: Heading + short description + content; never leave sections visually disconnected.
+  - Font: font-sans (Inter loaded via CDN — already configured in preview).
+  - H1: text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight
+  - H2: text-3xl sm:text-4xl font-bold tracking-tight
+  - H3: text-xl font-semibold
+  - Body: text-base text-gray-600 leading-relaxed
+  - Small: text-sm text-gray-500
+  - Section label: text-sm font-semibold text-blue-600 uppercase tracking-wider mb-3
+- Buttons & inputs:
+  - Primary btn: bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors shadow-sm
+  - Secondary btn: border border-gray-300 text-gray-700 px-6 py-3 rounded-lg font-medium hover:bg-gray-50 transition-colors
+  - Input: w-full px-4 py-3 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+  - Label: text-sm font-medium text-gray-700 mb-1
+- Sections pattern:
+  - Alternate between bg-white and bg-gray-50 for visual rhythm.
+  - Each section: section label (colored) + H2 + description + content.
+  - Example: <div className="text-center mb-12"><p className="text-sm font-semibold text-blue-600 uppercase tracking-wider mb-3">Features</p><h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-gray-900 mb-4">Everything you need</h2><p className="text-lg text-gray-600 max-w-2xl mx-auto">Description here</p></div>
+- Footer:
+  - className="bg-gray-900 text-gray-400 py-12"
+  - Links: className="text-sm text-gray-400 hover:text-white transition-colors"
+  - Grid layout with columns for different link groups.
 - Responsiveness:
-  - Mobile-first: single-column layout on small screens, multi-column only on medium and up.
-  - Ensure no horizontal scrolling; allow stacks to collapse naturally.
+  - Mobile-first: single-column on small screens, multi-column on md: and lg:.
+  - Use sm:, md:, lg: breakpoint prefixes consistently.
+  - No horizontal scrolling; allow stacks to collapse naturally.
 - Code quality:
   - Extract reusable React components for repeated patterns (Hero, Section, Card, Navbar, Footer).
-  - Prefer CSS or utility classes over inline styles (except for dynamic values). Tailwind CSS is available globally in preview, so you can safely use Tailwind utility classNames without additional setup.
+  - USE TAILWIND UTILITY CLASSES for all styling. Tailwind CSS is available globally in preview.
   - Use semantic HTML elements and aria attributes for accessibility.
+  - Always guard .map() calls: (items || []).map(...) or initialize state with useState([]).
 `;
 
 /** App structure for preview — how the app is rendered (Lovable-style) */

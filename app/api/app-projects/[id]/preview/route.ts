@@ -126,12 +126,15 @@ export async function POST(
       );
     }
 
+    // Google Fonts (Inter) for modern typography in generated apps
+    const googleFonts = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">`;
     // Tailwind CSS via CDN so utility classNames (flex, items-center, gap-4, etc.) render in preview
-    const tailwindCdn = `<script src="https://cdn.tailwindcss.com"></script>`;
+    const tailwindCdn = `<script src="https://cdn.tailwindcss.com"></script>
+    <script>tailwind.config = { theme: { extend: { fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] } } } }</script>`;
     if (html.includes('</head>')) {
-      html = html.replace('</head>', `${tailwindCdn}\n</head>`);
+      html = html.replace('</head>', `${googleFonts}\n${tailwindCdn}\n</head>`);
     } else {
-      html = tailwindCdn + html;
+      html = googleFonts + tailwindCdn + html;
     }
 
     // Standardize preview: inject base CSS for all projects so user always sees a styled app
@@ -218,10 +221,17 @@ export async function POST(
           let c = (code || '')
             .replace(/export\s+default\s+/g, '')
             .replace(/import\s+[\s\S]*?from\s+['"][^'"]*['"]\s*;?\s*/g, '') // Remove imports
-            .replace(/<\/script>/gi, '<\\/script>')
-            .replace(/\$\{/g, '\\${'); // Escape template literals
-          if ((c.includes('useState(') || c.includes('useEffect(')) && !c.includes('React.useState') && !c.includes('const { useState')) {
-            c = 'const { useState, useEffect, useCallback, useMemo } = React;\n' + c;
+            .replace(/<\/script>/gi, '<\\/script>');
+          // Inject all common React hooks and utilities so generated components work in preview
+          const usesReactApi = /use(State|Effect|Ref|Context|Reducer|Callback|Memo|Id|LayoutEffect|DeferredValue|Transition)\s*\(/.test(c)
+            || /\b(memo|forwardRef|createContext|Fragment|Children|cloneElement|lazy|Suspense|createPortal)\b/.test(c);
+          if (usesReactApi && !c.includes('React.useState') && !c.includes('const { useState')) {
+            c = [
+              'const { useState, useEffect, useRef, useContext, useReducer, useCallback, useMemo,',
+              '  useId, useLayoutEffect, useDeferredValue, useTransition,',
+              '  memo, forwardRef, createContext, Fragment, Children, cloneElement, lazy, Suspense } = React;',
+              'const { createPortal } = ReactDOM;',
+            ].join('\n') + '\n' + c;
           }
           return c.trim();
         };
@@ -290,9 +300,16 @@ export async function POST(
           .replace(/export\s+default\s+/g, '')
           .replace(/import\s+[\s\S]*?from\s+['"][^'"]*['"]\s*;?\s*/g, ''); // Remove imports (components injected above)
         appContent = appContent.trim();
-        // Ensure React hooks are in scope in iframe (same as component files)
-        if ((appContent.includes('useState(') || appContent.includes('useEffect(')) && !appContent.includes('React.useState') && !appContent.includes('const { useState')) {
-          appContent = 'const { useState, useEffect, useCallback, useMemo } = React;\n' + appContent;
+        // Ensure all common React hooks/utilities are in scope in iframe (same as component files)
+        const appUsesReactApi = /use(State|Effect|Ref|Context|Reducer|Callback|Memo|Id|LayoutEffect|DeferredValue|Transition)\s*\(/.test(appContent)
+          || /\b(memo|forwardRef|createContext|Fragment|Children|cloneElement|lazy|Suspense|createPortal)\b/.test(appContent);
+        if (appUsesReactApi && !appContent.includes('React.useState') && !appContent.includes('const { useState')) {
+          appContent = [
+            'const { useState, useEffect, useRef, useContext, useReducer, useCallback, useMemo,',
+            '  useId, useLayoutEffect, useDeferredValue, useTransition,',
+            '  memo, forwardRef, createContext, Fragment, Children, cloneElement, lazy, Suspense } = React;',
+            'const { createPortal } = ReactDOM;',
+          ].join('\n') + '\n' + appContent;
         }
         // If app uses React Router but imports were stripped, provide Router/Routes/Route stubs so "Router is not defined" doesn't occur
         const usesReactRouter = /<Router[\s>]|<Routes[\s>]|<Route\s/.test(appContent);
@@ -306,8 +323,8 @@ const Route = function Route(props) { return props.element ?? null; };
 
         // CRITICAL: Escape </script> so HTML parser doesn't close script tag early
         appContent = appContent.replace(/<\/script>/gi, '<\\/script>');
-        // Escape template literals so ${} in source isn't interpreted when we build the HTML
-        appContent = appContent.replace(/\$\{/g, '\\${');
+        // NOTE: Do NOT escape template literals (${}). The code runs inside <script type="text/babel">
+        // where Babel handles template literals natively. Escaping them breaks dynamic content.
         
         // Wrap app in an error boundary so runtime errors (e.g. .map on undefined) show a message instead of blank preview
         // When router stubs are active, render a small banner so the fix is visible; also highlight "Router is not defined" in errors
