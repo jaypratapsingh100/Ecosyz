@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
 import { deployToVercel, getClaimableDeploymentUrl } from '@/lib/vercel';
+import { buildDeployableHtml } from '@/app/lib/app-builder/build-deployable-html';
 
 /**
  * POST /api/app-projects/[id]/deploy/vercel
  * Deploy project to Vercel (using app's Vercel account). Returns live URL and claim link.
+ * Builds deployable HTML (same as preview) so the live site matches what users see.
  */
 export async function POST(
   req: NextRequest,
@@ -53,20 +55,45 @@ export async function POST(
         .toLowerCase() || 'project';
     const uniqueName = `${slug}-${id.slice(-8)}`;
 
+    // Build deployable HTML (same logic as preview) so the live site works.
+    // Raw project files (src/App.jsx with imports, etc.) would show blank when deployed.
+    let deployableIndexHtml: string;
+    try {
+      deployableIndexHtml = buildDeployableHtml(
+        {
+          files: project.files,
+          framework: project.framework,
+          title: project.title,
+        },
+        { showPreviewBanner: false }
+      );
+    } catch (buildErr) {
+      console.error('Deploy build error:', buildErr);
+      return NextResponse.json(
+        {
+          error:
+            buildErr instanceof Error
+              ? buildErr.message
+              : 'Failed to build deployable HTML',
+        },
+        { status: 400 }
+      );
+    }
+
     // Ensure static-only deployment so no serverless function is invoked (avoids FUNCTION_INVOCATION_FAILED)
     const vercelJson = {
       version: 2,
       builds: [{ src: '**/*', use: '@vercel/static' }],
     };
     const filesForDeploy = [
-      ...project.files.map((f) => ({ path: f.path, content: f.content })),
+      { path: 'index.html', content: deployableIndexHtml },
       { path: 'vercel.json', content: JSON.stringify(vercelJson, null, 2) },
     ];
 
     const result = await deployToVercel({
       files: filesForDeploy,
       projectName: uniqueName,
-      framework: project.framework ?? undefined,
+      framework: undefined, // Static HTML, no build
     });
 
     const claimUrl = getClaimableDeploymentUrl(result.deploymentId);

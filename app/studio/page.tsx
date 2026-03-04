@@ -19,7 +19,6 @@ import CreateProjectModal from '../components/app-builder/CreateProjectModal';
 import WelcomeScreen from '../components/app-builder/WelcomeScreen';
 import { useAuthCheck } from '../hooks/useAuthCheck';
 import FeedbackForm from '../components/FeedbackForm';
-import { SAMPLE_REACT_PROJECT, SAMPLE_REACT_FILES } from './sampleReactProject';
 import { SAMPLE_ECOMMERCE_PROJECT, SAMPLE_ECOMMERCE_FILES } from './sampleEcommerceProject';
 
 function AppBuilderPageContent() {
@@ -40,10 +39,8 @@ function AppBuilderPageContent() {
   });
   const [isResizing, setIsResizing] = useState(false);
   const [showTabMenu, setShowTabMenu] = useState(false);
-  const [isCreatingReactSample, setIsCreatingReactSample] = useState(false);
   const [isCreatingEcommerceSample, setIsCreatingEcommerceSample] = useState(false);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
-  const [isCreatingLinkedInPortfolio, setIsCreatingLinkedInPortfolio] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [isLoadingProject, setIsLoadingProject] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -53,7 +50,6 @@ function AppBuilderPageContent() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [projectFiles, setProjectFiles] = useState<{ id: string; path: string; name: string; content: string; language?: string; isMain?: boolean }[]>([]);
   const [selectedFile, setSelectedFile] = useState<{ id: string; path: string; name: string; content: string; language?: string; isMain?: boolean } | null>(null);
-  const linkedInFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -191,75 +187,6 @@ function AppBuilderPageContent() {
     };
     return () => { if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
   }, [saveFileContent]);
-
-  const handleLinkedInPortfolioClick = useCallback(() => {
-    if (!isAuthenticated) {
-      toast.error('Please sign in to create a portfolio from LinkedIn.', {
-        description: 'Sign in to upload your LinkedIn document and generate a portfolio project.',
-        duration: 4000,
-      });
-      router.push('/auth');
-      return;
-    }
-    if (linkedInFileInputRef.current) {
-      linkedInFileInputRef.current.click();
-    }
-  }, [isAuthenticated, router]);
-
-  const handleLinkedInFileChange = useCallback(
-    async (event: React.ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      if (!file) return;
-
-      setIsCreatingLinkedInPortfolio(true);
-      try {
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('fileName', file.name);
-        const baseTitle = file.name.replace(/\.[^.]+$/, '').trim() || 'LinkedIn Portfolio';
-        formData.append('projectTitle', `${baseTitle} Portfolio`);
-
-        const res = await fetch('/api/linkedin-portfolio', {
-          method: 'POST',
-          body: formData,
-          credentials: 'include',
-        });
-
-        if (!res.ok) {
-          const errBody = await res.json().catch(() => ({}));
-          const errMsg =
-            (errBody as { error?: string; details?: string })?.error ||
-            (errBody as { message?: string })?.message ||
-            res.statusText ||
-            'Failed to create portfolio from LinkedIn';
-          const details = (errBody as { details?: string })?.details;
-          throw new Error(details ? `${errMsg}: ${details}` : errMsg);
-        }
-
-        const project = await res.json();
-        const projectId = project.id as string;
-
-        setSelectedProjectId(projectId);
-        await fetchProjects();
-
-        toast.success('Portfolio Created from LinkedIn', {
-          description: 'We created a new portfolio project from your LinkedIn document.',
-          duration: 4000,
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        console.error('Error creating LinkedIn portfolio project:', error);
-        toast.error('Failed to Create Portfolio', {
-          description: message,
-          duration: 5000,
-        });
-      } finally {
-        setIsCreatingLinkedInPortfolio(false);
-        event.target.value = '';
-      }
-    },
-    [fetchProjects],
-  );
 
   const handleEditorChange = useCallback(
     (newContent: string) => {
@@ -863,58 +790,6 @@ function AppBuilderPageContent() {
           <div className="flex-shrink-0 md:flex-1 flex flex-col min-w-0 md:min-h-0 overflow-visible md:overflow-hidden">
             <div className="min-h-0 flex items-start justify-center py-6 md:flex-1 md:items-center md:justify-center md:py-0 overflow-visible">
               <WelcomeScreen
-              onCreateReactSample={async () => {
-                setIsCreatingReactSample(true);
-                try {
-                  const projectRes = await fetch('/api/app-projects', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(SAMPLE_REACT_PROJECT),
-                    credentials: 'include',
-                  });
-
-                  if (!projectRes.ok) {
-                    const errBody = await projectRes.json().catch(() => ({}));
-                    const errMsg = (errBody as { error?: string; details?: string })?.error
-                      || (errBody as { message?: string })?.message
-                      || projectRes.statusText
-                      || 'Failed to create project';
-                    const details = (errBody as { details?: string })?.details;
-                    throw new Error(details ? `${errMsg}: ${details}` : errMsg);
-                  }
-
-                  const project = await projectRes.json();
-                  const projectId = project.id;
-
-                  for (const file of SAMPLE_REACT_FILES) {
-                    const fileRes = await fetch(`/api/app-projects/${projectId}/files`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify(file),
-                      credentials: 'include',
-                    });
-                    if (!fileRes.ok) {
-                      console.warn('Failed to add file:', file.path, await fileRes.text());
-                    }
-                  }
-
-                  setSelectedProjectId(projectId);
-                  await fetchProjects();
-                  toast.success('Sample Project Created', {
-                    description: 'Your sample project has been created successfully!',
-                    duration: 3000,
-                  });
-                } catch (error) {
-                  const message = error instanceof Error ? error.message : 'Unknown error';
-                  console.error('Error creating React sample project:', error);
-                  toast.error('Failed to Create React Sample', {
-                    description: message,
-                    duration: 5000,
-                  });
-                } finally {
-                  setIsCreatingReactSample(false);
-                }
-              }}
               onCreateEcommerceSample={async () => {
                 setIsCreatingEcommerceSample(true);
                 try {
@@ -968,19 +843,9 @@ function AppBuilderPageContent() {
                 }
               }}
               onCreateNew={handleCreateNewProject}
-              isCreatingReactSample={isCreatingReactSample}
               isCreatingEcommerceSample={isCreatingEcommerceSample}
               isCreatingNew={isCreatingNew}
               isAuthenticated={isAuthenticated === true}
-              onCreateLinkedInPortfolio={handleLinkedInPortfolioClick}
-              isCreatingLinkedInPortfolio={isCreatingLinkedInPortfolio}
-            />
-            <input
-              ref={linkedInFileInputRef}
-              type="file"
-              accept=".pdf,.doc,.docx,.txt,.html"
-              className="hidden"
-              onChange={handleLinkedInFileChange}
             />
             </div>
           </div>

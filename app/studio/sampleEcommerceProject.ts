@@ -4,7 +4,14 @@
  */
 
 import { REACT_MAIN_JSX } from '@/lib/app-builder/canonicalReact';
-import type { SampleReactFile } from './sampleReactProject';
+
+export interface SampleReactFile {
+  path: string;
+  name: string;
+  content: string;
+  language: string;
+  isMain: boolean;
+}
 
 export const SAMPLE_ECOMMERCE_PROJECT = {
   title: 'ShopMart — E-Commerce Marketplace',

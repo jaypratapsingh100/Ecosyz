@@ -1,18 +1,34 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
 interface DeploymentPanelProps {
   projectId: string;
   projectName: string;
+  /** Called when API returns 401 - parent can re-check auth state */
+  onAuthRequired?: () => void | Promise<void>;
 }
 
-export default function DeploymentPanel({ projectId, projectName }: DeploymentPanelProps) {
+export default function DeploymentPanel({ projectId, projectName, onAuthRequired }: DeploymentPanelProps) {
+  const router = useRouter();
   const [downloading, setDownloading] = useState(false);
   const [deploying, setDeploying] = useState(false);
   const [deployResult, setDeployResult] = useState<{ url: string; claimUrl: string } | null>(null);
   const [loadingDeployment, setLoadingDeployment] = useState(true);
+
+  const handleAuthError = () => {
+    onAuthRequired?.();
+    toast.error('Session Expired', {
+      description: 'Your session may have expired. Please sign in again to continue.',
+      duration: 6000,
+      action: {
+        label: 'Sign In',
+        onClick: () => router.push('/auth'),
+      },
+    });
+  };
 
   // Load existing deployment URLs when component mounts
   useEffect(() => {
@@ -26,6 +42,7 @@ export default function DeploymentPanel({ projectId, projectName }: DeploymentPa
         const res = await fetch(`/api/app-projects/${projectId}`, {
           method: 'GET',
           credentials: 'include',
+          cache: 'no-store',
         });
 
         if (res.ok) {
@@ -54,10 +71,16 @@ export default function DeploymentPanel({ projectId, projectName }: DeploymentPa
     try {
       const res = await fetch(`/api/app-projects/${projectId}/download`, {
         credentials: 'include',
+        cache: 'no-store',
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err?.error || 'Download failed');
+        const errMsg = (err as { error?: string })?.error || 'Download failed';
+        if (res.status === 401 || errMsg.toLowerCase().includes('not authenticated')) {
+          handleAuthError();
+          return;
+        }
+        throw new Error(errMsg);
       }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -94,18 +117,35 @@ export default function DeploymentPanel({ projectId, projectName }: DeploymentPa
     setDeploying(true);
     setDeployResult(null);
     try {
+      // Re-validate session before deploy to avoid confusing "Not authenticated" errors
+      const sessionRes = await fetch('/api/auth/session', {
+        credentials: 'include',
+        cache: 'no-store',
+      });
+      if (!sessionRes.ok) {
+        handleAuthError();
+        return;
+      }
+
       const res = await fetch(`/api/app-projects/${projectId}/deploy/vercel`, {
         method: 'POST',
         credentials: 'include',
+        cache: 'no-store',
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data?.error || 'Deploy failed');
+        const errMsg = (data as { error?: string })?.error || 'Deploy failed';
+        if (res.status === 401 || errMsg.toLowerCase().includes('not authenticated')) {
+          handleAuthError();
+          return;
+        }
+        throw new Error(errMsg);
       }
-      const liveUrl = data.url?.startsWith('http') ? data.url : data.url ? `https://${data.url}` : null;
+      const url = (data as { url?: string }).url;
+      const liveUrl = url?.startsWith('http') ? url : url ? `https://${url}` : null;
       setDeployResult({
-        url: liveUrl || data.url || '',
-        claimUrl: data.claimUrl || '',
+        url: liveUrl || url || '',
+        claimUrl: (data as { claimUrl?: string }).claimUrl || '',
       });
     } catch (e) {
       console.error(e);
