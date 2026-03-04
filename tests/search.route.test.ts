@@ -68,4 +68,30 @@ describe('GET /api/search', () => {
     const items = data.results ?? data.items ?? [];
     expect(items.length).toBe(1);
   });
+
+  it('returns 400 when query is missing', async () => {
+    const res = await GET({ url: 'http://localhost/api/search' } as any);
+    expect(res.status).toBe(400);
+  });
+
+  it('returns results with correct structure', async () => {
+    (searchOpenAlex as any).mockResolvedValue([
+      { id: 'struct-1', type: 'paper', title: 'Structure Test Paper', source: 'openalex', url: 'https://example.com', license: 'MIT' },
+    ]);
+    (searchArxiv as any).mockResolvedValue([]);
+    (searchZenodo as any).mockResolvedValue([]);
+    (searchSoftwareHeritage as any).mockResolvedValue([]);
+    const res = await GET(makeReq('structure-query', 'all', 't4'));
+    const data = await res.json();
+    expect(data.results ?? data.items).toBeDefined();
+    const items = data.results ?? data.items ?? [];
+    expect(items.length).toBeGreaterThan(0);
+    expect(items[0]).toMatchObject({
+      id: 'struct-1',
+      type: 'paper',
+      title: 'Structure Test Paper',
+      source: 'openalex',
+      url: expect.any(String),
+    });
+  });
 });
