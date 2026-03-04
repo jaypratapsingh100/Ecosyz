@@ -24,7 +24,8 @@
     "db:migrate": "prisma migrate dev --name profile_init",
     "db:migrate:vercel": "bash scripts/migrate.sh",
     "dev:full": "concurrently \"pnpm dev\" \"pnpm db:studio\"",
-    "vercel-build": "prisma generate && next build"
+    "vercel-build": "prisma generate && next build",
+    "prepush": "pnpm lint && pnpm test:run && pnpm build"
   },
   "dependencies": {
     "@fortawesome/fontawesome-free": "^6.7.2",
@@ -68,14 +69,20 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/three": "^0.183.1",
+    "@vitejs/plugin-react": "^5.1.4",
+    "@vitest/coverage-v8": "3.2.4",
     "concurrently": "^8.2.0",
     "dotenv": "^17.2.3",
     "eslint": "^9",
     "eslint-config-next": "^15.3.6",
+    "jsdom": "^28.1.0",
     "prisma": "^6.16.2",
     "typescript": "^5.3.3",
     "vitest": "^3.2.4"

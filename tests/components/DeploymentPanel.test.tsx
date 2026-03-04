@@ -63,11 +63,11 @@ describe('DeploymentPanel Error Handling', () => {
     render(<DeploymentPanel projectId="test-id" projectName="Test" />);
 
     await waitFor(() => {
-      const deployButton = screen.getByText(/Deploy to Vercel/i);
+      const deployButton = screen.getByRole('button', { name: /Deploy to Vercel/i });
       expect(deployButton).toBeInTheDocument();
     });
 
-    const deployButton = screen.getByText(/Deploy to Vercel/i);
+    const deployButton = screen.getByRole('button', { name: /Deploy to Vercel/i });
     await user.click(deployButton);
 
     await waitFor(() => {
@@ -94,11 +94,11 @@ describe('DeploymentPanel Error Handling', () => {
     render(<DeploymentPanel projectId="test-id" projectName="Test" />);
 
     await waitFor(() => {
-      const deployButton = screen.getByText(/Deploy to Vercel/i);
+      const deployButton = screen.getByRole('button', { name: /Deploy to Vercel/i });
       expect(deployButton).toBeInTheDocument();
     });
 
-    const deployButton = screen.getByText(/Deploy to Vercel/i);
+    const deployButton = screen.getByRole('button', { name: /Deploy to Vercel/i });
     await user.click(deployButton);
 
     await waitFor(() => {

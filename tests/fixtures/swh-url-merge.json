@@ -1,16 +1,5 @@
 [
   {
-    "id": "3",
-    "type": "code",
-    "title": "Open Source Repo",
-    "authors": ["Bob"],
-    "year": 2021,
-    "source": "swh",
-    "url": "https://gitlab.com/bob/repo",
-    "license": "GPL-3.0",
-    "meta": { "swhid": "swh:1:dir:abcd" }
-  },
-  {
     "id": "4",
     "type": "code",
     "title": "Open Source Repo",
@@ -20,5 +9,16 @@
     "url": "https://gitlab.com/bob/repo",
     "license": "",
     "meta": { }
+  },
+  {
+    "id": "3",
+    "type": "code",
+    "title": "Open Source Repo",
+    "authors": ["Bob"],
+    "year": 2021,
+    "source": "swh",
+    "url": "https://gitlab.com/bob/repo",
+    "license": "GPL-3.0",
+    "meta": { "swhid": "swh:1:dir:abcd" }
   }
 ]
