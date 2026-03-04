@@ -667,7 +667,6 @@ function AppBuilderPageContent() {
                       <DeploymentPanel
                         projectId={selectedProjectId}
                         projectName="Untitled Project"
-                        onAuthRequired={checkAuth}
                       />
                     </ErrorBoundary>
                   )}

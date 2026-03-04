@@ -2,14 +2,29 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/src/lib/supabase';
 import { z } from 'zod';
 import { prisma } from '@/src/lib/db';
+import { rateLimit, getClientKey } from '@/app/lib/utils/rate-limit';
+import { maskEmail } from '@/app/lib/utils/logger';
 
 const SignUpSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(6),
+  password: z.string()
+    .min(8, 'Password must be at least 8 characters')
+    .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+    .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
+    .regex(/[0-9]/, 'Password must contain at least one number'),
   name: z.string().optional(),
 });
 
 export async function POST(req: NextRequest) {
+  // Rate limit: 3 requests per minute per IP
+  const clientKey = `signup:${getClientKey(req)}`;
+  if (!rateLimit(clientKey, 3)) {
+    return NextResponse.json(
+      { error: 'Too many signup attempts. Please wait a minute and try again.', code: 'RATE_LIMITED' },
+      { status: 429 }
+    );
+  }
+
   if (!supabase) {
     return NextResponse.json(
       { error: 'Authentication service unavailable' },
@@ -59,7 +74,7 @@ export async function POST(req: NextRequest) {
       console.error('Sign up error:', {
         message: error.message,
         status: error.status,
-        email: email,
+        email: maskEmail(email),
       });
       
       return NextResponse.json(

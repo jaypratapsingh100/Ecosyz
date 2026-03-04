@@ -1,23 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
+import { generateResetToken } from '@/app/lib/utils/reset-token';
 
 const ResetPasswordSchema = z.object({
   email: z.string().email(),
 });
 
 /**
- * Request password reset
- * Uses Supabase's built-in resetPasswordForEmail which sends emails via Resend SMTP
+ * Custom password reset flow that bypasses Supabase's built-in email/OTP system.
+ *
+ * 1. Look up user by email via Supabase admin API
+ * 2. Generate a signed token (HMAC-SHA256) with email + expiry
+ * 3. Send the reset link via Resend
+ * 4. The /auth/reset-password page reads the token from query params
+ * 5. The /api/auth/update-password route verifies the token and resets via admin API
  */
 export async function POST(req: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const resendApiKey = process.env.RESEND_API_KEY;
 
-  if (!supabaseUrl || !supabaseAnonKey) {
-    console.error('[ResetPassword] Missing Supabase configuration');
+  if (!supabaseUrl || !supabaseServiceKey) {
+    console.error('[ResetPassword] Missing Supabase service role configuration');
     return NextResponse.json(
       { error: 'Authentication service unavailable' },
+      { status: 503 }
+    );
+  }
+
+  if (!resendApiKey) {
+    console.error('[ResetPassword] Missing RESEND_API_KEY');
+    return NextResponse.json(
+      { error: 'Email service unavailable' },
       { status: 503 }
     );
   }
@@ -35,144 +50,167 @@ export async function POST(req: NextRequest) {
 
     const { email } = parse.data;
 
-    // Get the base URL for redirect
-    // Use the request origin if NEXT_PUBLIC_BASE_URL is not set
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 
-                    req.headers.get('origin') || 
-                    'http://localhost:3000';
-    const redirectTo = `${baseUrl}/auth/reset-password`;
+    // Derive base URL from request headers (works for both localhost and production)
+    const origin = req.headers.get('origin');
+    const host = req.headers.get('host');
+    const proto = req.headers.get('x-forwarded-proto') || (host?.includes('localhost') ? 'http' : 'https');
+    const baseUrl = origin || (host ? `${proto}://${host}` : 'http://localhost:3000');
 
-    console.log('[ResetPassword] Requesting password reset:', { 
-      email,
-      redirectTo,
-      baseUrl: process.env.NEXT_PUBLIC_BASE_URL,
-      requestOrigin: req.headers.get('origin'),
-      isDev: process.env.NODE_ENV !== 'production' 
+    console.log('[ResetPassword] Requesting password reset:', { email, baseUrl });
+
+    // Create admin client
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // Create a fresh Supabase client for this request
-    // This ensures proper server-side configuration
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        flowType: 'pkce',
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    });
+    // Look up user by email via Supabase admin API
+    let userId: string | null = null;
 
-    // Use Supabase's built-in password reset
-    // This will send an email via Resend SMTP (configured in Supabase)
-    console.log('[ResetPassword] Calling Supabase resetPasswordForEmail...');
-    const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo,
-    });
+    const { data: usersData, error: listError } =
+      await supabase.auth.admin.listUsers({ perPage: 50 });
 
-    console.log('[ResetPassword] Supabase response:', {
-      hasData: !!data,
-      hasError: !!error,
-      errorType: error?.constructor?.name,
-      errorKeys: error ? Object.keys(error) : [],
-    });
-
-    if (error) {
-      // Log the error in multiple formats to catch all possible structures
-      console.error('[ResetPassword] Supabase error (stringified):', JSON.stringify(error, null, 2));
-      console.error('[ResetPassword] Supabase error (object):', {
-        message: error.message,
-        status: error.status,
-        name: error.name,
-        email,
-        redirectTo,
-        errorObject: error,
-        errorString: String(error),
-      });
-      
-      // Provide helpful error messages
-      let errorMessage = 'Failed to send password reset email';
-      let statusCode = 400;
-      
-      // Check for specific error types
-      if (error.status === 429 || error.message?.toLowerCase().includes('rate limit')) {
-        errorMessage = 'Too many requests. Please wait a few minutes before trying again.';
-        statusCode = 429;
-      } else if (error.message?.toLowerCase().includes('redirect') || 
-                 error.message?.toLowerCase().includes('url') ||
-                 error.message?.toLowerCase().includes('whitelist')) {
-        errorMessage = 'Invalid redirect URL configuration. Please ensure the redirect URL is whitelisted in Supabase dashboard.';
-        statusCode = 400;
-        console.error('[ResetPassword] Redirect URL issue:', {
-          redirectTo,
-          message: 'Ensure this URL is added to Supabase Dashboard → Authentication → URL Configuration → Redirect URLs',
-        });
-      } else if (error.message?.toLowerCase().includes('email') || 
-                 error.message?.toLowerCase().includes('not found') ||
-                 error.message?.toLowerCase().includes('user')) {
-        // Don't reveal if email exists (security best practice)
-        // But in development, show the actual error
-        if (process.env.NODE_ENV === 'development') {
-          errorMessage = `Failed to send password reset email: ${error.message}`;
-        } else {
-          errorMessage = 'If an account exists with this email, a password reset link will be sent.';
-        }
-      } else {
-        // Generic error - show details in development
-        if (process.env.NODE_ENV === 'development') {
-          errorMessage = `Failed to send password reset email: ${error.message || 'Unknown error'}`;
-        }
-        console.error('[ResetPassword] Full error details:', error);
+    if (!listError && usersData?.users) {
+      const found = usersData.users.find(
+        (u) => u.email?.toLowerCase() === email.toLowerCase()
+      );
+      if (found) {
+        userId = found.id;
       }
-      
-      const errorResponse = {
-        error: errorMessage,
-        ...(process.env.NODE_ENV === 'development' && { 
-          details: error.message,
-          status: error.status,
-          name: error.name,
-          redirectTo,
-        })
-      };
-      
-      console.log('[ResetPassword] Returning error response:', errorResponse);
-      
+    }
+
+    if (!userId) {
+      // Don't reveal that the user doesn't exist — return success anyway
+      console.log('[ResetPassword] User not found, returning success (security)');
+      return NextResponse.json({
+        message:
+          'If an account exists with this email, a password reset link will be sent.',
+        success: true,
+      });
+    }
+
+    console.log('[ResetPassword] User found:', { userId });
+
+    // Generate a signed reset token
+    const token = generateResetToken(email, userId, supabaseServiceKey);
+    const resetLink = `${baseUrl}/auth/reset-password?token=${encodeURIComponent(token)}`;
+
+    console.log('[ResetPassword] Sending reset email via Resend...');
+
+    // Send email via Resend
+    const resendResponse = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${resendApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: 'Open Idea <noreply@openidea.world>',
+        to: email,
+        subject: 'Reset your Open Idea password',
+        html: buildResetEmailHtml(resetLink),
+      }),
+    });
+
+    if (!resendResponse.ok) {
+      const resendError = await resendResponse.text();
+      console.error('[ResetPassword] Resend API error:', {
+        status: resendResponse.status,
+        error: resendError,
+      });
       return NextResponse.json(
-        errorResponse,
-        { 
-          status: statusCode,
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
+        {
+          error: 'Failed to send reset email. Please try again.',
+          ...(process.env.NODE_ENV === 'development' && {
+            details: resendError,
+          }),
+        },
+        { status: 500 }
       );
     }
 
-    console.log('[ResetPassword] Password reset email sent successfully');
+    const resendResult = await resendResponse.json();
+    console.log('[ResetPassword] Email sent via Resend:', {
+      id: resendResult.id,
+    });
 
-    // Success - Supabase will send the email via Resend SMTP
-    const successResponse = {
-      message: 'Password reset email sent successfully. Please check your inbox.',
+    return NextResponse.json({
+      message:
+        'If an account exists with this email, a password reset link will be sent.',
       success: true,
-    };
-    
-    console.log('[ResetPassword] Returning success response:', successResponse);
-    
-    return NextResponse.json(successResponse, {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-      },
     });
-  } catch (error: any) {
-    console.error('[ResetPassword] Unexpected error:', {
-      message: error?.message,
-      stack: error?.stack,
-    });
-    
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[ResetPassword] Unexpected error:', { message });
     return NextResponse.json(
-      { 
+      {
         error: 'Internal server error',
-        ...(process.env.NODE_ENV === 'development' && { details: error?.message })
+        ...(process.env.NODE_ENV === 'development' && { details: message }),
       },
       { status: 500 }
     );
   }
+}
+
+// ---- Email template ----
+
+function buildResetEmailHtml(resetLink: string): string {
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0;padding:0;background-color:#0a1016;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0a1016;padding:40px 20px;">
+    <tr>
+      <td align="center">
+        <table width="480" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#0c2321,#121f22);border-radius:16px;border:1px solid rgba(255,255,255,0.1);padding:40px;">
+          <tr>
+            <td align="center" style="padding-bottom:24px;">
+              <h1 style="color:#ffffff;margin:0;font-size:24px;font-weight:700;">Open Idea</h1>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding-bottom:16px;">
+              <h2 style="color:#ffffff;margin:0;font-size:20px;font-weight:600;">Reset Your Password</h2>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding-bottom:24px;">
+              <p style="color:#94a3b8;font-size:15px;line-height:1.6;margin:0;">
+                We received a request to reset your password. Click the button below to create a new password. This link will expire in 1 hour.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding-bottom:24px;">
+              <a href="${resetLink}" style="display:inline-block;background:linear-gradient(135deg,#10b981,#06b6d4);color:#0a1016;font-weight:600;font-size:16px;padding:14px 32px;border-radius:10px;text-decoration:none;">
+                Reset Password
+              </a>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding-bottom:16px;">
+              <p style="color:#64748b;font-size:13px;line-height:1.5;margin:0;">
+                If the button doesn't work, copy and paste this link into your browser:
+              </p>
+              <p style="color:#06b6d4;font-size:13px;line-height:1.5;margin:8px 0 0;word-break:break-all;">
+                ${resetLink}
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="border-top:1px solid rgba(255,255,255,0.1);padding-top:16px;">
+              <p style="color:#475569;font-size:12px;line-height:1.5;margin:0;">
+                If you didn't request this, you can safely ignore this email. Your password won't be changed.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
 }

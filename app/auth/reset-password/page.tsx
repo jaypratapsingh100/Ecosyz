@@ -1,14 +1,13 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import Link from 'next/link';
 import Image from 'next/image';
-import { supabase } from '@/src/lib/supabase';
 
 const resetPasswordSchema = z.object({
   password: z.string().min(8, 'Password must be at least 8 characters'),
@@ -20,7 +19,6 @@ const resetPasswordSchema = z.object({
 
 type ResetPasswordForm = z.infer<typeof resetPasswordSchema>;
 
-// Page component that wraps the content in Suspense
 export default function ResetPasswordPage() {
   return (
     <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-white">Loading...</div>}>
@@ -29,14 +27,16 @@ export default function ResetPasswordPage() {
   );
 }
 
-// Reset password component that handles Supabase reset flow
 function ResetPasswordContent() {
   const [loading, setLoading] = useState(false);
-  const [checkingSession, setCheckingSession] = useState(true);
-  const [hasSession, setHasSession] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Read the token from URL query: /auth/reset-password?token=xxx
+  const token = searchParams?.get('token') || '';
+  const hasToken = token.length > 0;
 
   const {
     register,
@@ -50,53 +50,21 @@ function ResetPasswordContent() {
     }
   });
 
-  // Check if user has a valid session from reset link
-  useEffect(() => {
-    const checkSession = async () => {
-      try {
-        if (!supabase) {
-          setHasSession(false);
-          setCheckingSession(false);
-          return;
-        }
-
-        // Check for session (user should be authenticated from reset link)
-        const { data: { session }, error } = await supabase.auth.getSession();
-
-        if (error) {
-          console.error('Session check error:', error);
-          setHasSession(false);
-        } else {
-          setHasSession(!!session);
-          
-          if (!session) {
-            toast.error('Invalid or expired reset link', {
-              description: 'Please request a new password reset email.',
-              duration: 5000,
-            });
-          }
-        }
-      } catch (error) {
-        console.error('Error checking session:', error);
-        setHasSession(false);
-      } finally {
-        setCheckingSession(false);
-      }
-    };
-
-    checkSession();
-  }, []);
-
   const onSubmit = async (data: ResetPasswordForm) => {
+    if (!token) {
+      toast.error('Missing reset token', {
+        description: 'Please use the link from your email.',
+      });
+      return;
+    }
+
     setLoading(true);
     try {
-      // Update password via API
       const response = await fetch('/api/auth/update-password', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          token,
           password: data.password,
         }),
       });
@@ -118,12 +86,6 @@ function ResetPasswordContent() {
         },
       });
 
-      // Sign out the temporary session and redirect to login
-      if (supabase) {
-        await supabase.auth.signOut();
-      }
-
-      // Small delay before redirect
       setTimeout(() => {
         router.push('/auth');
       }, 1000);
@@ -143,18 +105,6 @@ function ResetPasswordContent() {
       setLoading(false);
     }
   };
-
-  // Show loading state while checking session
-  if (checkingSession) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016] flex items-center justify-center">
-        <div className="text-white text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-400 mx-auto mb-4"></div>
-          <p>Verifying reset link...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016]">
@@ -176,7 +126,7 @@ function ResetPasswordContent() {
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 shadow-2xl border border-white/20">
             <div className="mb-8 text-center">
               <h2 className="text-3xl font-bold text-white mb-2">Reset Password</h2>
-              {hasSession ? (
+              {hasToken ? (
                 <p className="text-teal-100/90">
                   Create your new password below
                 </p>
@@ -187,8 +137,7 @@ function ResetPasswordContent() {
               )}
             </div>
 
-            {/* Show form only if session is valid */}
-            {hasSession ? (
+            {hasToken ? (
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
                 <div>
                   <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-1">
@@ -281,7 +230,7 @@ function ResetPasswordContent() {
                 >
                   Back to Sign In
                 </Link>
-                {!hasSession && (
+                {!hasToken && (
                   <button
                     type="button"
                     onClick={() => {

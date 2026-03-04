@@ -1,9 +1,19 @@
 import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/db';
-import { supabase } from '@/lib/supabase';
 
 export async function DELETE() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return NextResponse.json(
+      { error: 'Authentication service unavailable' },
+      { status: 503 }
+    );
+  }
+
   try {
     const user = await getCurrentUser();
 
@@ -24,15 +34,12 @@ export async function DELETE() {
       // Continue with Supabase deletion even if Prisma deletion fails
     }
 
-    // Delete user from Supabase
-    if (!supabase) {
-      return NextResponse.json(
-        { error: 'Authentication service unavailable' },
-        { status: 503 }
-      );
-    }
+    // Delete user from Supabase using admin client (service role key)
+    const adminClient = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
 
-    const { error: supabaseError } = await supabase.auth.admin.deleteUser(user.id);
+    const { error: supabaseError } = await adminClient.auth.admin.deleteUser(user.id);
 
     if (supabaseError) {
       console.error('Error deleting user from Supabase:', supabaseError);

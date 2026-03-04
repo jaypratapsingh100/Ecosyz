@@ -21,20 +21,19 @@ describe('DeploymentPanel Error Handling', () => {
 
   it('shows toast on download failure', async () => {
     const user = userEvent.setup();
-    
-    (global.fetch as any).mockRejectedValueOnce(
-      new Error('Network error occurred')
-    );
+    const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({}))) // loadDeploymentInfo on mount
+      .mockRejectedValueOnce(new Error('Network error occurred')); // download
 
     render(<DeploymentPanel projectId="test-id" projectName="Test" />);
 
-    // Wait for component to load
     await waitFor(() => {
-      const downloadButton = screen.getByText(/Download ZIP/i);
+      const downloadButton = screen.getByRole('button', { name: /Download ZIP/i });
       expect(downloadButton).toBeInTheDocument();
     });
 
-    const downloadButton = screen.getByText(/Download ZIP/i);
+    const downloadButton = screen.getByRole('button', { name: /Download ZIP/i });
     await user.click(downloadButton);
 
     await waitFor(() => {
@@ -49,19 +48,19 @@ describe('DeploymentPanel Error Handling', () => {
 
   it('shows toast on deployment failure with network error', async () => {
     const user = userEvent.setup();
-    
-    (global.fetch as any).mockRejectedValueOnce(
-      new Error('network fetch failed')
-    );
+    const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({}))) // loadDeploymentInfo on mount
+      .mockRejectedValueOnce(new Error('network fetch failed')); // deploy
 
     render(<DeploymentPanel projectId="test-id" projectName="Test" />);
 
     await waitFor(() => {
-      const deployButton = screen.getByText(/Deploy to Vercel/i);
+      const deployButton = screen.getByRole('button', { name: /Deploy to Vercel/i });
       expect(deployButton).toBeInTheDocument();
     });
 
-    const deployButton = screen.getByText(/Deploy to Vercel/i);
+    const deployButton = screen.getByRole('button', { name: /Deploy to Vercel/i });
     await user.click(deployButton);
 
     await waitFor(() => {
@@ -76,20 +75,23 @@ describe('DeploymentPanel Error Handling', () => {
 
   it('shows toast on deployment API error', async () => {
     const user = userEvent.setup();
-    
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: false,
-      json: async () => ({ error: 'Deployment configuration error' }),
-    });
+    const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({}))) // loadDeploymentInfo on mount
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: 'Deployment configuration error' }), {
+          status: 400,
+        })
+      ); // deploy
 
     render(<DeploymentPanel projectId="test-id" projectName="Test" />);
 
     await waitFor(() => {
-      const deployButton = screen.getByText(/Deploy to Vercel/i);
+      const deployButton = screen.getByRole('button', { name: /Deploy to Vercel/i });
       expect(deployButton).toBeInTheDocument();
     });
 
-    const deployButton = screen.getByText(/Deploy to Vercel/i);
+    const deployButton = screen.getByRole('button', { name: /Deploy to Vercel/i });
     await user.click(deployButton);
 
     await waitFor(() => {

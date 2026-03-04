@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/src/lib/supabase';
 import { z } from 'zod';
 import { cookies } from 'next/headers';
+import { rateLimit, getClientKey } from '@/app/lib/utils/rate-limit';
+import { maskEmail } from '@/app/lib/utils/logger';
 
 const SignInSchema = z.object({
   email: z.string().email(),
@@ -9,6 +11,15 @@ const SignInSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  // Rate limit: 5 requests per minute per IP
+  const clientKey = `signin:${getClientKey(req)}`;
+  if (!rateLimit(clientKey, 5)) {
+    return NextResponse.json(
+      { error: 'Too many login attempts. Please wait a minute and try again.', code: 'RATE_LIMITED' },
+      { status: 429 }
+    );
+  }
+
   // Check if Supabase is configured
   if (!supabase) {
     console.error('Supabase client not initialized. Check NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables.');
@@ -95,7 +106,7 @@ export async function POST(req: NextRequest) {
       console.error('Sign in error:', {
         message: error.message,
         status: error.status,
-        email: email,
+        email: maskEmail(email),
       });
       
       return NextResponse.json(
