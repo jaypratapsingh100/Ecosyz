@@ -62,13 +62,19 @@ export const ANTHROPIC_APP_BUILDER_MODELS = [
   { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
 ] as const;
 
-/** Max output tokens per provider — Claude/OpenAI support higher limits for more complete apps. */
+/**
+ * Max output tokens per provider — tuned per provider's actual limits.
+ * Groq Llama 3.3 70B: supports up to 32K output tokens (was limited to 8K).
+ * OpenRouter DeepSeek Chat v3: max 8K output tokens.
+ * OpenAI GPT-4o: supports up to 16K output tokens.
+ * Anthropic Claude: supports up to 64K, we use 16K for app generation.
+ */
 export function getMaxOutputTokens(provider: AIProvider): number {
   switch (provider) {
     case 'anthropic': return 16384;
     case 'openai': return 16384;
-    case 'groq': return 8192;
-    case 'openrouter': return 8192;
+    case 'groq': return 16384; // Groq supports 32K, 16K is plenty for multi-file apps
+    case 'openrouter': return 8192; // DeepSeek Chat v3 max is 8K
     default: return 8192;
   }
 }
