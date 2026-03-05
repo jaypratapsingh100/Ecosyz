@@ -49,6 +49,7 @@ function AppBuilderPageContent() {
   const [projectToDelete, setProjectToDelete] = useState<{ ids: string[]; title: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [projectFiles, setProjectFiles] = useState<{ id: string; path: string; name: string; content: string; language?: string; isMain?: boolean }[]>([]);
+  const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
   const [selectedFile, setSelectedFile] = useState<{ id: string; path: string; name: string; content: string; language?: string; isMain?: boolean } | null>(null);
 
   const [isMobile, setIsMobile] = useState(false);
@@ -583,6 +584,7 @@ function AppBuilderPageContent() {
                         if (!selectedProjectId) return;
                         const pathToPreserve = selectedFile?.path;
                         setTimeout(() => fetchProjectFiles(selectedProjectId, pathToPreserve), 200);
+                        setPreviewRefreshKey(k => k + 1);
                       }}
                         projectTitle="New Project"
                         projectFramework="react"
@@ -714,6 +716,7 @@ function AppBuilderPageContent() {
                     projectId={selectedProjectId}
                     projectType="web"
                     onRefresh={() => {}}
+                    refreshKey={previewRefreshKey}
                   />
                 </ErrorBoundary>
               ) : (

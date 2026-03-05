@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
 import { getScaffoldFiles, DEFAULT_APP_CONTENT } from '@/app/lib/app-builder/scaffolds';
-import { createAIClient, hasAIClient, getMaxOutputTokens } from '@/lib/ai/provider';
+import { createAIClient, hasAIClient, getMaxOutputTokens, isSlowProvider } from '@/lib/ai/provider';
 import type { AIProvider } from '@/lib/ai/provider';
 import { trackApiRequest } from '@/lib/api-usage';
 import {
@@ -16,8 +16,12 @@ import {
 import { buildFixPrompt, buildRetryPrompt } from '@/lib/app-builder/promptBuilder';
 import { buildPlannerPrompt, parsePlannerResponse } from '@/lib/app-builder/agents/planner';
 import { buildArchitectPrompt, parseArchitectResponse } from '@/lib/app-builder/agents/architect';
-import { buildAppBuilderPrompts } from '@/lib/app-builder/contextBuilder';
+import { buildAppBuilderPrompts, buildFastPathPrompts } from '@/lib/app-builder/contextBuilder';
 import { validateProjectFiles, checkComponentStructureAndStyling } from '../../../../../src/lib/utils/validateJSX';
+import { createSSEStream, sseResponse } from '@/lib/app-builder/sse';
+import { enforceGenerationLimit } from '@/lib/app-builder/usage';
+import { getFallbackRoute, isRetryableError } from '@/lib/app-builder/model-router';
+import { trackGeneration, createGenerationTimer } from '@/lib/app-builder/pipeline/generation-tracker';
 import type { ChatMessage, ChatRequestBody, DatabaseError, QuestionnaireData, ProjectFile } from '@/app/types/app-builder';
 import type { PlannerPlan, ArchitectTaskPlan, AppProjectState } from '@/app/types/app-builder';
 
@@ -274,6 +278,7 @@ export async function POST(
     
     let { message, userProvider, userModel } = body;
     const currentFile = body.currentFile;
+    const useStreaming = body.stream === true;
     
     // Validate message
     if (!message || typeof message !== 'string') {
@@ -292,6 +297,18 @@ export async function POST(
         { error: 'Message is required' },
         { status: 400 }
       );
+    }
+
+    // ============================================
+    // ENFORCE GENERATION LIMITS
+    // ============================================
+    const limitViolation = await enforceGenerationLimit(
+      prismaUser.id,
+      (prismaUser as any).subscriptionPlan ?? null,
+      userProvider ?? undefined
+    );
+    if (limitViolation) {
+      return NextResponse.json(limitViolation.body, { status: limitViolation.status });
     }
 
     // ============================================
@@ -511,70 +528,410 @@ export async function POST(
     }
     
     // Dynamic max output tokens per provider — Claude/OpenAI support higher limits for more complete apps
-    const maxOutputTokens = getMaxOutputTokens(provider as AIProvider);
+    const maxOutputTokens = getMaxOutputTokens(provider as AIProvider, model);
     console.log(`✅ Using ${provider.toUpperCase()}:`, {
       model: model,
       maxNewTokens: maxOutputTokens
     });
-    
+
     const existingFilePaths = project.files?.map((f: { path: string }) => f.path) || [];
     let plan: PlannerPlan | null = null;
     let taskPlan: ArchitectTaskPlan | null = null;
 
-    // Optional: run Planner + Architect for new projects (agentic pipeline)
-    // Use hasScaffoldFiles (captured BEFORE scaffold creation) instead of existingFilePaths
-    // which includes scaffold files we just created and would never be empty.
-    if (!hasScaffoldFiles) {
-      try {
-        const plannerUserPrompt = buildPlannerPrompt(message, questionnaireData);
-        const plannerRes = await client.chat.completions.create({
-          model,
-          messages: [
-            { role: 'system', content: 'You are a product planner. Output valid JSON only: {"name":"","description":"","techstack":"","features":[],"files":[{"path":"","purpose":""}]}' },
-            { role: 'user', content: plannerUserPrompt },
-          ],
-          temperature: 0.4,
-          max_tokens: 1024,
-          stream: false,
-        });
-        const plannerText = plannerRes.choices[0]?.message?.content || '';
-        plan = parsePlannerResponse(plannerText);
-        if (plan && plan.files?.length) {
-          const architectUserPrompt = buildArchitectPrompt(plan, existingFilePaths);
-          const architectRes = await client.chat.completions.create({
+    // ============================================
+    // STREAMING MODE: Return SSE response and run pipeline in background
+    // ============================================
+    if (useStreaming) {
+      const { stream: sseStream, emit, close } = createSSEStream();
+      const slowProvider = isSlowProvider(provider as AIProvider, model);
+
+      // Run pipeline in background (not awaited — response is returned immediately)
+      (async () => {
+        const timer = createGenerationTimer();
+        let activeClient = client;
+        let activeModel = model;
+        let activeProvider = provider;
+        let usedFallback = false;
+
+        try {
+          let promptRes;
+          let streamPlan: PlannerPlan | null = null;
+
+          if (slowProvider) {
+            // ── FAST PATH (OpenRouter/DeepSeek) ──
+            console.log('⚡ [FAST PATH] Skipping Planner/Architect for slow provider:', activeProvider);
+            emit({ type: 'status', data: 'coding' });
+
+            promptRes = buildFastPathPrompts({
+              message,
+              questionnaireData,
+              frameworkForScaffold,
+              useTypeScript,
+              existingFilePaths,
+              hasScaffoldFiles,
+              fileExtension,
+              currentFilePath,
+              projectFiles: project.files as unknown as { path: string; name: string; content: string }[],
+            });
+          } else {
+            // ── FULL PATH (Groq, OpenAI, Claude) ──
+            const SCAFFOLD_PATHS_S = new Set([
+              'index.html', 'src/App.jsx', 'src/App.tsx', 'src/main.jsx', 'src/main.tsx',
+              'src/index.css', 'src/index.js', 'src/index.ts',
+            ]);
+            const hasUserFiles = existingFilePaths.some((p: string) => !SCAFFOLD_PATHS_S.has(p));
+
+            if (!hasUserFiles) {
+              emit({ type: 'status', data: 'planning' });
+              try {
+                const plannerPrompt = buildPlannerPrompt(message, questionnaireData);
+                const planRes = await activeClient.chat.completions.create({
+                  model: activeModel,
+                  messages: [
+                    { role: 'system', content: 'You are a product planner. Output valid JSON only: {"name":"","description":"","techstack":"","features":[],"files":[{"path":"","purpose":""}]}' },
+                    { role: 'user', content: plannerPrompt },
+                  ],
+                  temperature: 0.4,
+                  max_tokens: 1024,
+                  stream: false,
+                });
+                streamPlan = parsePlannerResponse(planRes.choices[0]?.message?.content || '');
+
+                if (streamPlan?.files?.length) {
+                  emit({ type: 'status', data: 'architecting' });
+                  const archPrompt = buildArchitectPrompt(streamPlan, existingFilePaths);
+                  const archRes = await activeClient.chat.completions.create({
+                    model: activeModel,
+                    messages: [
+                      { role: 'system', content: 'You are a software architect. Output valid JSON only: {"implementationSteps":[{"filepath":"","taskDescription":"","priority":"high|medium|low"}]}' },
+                      { role: 'user', content: archPrompt },
+                    ],
+                    temperature: 0.4,
+                    max_tokens: 1024,
+                    stream: false,
+                  });
+                  parseArchitectResponse(archRes.choices[0]?.message?.content || '');
+                }
+              } catch (err) {
+                console.warn('Planner/Architect failed in stream mode:', err);
+              }
+            }
+
+            emit({ type: 'status', data: 'coding' });
+            promptRes = buildAppBuilderPrompts({
+              message,
+              questionnaireData,
+              frameworkForScaffold,
+              useTypeScript,
+              existingFilePaths,
+              hasScaffoldFiles,
+              fileExtension,
+              plan: streamPlan,
+              taskPlan: null,
+              currentFilePath,
+              projectFiles: project.files as unknown as { path: string; name: string; content: string }[],
+            });
+          }
+
+          // ── Stream AI coder response (with fallback on failure) ──
+          const coderTemperature = slowProvider ? 0.3 : 0.5;
+          let fullResponse = '';
+
+          const streamWithProvider = async (aiClient: typeof client, aiModel: string, aiMaxTokens: number) => {
+            const completion = await aiClient.chat.completions.create({
+              model: aiModel,
+              messages: [
+                { role: 'system', content: promptRes.systemPrompt },
+                { role: 'user', content: promptRes.userMessage },
+              ],
+              temperature: coderTemperature,
+              max_tokens: aiMaxTokens,
+              stream: true,
+            });
+            for await (const chunk of completion) {
+              const delta = chunk.choices[0]?.delta?.content || '';
+              if (delta) {
+                fullResponse += delta;
+                emit({ type: 'token', data: delta });
+              }
+            }
+          };
+
+          try {
+            await streamWithProvider(activeClient, activeModel, maxOutputTokens);
+          } catch (primaryErr) {
+            // ── FALLBACK: Try alternative provider on retryable errors ──
+            if (isRetryableError(primaryErr)) {
+              const fallback = getFallbackRoute({
+                provider: activeProvider as AIProvider,
+                model: activeModel,
+                maxTokens: maxOutputTokens,
+                isFast: !slowProvider,
+                timeout: 180_000,
+              });
+              if (fallback) {
+                console.warn(`🔄 [FALLBACK] ${activeProvider}/${activeModel} failed, trying ${fallback.provider}/${fallback.model}`);
+                emit({ type: 'status', data: `fallback-${fallback.provider}` });
+                usedFallback = true;
+                fullResponse = ''; // Reset for fresh attempt
+
+                const fallbackClient = createAIClient({
+                  userProvider: fallback.provider,
+                  userModel: fallback.model,
+                });
+                activeClient = fallbackClient.client;
+                activeModel = fallbackClient.model;
+                activeProvider = fallbackClient.provider;
+
+                trackGeneration({
+                  projectId: id,
+                  userId: prismaUser.id,
+                  provider,
+                  model,
+                  durationMs: timer.elapsed(),
+                  status: 'fallback',
+                  filesCreated: 0,
+                  errorMessage: primaryErr instanceof Error ? primaryErr.message : 'Unknown',
+                  usedFallback: true,
+                  fallbackProvider: fallback.provider,
+                  fallbackModel: fallback.model,
+                });
+
+                await streamWithProvider(activeClient, activeModel, fallback.maxTokens);
+              } else {
+                throw primaryErr; // No fallback available
+              }
+            } else {
+              throw primaryErr; // Not retryable
+            }
+          }
+
+          // ── Parse and create files ──
+          emit({ type: 'status', data: 'creating-files' });
+
+          const agentResult = extractAgentResponse(fullResponse);
+          const filesToCreate = agentResult?.files?.length
+            ? agentResult.files
+            : parseCodeBlocksToFiles(fullResponse);
+
+          const createdPaths: string[] = [];
+          for (const f of filesToCreate) {
+            try {
+              const fName = f.name || f.path.split('/').pop() || f.path;
+              const lang = f.language || (f.path.endsWith('.tsx') ? 'typescript' : f.path.endsWith('.jsx') ? 'javascript' : 'css');
+              await prisma.appFile.upsert({
+                where: { projectId_path: { projectId: id, path: f.path } },
+                update: { content: f.content, language: lang, isMain: f.isMain ?? false, name: fName },
+                create: { projectId: id, path: f.path, name: fName, content: f.content, language: lang, isMain: f.isMain ?? false },
+              });
+              createdPaths.push(f.path);
+              emit({ type: 'file-created', data: { path: f.path, success: true } });
+            } catch (err) {
+              emit({ type: 'file-created', data: { path: f.path, success: false, error: err instanceof Error ? err.message : 'Unknown' } });
+            }
+          }
+
+          // ── Auto-retry (fast providers only) ──
+          if (!slowProvider && !usedFallback) {
+            const jsxCreated = createdPaths.filter(p => p.endsWith('.jsx') || p.endsWith('.tsx'));
+            const planExpected = streamPlan?.files?.length ?? 0;
+
+            if (jsxCreated.length < 3 && planExpected > 3) {
+              emit({ type: 'status', data: 'retrying' });
+              try {
+                const missingFiles = (streamPlan?.files?.map(f => f.path) ?? []).filter(p => !createdPaths.includes(p));
+                const retryPrompt = buildRetryPrompt(
+                  `You only generated ${jsxCreated.length} component file(s) but the plan requires ${planExpected} files. Missing: ${missingFiles.join(', ')}. Generate the REMAINING files now.`,
+                  fileExtension,
+                );
+                let retryResponse = '';
+                const retryStream = await activeClient.chat.completions.create({
+                  model: activeModel,
+                  messages: [
+                    { role: 'system', content: promptRes.systemPrompt },
+                    { role: 'user', content: promptRes.userMessage },
+                    { role: 'assistant', content: fullResponse },
+                    { role: 'user', content: retryPrompt },
+                  ],
+                  temperature: 0.5,
+                  max_tokens: maxOutputTokens,
+                  stream: true,
+                });
+                for await (const chunk of retryStream) {
+                  const delta = chunk.choices[0]?.delta?.content || '';
+                  if (delta) {
+                    retryResponse += delta;
+                    emit({ type: 'token', data: delta });
+                  }
+                }
+
+                const retryResult = extractAgentResponse(retryResponse);
+                const retryFiles = retryResult?.files?.length
+                  ? retryResult.files
+                  : parseCodeBlocksToFiles(retryResponse);
+
+                for (const f of retryFiles) {
+                  try {
+                    const fName = f.name || f.path.split('/').pop() || f.path;
+                    const lang = f.language || (f.path.endsWith('.tsx') ? 'typescript' : f.path.endsWith('.jsx') ? 'javascript' : 'css');
+                    await prisma.appFile.upsert({
+                      where: { projectId_path: { projectId: id, path: f.path } },
+                      update: { content: f.content, language: lang, isMain: f.isMain ?? false, name: fName },
+                      create: { projectId: id, path: f.path, name: fName, content: f.content, language: lang, isMain: f.isMain ?? false },
+                    });
+                    if (!createdPaths.includes(f.path)) createdPaths.push(f.path);
+                    emit({ type: 'file-created', data: { path: f.path, success: true } });
+                  } catch (err) {
+                    emit({ type: 'file-created', data: { path: f.path, success: false, error: err instanceof Error ? err.message : 'Unknown' } });
+                  }
+                }
+                fullResponse += '\n\n' + retryResponse;
+              } catch (retryErr) {
+                console.warn('[STREAM RETRY] Failed:', retryErr);
+              }
+            }
+          }
+
+          // Save chat history
+          try {
+            const existingChat = await prisma.appChat.findFirst({ where: { projectId: id } });
+            const msgs = existingChat ? (existingChat.messages as any[]) : [];
+            msgs.push({ role: 'user', content: message, timestamp: new Date().toISOString() });
+            msgs.push({ role: 'assistant', content: fullResponse, timestamp: new Date().toISOString(), provider: activeProvider, model: activeModel });
+            await prisma.appChat.upsert({
+              where: { id: existingChat?.id || 'temp' },
+              update: { messages: msgs as any, updatedAt: new Date() },
+              create: { projectId: id, messages: msgs as any },
+            });
+          } catch { /* non-critical */ }
+
+          // Update project timestamp
+          if (createdPaths.length > 0) {
+            await prisma.appProject.update({ where: { id }, data: { updatedAt: new Date() } }).catch(() => {});
+          }
+
+          void trackApiRequest(activeProvider, 'llm');
+
+          // ── Track generation metrics ──
+          trackGeneration({
+            projectId: id,
+            userId: prismaUser.id,
+            provider: activeProvider,
+            model: activeModel,
+            durationMs: timer.elapsed(),
+            status: 'completed',
+            filesCreated: createdPaths.length,
+            themePreset: (questionnaireData?.themePreset as string) || (questionnaireData?.designStyle as string) || undefined,
+            usedFallback,
+          });
+
+          emit({
+            type: 'done',
+            data: {
+              filesCreated: createdPaths.map(p => ({ path: p, success: true })),
+              summary: { totalFiles: createdPaths.length, successful: createdPaths.length, provider: activeProvider, model: activeModel },
+              response: fullResponse,
+            },
+          });
+        } catch (err) {
+          trackGeneration({
+            projectId: id,
+            userId: prismaUser.id,
+            provider: activeProvider,
+            model: activeModel,
+            durationMs: timer.elapsed(),
+            status: 'failed',
+            filesCreated: 0,
+            errorMessage: err instanceof Error ? err.message : 'Unknown',
+          });
+          emit({ type: 'error', data: { message: err instanceof Error ? err.message : 'Generation failed' } });
+        } finally {
+          close();
+        }
+      })();
+
+      return sseResponse(sseStream);
+    }
+
+    // ============================================
+    // NON-STREAMING MODE (existing behavior)
+    // ============================================
+
+    const slowProviderNS = isSlowProvider(provider as AIProvider, model);
+    let promptResult;
+
+    if (slowProviderNS) {
+      // ── FAST PATH (OpenRouter/DeepSeek) — skip Planner + Architect ──
+      console.log('⚡ [FAST PATH] Non-streaming: skipping Planner/Architect for slow provider:', provider);
+      promptResult = buildFastPathPrompts({
+        message,
+        questionnaireData,
+        frameworkForScaffold,
+        useTypeScript,
+        existingFilePaths,
+        hasScaffoldFiles,
+        fileExtension,
+        currentFilePath,
+        projectFiles: project.files as unknown as { path: string; name: string; content: string }[],
+      });
+    } else {
+      // ── FULL PATH (Groq, OpenAI, Claude) ──
+      const SCAFFOLD_PATHS = new Set([
+        'index.html', 'src/App.jsx', 'src/App.tsx', 'src/main.jsx', 'src/main.tsx',
+        'src/index.css', 'src/index.js', 'src/index.ts',
+      ]);
+      const hasUserGeneratedFiles = existingFilePaths.some((p: string) => !SCAFFOLD_PATHS.has(p));
+      if (!hasUserGeneratedFiles) {
+        try {
+          const plannerUserPrompt = buildPlannerPrompt(message, questionnaireData);
+          const plannerRes = await client.chat.completions.create({
             model,
             messages: [
-              { role: 'system', content: 'You are a software architect. Output valid JSON only: {"implementationSteps":[{"filepath":"","taskDescription":"","priority":"high|medium|low"}]}' },
-              { role: 'user', content: architectUserPrompt },
+              { role: 'system', content: 'You are a product planner. Output valid JSON only: {"name":"","description":"","techstack":"","features":[],"files":[{"path":"","purpose":""}]}' },
+              { role: 'user', content: plannerUserPrompt },
             ],
             temperature: 0.4,
             max_tokens: 1024,
             stream: false,
           });
-          const architectText = architectRes.choices[0]?.message?.content || '';
-          taskPlan = parseArchitectResponse(architectText);
-        }
-      } catch (agentErr) {
-        if (process.env.NODE_ENV === 'development') {
-          console.warn('Planner/Architect step failed (continuing with direct coder):', agentErr);
+          const plannerText = plannerRes.choices[0]?.message?.content || '';
+          plan = parsePlannerResponse(plannerText);
+          if (plan && plan.files?.length) {
+            const architectUserPrompt = buildArchitectPrompt(plan, existingFilePaths);
+            const architectRes = await client.chat.completions.create({
+              model,
+              messages: [
+                { role: 'system', content: 'You are a software architect. Output valid JSON only: {"implementationSteps":[{"filepath":"","taskDescription":"","priority":"high|medium|low"}]}' },
+                { role: 'user', content: architectUserPrompt },
+              ],
+              temperature: 0.4,
+              max_tokens: 1024,
+              stream: false,
+            });
+            const architectText = architectRes.choices[0]?.message?.content || '';
+            taskPlan = parseArchitectResponse(architectText);
+          }
+        } catch (agentErr) {
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('Planner/Architect step failed (continuing with direct coder):', agentErr);
+          }
         }
       }
-    }
 
-    // Token-optimized system + user prompts with scaffold structure for correct rendering
-    const promptResult = buildAppBuilderPrompts({
-      message,
-      questionnaireData,
-      frameworkForScaffold,
-      useTypeScript,
-      existingFilePaths,
-      hasScaffoldFiles,
-      fileExtension,
-      plan,
-      taskPlan,
-      currentFilePath,
-      projectFiles: project.files as unknown as { path: string; name: string; content: string }[],
-    });
+      promptResult = buildAppBuilderPrompts({
+        message,
+        questionnaireData,
+        frameworkForScaffold,
+        useTypeScript,
+        existingFilePaths,
+        hasScaffoldFiles,
+        fileExtension,
+        plan,
+        taskPlan,
+        currentFilePath,
+        projectFiles: project.files as unknown as { path: string; name: string; content: string }[],
+      });
+    }
 
     const systemPrompt = promptResult.systemPrompt;
     message = promptResult.userMessage;
@@ -1505,9 +1862,9 @@ root.render(
           { role: 'system', content: systemPrompt },
           { role: 'user', content: message },
         ],
-        temperature: 0.5, // Lower for more consistent output across Groq and OpenRouter
+        temperature: slowProviderNS ? 0.3 : 0.5,
         max_tokens: maxOutputTokens,
-        stream: false, // Non-streaming for reliability
+        stream: false,
       });
       
       if (timeoutId) {
@@ -1650,9 +2007,6 @@ root.render(
     try {
       // Agent path: try structured JSON (Lovable/Replit style)
       const agentResponse = extractAgentResponse(response);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:extractAgentResponse',message:'chat agentResponse result',data:{hasAgentResponse:!!agentResponse,fileCount:agentResponse?.files?.length??0,responseLen:response?.length,firstChars:response?.substring(0,150)},timestamp:Date.now(),hypothesisId:'H1,H3'})}).catch(()=>{});
-      // #endregion
       if (agentResponse && agentResponse.files.length > 0) {
         agentProvidedApp = agentResponse.files.some(f =>
           f.path === 'src/App.jsx' || f.path === 'src/App.tsx'
@@ -1674,9 +2028,6 @@ root.render(
             createdFiles.push({ path: f.path, success: false, error: err instanceof Error ? err.message : 'Unknown error' });
           }
         }
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:agentFiles',message:'agent files created',data:{paths:agentResponse.files.map(x=>x.path),successCount:agentResponse.files.length},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
-        // #endregion
       }
 
       // Fallback: regex-based parsing (legacy)
@@ -1685,13 +2036,7 @@ root.render(
           const codeBlockCount = (response.match(/```/g) || []).length / 2;
           console.log(`[FILE] No JSON files - parsing ${response.length} chars, ${codeBlockCount} code blocks`);
         }
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:parseAndCreateFiles',message:'fallback parseAndCreateFiles called',data:{responseLen:response?.length,codeBlockCount:(response.match(/```/g)||[]).length/2},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
-        // #endregion
         createdFiles = await parseAndCreateFiles(response);
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:parseAndCreateFiles',message:'parseAndCreateFiles result',data:{createdCount:createdFiles.length,paths:createdFiles.map(f=>f.path),successCount:createdFiles.filter(f=>f.success).length},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
-        // #endregion
       }
       
       if (createdFiles.length === 0 && codeBlockCount === 0) {
@@ -1707,6 +2052,56 @@ root.render(
         }
       }
       
+      // AUTO-RETRY: If AI returned too few JSX files but plan expected more, retry once
+      const successfulJsxFiles = createdFiles.filter((f: FileCreationResult) =>
+        f.success && (f.path.endsWith('.jsx') || f.path.endsWith('.tsx'))
+      );
+      const planExpectedFiles = plan?.files?.length ?? 0;
+      if (successfulJsxFiles.length < 3 && planExpectedFiles > 3 && client) {
+        console.log(`⚠️ Only ${successfulJsxFiles.length} JSX files created but plan expected ${planExpectedFiles}. Auto-retrying...`);
+        try {
+          const retryMessage = buildRetryPrompt(message, fileExtension);
+          const retryCompletion = await client.chat.completions.create({
+            model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: retryMessage },
+            ],
+            temperature: 0.4,
+            max_tokens: maxOutputTokens,
+            stream: false,
+          });
+          const retryText = retryCompletion.choices[0]?.message?.content || '';
+          const retryAgent = extractAgentResponse(retryText);
+          if (retryAgent && retryAgent.files.length > successfulJsxFiles.length) {
+            console.log(`✅ Retry returned ${retryAgent.files.length} files (up from ${successfulJsxFiles.length})`);
+            for (const f of retryAgent.files) {
+              try {
+                const fName = f.name || f.path.split('/').pop() || f.path;
+                const lang = f.language || (f.path.endsWith('.tsx') ? 'typescript' : f.path.endsWith('.jsx') ? 'javascript' : 'css');
+                await prisma.appFile.upsert({
+                  where: { projectId_path: { projectId: id, path: f.path } },
+                  update: { content: f.content, language: lang, isMain: f.isMain, name: fName },
+                  create: { projectId: id, path: f.path, name: fName, content: f.content, language: lang, isMain: f.isMain },
+                });
+                // Add to createdFiles if not already present
+                if (!createdFiles.some(cf => cf.path === f.path)) {
+                  createdFiles.push({ path: f.path, success: true, validated: true });
+                }
+              } catch (retryErr) {
+                console.error(`  ❌ Retry file ${f.path} failed:`, retryErr);
+              }
+            }
+            // Update agentProvidedApp flag
+            if (retryAgent.files.some(f => f.path === 'src/App.jsx' || f.path === 'src/App.tsx')) {
+              agentProvidedApp = true;
+            }
+          }
+        } catch (retryErr) {
+          console.warn('Auto-retry for insufficient files failed:', retryErr);
+        }
+      }
+
       // AUTO-FIX: If files were created but have validation errors, attempt to fix them
       const filesWithErrors = createdFiles.filter((f: FileCreationResult) => f.success && f.validated === false);
       if (filesWithErrors.length > 0) {

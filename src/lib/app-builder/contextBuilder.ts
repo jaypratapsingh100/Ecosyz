@@ -2,7 +2,8 @@ import type {
   QuestionnaireData,
   ProjectFile,
 } from '@/app/types/app-builder';
-import { buildSystemPrompt, buildUserPrompt } from '@/lib/app-builder/promptBuilder';
+import { buildSystemPrompt, buildUserPrompt, buildCompactSystemPrompt } from '@/lib/app-builder/promptBuilder';
+import { mapDesignStyleToTheme } from '@/lib/app-builder/themePresets';
 
 export interface AppBuilderPromptInput {
   message: string;
@@ -49,12 +50,18 @@ export function buildAppBuilderPrompts(input: AppBuilderPromptInput): AppBuilder
 
   let { message } = input;
 
-  // Base Lovable/Replit-style system prompt
+  // Resolve theme from questionnaire data
+  const themeId = (questionnaireData?.themePreset as string) || undefined;
+  const designStyle = (questionnaireData?.designStyle as string) || undefined;
+
+  // Base Lovable/Replit-style system prompt with theme injection
   let systemPrompt = buildSystemPrompt({
     framework: frameworkForScaffold,
     language: useTypeScript ? 'typescript' : 'javascript',
     fileCount: existingFilePaths.length,
     filePaths: existingFilePaths,
+    themeId,
+    designStyle,
   });
 
   // When project has scaffold files, add explicit entry/file list so LLM aligns output with preview
@@ -172,5 +179,93 @@ export function buildScaffoldContext(framework: string): string {
 - Framework: ${entryHint}
 - Entry: src/App.(jsx|tsx)
 - Files: package.json, vite.config.js, index.html, src/main.(jsx|tsx), src/App.(jsx|tsx), src/index.css, src/components/*`;
+}
+
+/**
+ * Fast-path prompt builder for slow providers (OpenRouter/DeepSeek).
+ * Skips Planner + Architect steps — uses a compact system prompt with inline planning.
+ * Produces ~60% fewer input tokens for significantly faster generation.
+ */
+export function buildFastPathPrompts(input: Omit<AppBuilderPromptInput, 'plan' | 'taskPlan'>): AppBuilderPromptOutput {
+  const {
+    frameworkForScaffold,
+    useTypeScript,
+    existingFilePaths,
+    hasScaffoldFiles,
+    fileExtension,
+    questionnaireData,
+    currentFilePath,
+  } = input;
+
+  let { message } = input;
+
+  // Resolve theme for compact prompt
+  const themeId = (questionnaireData?.themePreset as string) || undefined;
+  const designStyle = (questionnaireData?.designStyle as string) || undefined;
+
+  // Compact system prompt with theme injection
+  const systemPrompt = buildCompactSystemPrompt({
+    framework: frameworkForScaffold,
+    language: useTypeScript ? 'typescript' : 'javascript',
+    filePaths: existingFilePaths,
+    themeId,
+    designStyle,
+  });
+
+  // Streamlined user prompt — no separate plan/taskPlan sections
+  let userMessage = message.trim();
+
+  // Add minimal questionnaire context
+  if (questionnaireData && typeof questionnaireData === 'object') {
+    const q = questionnaireData;
+    const parts: string[] = [];
+    if (q.appType) parts.push(`Type: ${q.appType}`);
+    if (q.projectGoal) parts.push(`Goal: ${q.projectGoal}`);
+    if (q.designStyle) parts.push(`Style: ${q.designStyle}`);
+    if (q.brandName) parts.push(`Brand: ${q.brandName}`);
+    if (Array.isArray(q.requiredFeatures) && q.requiredFeatures.length > 0) {
+      parts.push(`Features: ${(q.requiredFeatures as string[]).slice(0, 5).join(', ')}`);
+    }
+    if (parts.length > 0) {
+      userMessage = `[${parts.join(' | ')}]\n\n${userMessage}`;
+    }
+  }
+
+  if (hasScaffoldFiles && existingFilePaths.length > 0) {
+    userMessage += `\nExtend existing files. Main entry: src/App.${fileExtension}.`;
+  }
+
+  // Include current file context for editing (compact version)
+  if (currentFilePath) {
+    const file = input.projectFiles.find((f) =>
+      f.path === currentFilePath || f.path.endsWith(`/${currentFilePath}`) || f.name === currentFilePath
+    );
+    if (file && file.content.length < 4000) {
+      userMessage += `\n\nCurrent file (${file.path}):\n${file.content}`;
+    }
+  }
+
+  userMessage += `\n\nReturn ALL files as JSON. Include App + every component it imports as separate files.`;
+
+  const approxSystemTokens = Math.ceil(systemPrompt.length / 4);
+  const approxUserTokens = Math.ceil(userMessage.length / 4);
+
+  console.log('⚡ Fast-path prompts (OpenRouter):', {
+    systemTokens: approxSystemTokens,
+    userTokens: approxUserTokens,
+    total: approxSystemTokens + approxUserTokens,
+  });
+
+  return {
+    systemPrompt,
+    userMessage,
+    approxTokens: {
+      system: approxSystemTokens,
+      user: approxUserTokens,
+      total: approxSystemTokens + approxUserTokens,
+      maxContextHint: '128K (DeepSeek V3)',
+      maxNewTokensHint: '8K (fast mode)',
+    },
+  };
 }
 

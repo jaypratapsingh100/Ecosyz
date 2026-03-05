@@ -5,6 +5,7 @@
  */
 
 import { SCAFFOLD_STYLES, PREVIEW_BASE_CSS } from './scaffolds';
+import { stripForBrowser, sortComponentsByDependency } from './strip-for-browser';
 
 export interface ProjectFileLike {
   path: string;
@@ -202,46 +203,7 @@ export function buildDeployableHtml(
           f.path !== mainJsFile.path &&
           !f.path.match(/^src\/main\.(jsx|tsx)$/)
       );
-      const stripForBrowser = (code: string) => {
-        let c = (code || '')
-          .replace(/export\s+default\s+/g, '')
-          .replace(/export\s+(?:const|let|var|function|class)\s+/g, (m) => m.replace(/^export\s+/, ''))
-          .replace(/import\s+[\s\S]*?from\s+['"][^'"]*['"]\s*;?\s*/g, '')
-          .replace(/(?:const|let|var)\s+\w+\s*=\s*require\s*\(\s*['"][^'"]*['"]\s*\)\s*;?\s*/g, '') // Remove require() assignments
-          .replace(/require\s*\(\s*['"][^'"]*['"]\s*\)\s*;?\s*/g, '') // Remove standalone require() calls
-          .replace(/<\/script>/gi, '<\\/script>')
-          .replace(/\$\{/g, '\\${');
-        if (
-          (c.includes('useState(') || c.includes('useEffect(')) &&
-          !c.includes('React.useState') &&
-          !c.includes('const { useState')
-        ) {
-          c =
-            'const { useState, useEffect, useCallback, useMemo } = React;\n' + c;
-        }
-        return c.trim();
-      };
-      const sortedComponents = [...componentFiles].sort((a, b) => {
-        const aContent = a.content || '';
-        const bName =
-          (b.path || '').split('/').pop()?.replace(/\.[^.]+$/, '') || '';
-        if (
-          aContent.includes(bName) ||
-          aContent.includes(`/${bName}'`) ||
-          aContent.includes(`/${bName}"`)
-        )
-          return 1;
-        const bContent = b.content || '';
-        const aName =
-          (a.path || '').split('/').pop()?.replace(/\.[^.]+$/, '') || '';
-        if (
-          bContent.includes(aName) ||
-          bContent.includes(`/${aName}'`) ||
-          bContent.includes(`/${aName}"`)
-        )
-          return -1;
-        return (a.path || '').localeCompare(b.path || '');
-      });
+      const sortedComponents = sortComponentsByDependency(componentFiles);
       const componentScripts = sortedComponents
         .map(
           (f) =>

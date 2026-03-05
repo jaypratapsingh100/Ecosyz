@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
 import { DEFAULT_APP_CONTENT, SCAFFOLD_STYLES, PREVIEW_BASE_CSS } from '@/app/lib/app-builder/scaffolds';
+import { stripForBrowser, sortComponentsByDependency } from '@/app/lib/app-builder/strip-for-browser';
 
 export async function POST(
   req: NextRequest,
@@ -128,13 +129,33 @@ export async function POST(
 
     // Google Fonts (Inter) for modern typography in generated apps
     const googleFonts = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">`;
-    // Tailwind CSS via CDN so utility classNames (flex, items-center, gap-4, etc.) render in preview
+    // Tailwind CSS via CDN with extended config for production-grade output
     const tailwindCdn = `<script src="https://cdn.tailwindcss.com"></script>
-    <script>tailwind.config = { theme: { extend: { fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] } } } }</script>`;
+    <script>tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+          colors: { gray: { 950: '#030712' } },
+          animation: {
+            'fade-in': 'fadeIn 0.5s ease-out',
+            'slide-up': 'slideUp 0.5s ease-out',
+          },
+          keyframes: {
+            fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
+            slideUp: { '0%': { opacity: '0', transform: 'translateY(10px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } },
+          },
+        },
+      },
+    }</script>`;
+    // Global styles for polished preview rendering
+    const previewStyles = `<style id="preview-globals">
+      html { scroll-behavior: smooth; }
+      body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
+    </style>`;
     if (html.includes('</head>')) {
-      html = html.replace('</head>', `${googleFonts}\n${tailwindCdn}\n</head>`);
+      html = html.replace('</head>', `${googleFonts}\n${tailwindCdn}\n${previewStyles}\n</head>`);
     } else {
-      html = googleFonts + tailwindCdn + html;
+      html = googleFonts + tailwindCdn + previewStyles + html;
     }
 
     // Standardize preview: inject base CSS for all projects so user always sees a styled app
@@ -217,37 +238,8 @@ export async function POST(
             f.path !== mainJsFile.path &&
             !f.path.match(/^src\/main\.(jsx|tsx)$/) // Exclude entry - we inject App directly
         );
-        const stripForBrowser = (code: string) => {
-          let c = (code || '')
-            .replace(/export\s+default\s+/g, '')
-            .replace(/export\s+(?:const|let|var|function|class)\s+/g, (m) => m.replace(/^export\s+/, ''))
-            .replace(/import\s+[\s\S]*?from\s+['"][^'"]*['"]\s*;?\s*/g, '') // Remove ES6 imports
-            .replace(/(?:const|let|var)\s+\w+\s*=\s*require\s*\(\s*['"][^'"]*['"]\s*\)\s*;?\s*/g, '') // Remove require() assignments
-            .replace(/require\s*\(\s*['"][^'"]*['"]\s*\)\s*;?\s*/g, '') // Remove standalone require() calls
-            .replace(/<\/script>/gi, '<\\/script>');
-          // Inject all common React hooks and utilities so generated components work in preview
-          const usesReactApi = /use(State|Effect|Ref|Context|Reducer|Callback|Memo|Id|LayoutEffect|DeferredValue|Transition)\s*\(/.test(c)
-            || /\b(memo|forwardRef|createContext|Fragment|Children|cloneElement|lazy|Suspense|createPortal)\b/.test(c);
-          if (usesReactApi && !c.includes('React.useState') && !c.includes('const { useState')) {
-            c = [
-              'const { useState, useEffect, useRef, useContext, useReducer, useCallback, useMemo,',
-              '  useId, useLayoutEffect, useDeferredValue, useTransition,',
-              '  memo, forwardRef, createContext, Fragment, Children, cloneElement, lazy, Suspense } = React;',
-              'const { createPortal } = ReactDOM;',
-            ].join('\n') + '\n' + c;
-          }
-          return c.trim();
-        };
         // Sort: dependencies first (TodoItem before TodoList, etc.)
-        const sortedComponents = [...componentFiles].sort((a, b) => {
-          const aContent = (a.content || '');
-          const bName = (b.path || '').split('/').pop()?.replace(/\.[^.]+$/, '') || '';
-          if (aContent.includes(bName) || aContent.includes(`/${bName}'`) || aContent.includes(`/${bName}"`)) return 1;
-          const bContent = (b.content || '');
-          const aName = (a.path || '').split('/').pop()?.replace(/\.[^.]+$/, '') || '';
-          if (bContent.includes(aName) || bContent.includes(`/${aName}'`) || bContent.includes(`/${aName}"`)) return -1;
-          return (a.path || '').localeCompare(b.path || '');
-        });
+        const sortedComponents = sortComponentsByDependency(componentFiles);
         const componentScripts = sortedComponents.map((f: { path: string; content: string }) => {
           const c = stripForBrowser(f.content);
           return `<script type="text/babel">\n${c}\n</script>`;

@@ -3,7 +3,7 @@
  *
  * Supported providers:
  * - Groq (default): Llama 3.3 — GROQ_API_KEY
- * - OpenRouter: DeepSeek Chat, DeepSeek Coder — OPENROUTER_API_KEY
+ * - OpenRouter: Gemini Flash/Pro, DeepSeek, Qwen Coder, Llama, etc. — OPENROUTER_API_KEY
  * - OpenAI: GPT-4o, GPT-4o Mini — OPENAI_API_KEY
  * - Anthropic (Claude): Claude Sonnet 4, Claude Haiku 4.5 — ANTHROPIC_API_KEY
  *
@@ -33,16 +33,29 @@ const OPENAI_BASE = 'https://api.openai.com/v1';
 const ANTHROPIC_BASE = 'https://api.anthropic.com/v1';
 
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
-const OPENROUTER_MODEL_CHAT = 'deepseek/deepseek-chat-v3-0324';
-const OPENROUTER_MODEL_CODER = 'deepseek/deepseek-coder';
+const OPENROUTER_DEFAULT_MODEL = 'google/gemini-2.5-flash';
 const OPENAI_MODEL = 'gpt-4o';
 const ANTHROPIC_MODEL = 'claude-sonnet-4-20250514';
 
-/** Allowed OpenRouter model IDs for app builder (user can select). */
+/**
+ * Allowed OpenRouter model IDs for app builder (user can select).
+ * Ordered by recommendation: fastest + best output first.
+ */
 export const OPENROUTER_APP_BUILDER_MODELS = [
-  { id: 'deepseek/deepseek-chat-v3-0324', label: 'DeepSeek Chat v3' },
-  { id: OPENROUTER_MODEL_CODER, label: 'DeepSeek Coder v2' },
-  { id: 'deepseek/deepseek-coder-v1.5-16b', label: 'DeepSeek Coder 1.5 16B' },
+  // Fast & high output — recommended
+  { id: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash (Recommended)' },
+  { id: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+  // DeepSeek — capable but slower via proxy
+  { id: 'deepseek/deepseek-chat', label: 'DeepSeek V3' },
+  { id: 'deepseek/deepseek-coder', label: 'DeepSeek Coder' },
+  // Code-specialist
+  { id: 'qwen/qwen-2.5-coder-32b-instruct', label: 'Qwen 2.5 Coder 32B' },
+  // General-purpose
+  { id: 'meta-llama/llama-3.3-70b-instruct', label: 'Llama 3.3 70B' },
+  { id: 'mistralai/mistral-large', label: 'Mistral Large' },
+  // Claude & GPT via OpenRouter (if user has no direct keys)
+  { id: 'anthropic/claude-sonnet-4', label: 'Claude Sonnet 4 (via OR)' },
+  { id: 'openai/gpt-4o', label: 'GPT-4o (via OR)' },
 ] as const;
 
 /** Allowed Groq model IDs (for display; server uses env or default). */
@@ -63,20 +76,50 @@ export const ANTHROPIC_APP_BUILDER_MODELS = [
 ] as const;
 
 /**
- * Max output tokens per provider — tuned per provider's actual limits.
- * Groq Llama 3.3 70B: supports up to 32K output tokens (was limited to 8K).
- * OpenRouter DeepSeek Chat v3: max 8K output tokens.
- * OpenAI GPT-4o: supports up to 16K output tokens.
- * Anthropic Claude: supports up to 64K, we use 16K for app generation.
+ * Max output tokens — model-aware for OpenRouter, fixed for direct providers.
+ * Gemini Flash/Pro: 65K max — we use 16K for app generation.
+ * DeepSeek via proxy: 8K to keep responses fast.
+ * Qwen Coder: 8K limit.
+ * Llama/Mistral/Claude/GPT via OR: 16K.
  */
-export function getMaxOutputTokens(provider: AIProvider): number {
+export function getMaxOutputTokens(provider: AIProvider, model?: string): number {
+  if (provider === 'openrouter' && model) {
+    // Gemini models — fast with high output limits
+    if (model.startsWith('google/gemini')) return 16384;
+    // Claude/GPT via OpenRouter
+    if (model.startsWith('anthropic/') || model.startsWith('openai/')) return 16384;
+    // Llama, Mistral — 16K output
+    if (model.startsWith('meta-llama/') || model.startsWith('mistralai/')) return 16384;
+    // DeepSeek — keep lower for speed through proxy
+    if (model.startsWith('deepseek/')) return 8192;
+    // Qwen Coder — 8K max
+    if (model.startsWith('qwen/')) return 8192;
+    return 8192;
+  }
   switch (provider) {
     case 'anthropic': return 16384;
     case 'openai': return 16384;
-    case 'groq': return 16384; // Groq supports 32K, 16K is plenty for multi-file apps
-    case 'openrouter': return 8192; // DeepSeek Chat v3 max is 8K
+    case 'groq': return 16384;
+    case 'openrouter': return 8192;
     default: return 8192;
   }
+}
+
+/**
+ * Check if a model is slow (needs fast-path: skip planner/architect, use compact prompt).
+ * DeepSeek via OpenRouter proxy is slow. Gemini, Llama, Claude via OR are fast.
+ */
+export function isSlowProvider(provider: AIProvider, model?: string): boolean {
+  if (provider !== 'openrouter') return false;
+  if (!model) return true; // default cautious
+  // These are fast even via OpenRouter
+  if (model.startsWith('google/gemini')) return false;
+  if (model.startsWith('anthropic/')) return false;
+  if (model.startsWith('openai/')) return false;
+  if (model.startsWith('meta-llama/')) return false;
+  if (model.startsWith('mistralai/')) return false;
+  // DeepSeek and Qwen via proxy are slow
+  return true;
 }
 
 /**
@@ -132,12 +175,12 @@ export function createAIClient(options?: AIClientOptions): AIClientConfig {
     };
   }
 
-  // OpenRouter
+  // OpenRouter — 3 min timeout to prevent indefinite waits
   if (wantProvider === 'openrouter' && openRouterKey) {
     const model =
       options?.userModel && OPENROUTER_APP_BUILDER_MODELS.some((m) => m.id === options.userModel)
         ? options.userModel
-        : process.env.OPENROUTER_MODEL || OPENROUTER_MODEL_CHAT;
+        : process.env.OPENROUTER_MODEL || OPENROUTER_DEFAULT_MODEL;
     return {
       provider: 'openrouter',
       model,
@@ -145,6 +188,7 @@ export function createAIClient(options?: AIClientOptions): AIClientConfig {
       client: new OpenAI({
         baseURL: OPENROUTER_BASE,
         apiKey: openRouterKey,
+        timeout: 180_000, // 3 min — prevents 10+ min hangs
       }),
     };
   }
@@ -195,9 +239,9 @@ export function createAIClient(options?: AIClientOptions): AIClientConfig {
   if (openRouterKey) {
     return {
       provider: 'openrouter',
-      model: process.env.OPENROUTER_MODEL || OPENROUTER_MODEL_CHAT,
+      model: process.env.OPENROUTER_MODEL || OPENROUTER_DEFAULT_MODEL,
       baseURL: OPENROUTER_BASE,
-      client: new OpenAI({ baseURL: OPENROUTER_BASE, apiKey: openRouterKey }),
+      client: new OpenAI({ baseURL: OPENROUTER_BASE, apiKey: openRouterKey, timeout: 180_000 }),
     };
   }
 
