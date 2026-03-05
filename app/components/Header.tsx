@@ -282,7 +282,7 @@ export default function Header() {
             {/* Mobile auth CTA - visible next to hamburger on small screens */}
             {!isAuthenticated && pathname !== '/auth' && (
               <Link
-                href="/auth"
+                href={`/auth?redirect=${encodeURIComponent(pathname)}`}
                 className="md:hidden mr-1 flex items-center justify-center w-9 h-9 rounded-full bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-400/60"
                 aria-label="Sign up or sign in"
               >
@@ -423,7 +423,7 @@ export default function Header() {
               ) : (
                 pathname !== '/auth' && (
                   <Link
-                    href="/auth"
+                    href={`/auth?redirect=${encodeURIComponent(pathname)}`}
                     className="focus:outline-none focus:ring-2 focus:ring-emerald-400/60 px-3 md:px-4 py-1.5 md:py-2 bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 font-semibold rounded-lg hover:shadow-lg transition-all text-sm md:text-base whitespace-nowrap"
                   >
                     Sign In
@@ -580,7 +580,7 @@ export default function Header() {
           ) : (
             !(pathname === '/auth' || (pathname === '/studio' && !isAuthenticated)) && (
               <Link
-                href="/auth"
+                href={`/auth?redirect=${encodeURIComponent(pathname)}`}
                 className="w-full flex items-center justify-center gap-2 p-3 rounded focus:outline-none focus:ring-2 focus:ring-emerald-400/60 bg-gradient-to-r from-emerald-400 to-cyan-400 text-gray-900 font-semibold"
                 onClick={() => setMobileOpen(false)}
                 tabIndex={mobileOpen ? 0 : -1}

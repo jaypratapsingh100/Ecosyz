@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { getCurrentUser } from '@/src/lib/auth/server/get-current-user';
+
+// Anonymous chat rate limiting
+const ANON_CHAT_LIMIT = 3;
+const ANON_CHAT_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
+const anonChatCounts = new Map<string, { count: number; ts: number }>();
 
 // Provider configuration
 type Provider = 'openai' | 'groq' | 'together' | 'huggingface' | 'azure-deepseek' | 'openrouter';
@@ -202,6 +208,36 @@ export async function POST(request: NextRequest) {
         { error: 'Message is required' },
         { status: 400 }
       );
+    }
+
+    // Rate limit anonymous users to 3 chat messages per 24h
+    const user = await getCurrentUser();
+    if (!user) {
+      const sessionId = request.cookies.get('anon_session')?.value || 'unknown';
+      const now = Date.now();
+      const entry = anonChatCounts.get(sessionId);
+      if (entry && now - entry.ts < ANON_CHAT_WINDOW_MS) {
+        if (entry.count >= ANON_CHAT_LIMIT) {
+          return NextResponse.json(
+            {
+              error: 'Chat limit reached',
+              code: 'AUTH_REQUIRED',
+              message: `You've used your ${ANON_CHAT_LIMIT} free chat messages. Sign in to continue chatting.`,
+              limit: ANON_CHAT_LIMIT,
+            },
+            { status: 429 }
+          );
+        }
+        entry.count++;
+      } else {
+        anonChatCounts.set(sessionId, { count: 1, ts: now });
+      }
+      // Cleanup stale entries
+      if (anonChatCounts.size > 10000) {
+        for (const [key, val] of anonChatCounts) {
+          if (now - val.ts > ANON_CHAT_WINDOW_MS) anonChatCounts.delete(key);
+        }
+      }
     }
 
     // Open Resources chat: Groq only — use Groq default model (ignore stored OpenRouter/DeepSeek model)

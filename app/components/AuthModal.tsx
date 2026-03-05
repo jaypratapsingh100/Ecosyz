@@ -17,7 +17,11 @@ const signInSchema = z.object({
 const signUpSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   email: z.string().email('Please enter a valid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  password: z.string()
+    .min(8, 'Password must be at least 8 characters')
+    .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+    .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
+    .regex(/[0-9]/, 'Password must contain at least one number'),
 });
 
 type SignInForm = z.infer<typeof signInSchema>;
@@ -175,10 +179,12 @@ export default function AuthModal({ isOpen, onClose, onSuccess, title = "Sign In
         // Provide specific descriptions based on error type
         if (errorMessage.includes('already exists') || errorMessage.includes('already registered')) {
           description = 'An account with this email already exists. Please sign in instead.';
-        } else if (errorMessage.includes('password') && errorMessage.includes('short')) {
-          description = 'Password must be at least 6 characters long.';
+        } else if (errorMessage.includes('password')) {
+          description = 'Password must be at least 8 characters with an uppercase letter, lowercase letter, and number.';
         } else if (errorMessage.includes('email') && errorMessage.includes('invalid')) {
           description = 'Please enter a valid email address.';
+        } else if (errorMessage.includes('Invalid input')) {
+          description = result?.details || 'Please check all fields. Password must be at least 8 characters with an uppercase letter, lowercase letter, and number.';
         } else if (errorMessage.includes('network') || errorMessage.includes('connection')) {
           description = 'Unable to connect to the server. Please check your internet connection.';
         }

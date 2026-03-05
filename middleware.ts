@@ -3,8 +3,24 @@ import { NextRequest, NextResponse } from 'next/server';
 // Name of the anonymous session cookie
 const SESSION_COOKIE = 'anon_session';
 
+// Supabase access token cookie (presence = likely authenticated)
+const AUTH_COOKIE = 'sb-access-token';
+
 // 180 days in seconds
 const MAX_AGE = 60 * 60 * 24 * 180;
+
+// Routes that require authentication (checked via cookie existence)
+const PROTECTED_ROUTES = [
+  '/studio',
+  '/workspaces',
+  '/profile',
+  '/problems-and-ideas',
+  '/chat',
+  '/ai-news/saved',
+];
+
+// Test/debug pages that should not be accessible in production
+const DEV_ONLY_ROUTES = ['/auth-test', '/test-oauth'];
 
 function isAsset(pathname: string) {
   // Skip static assets and Next internals
@@ -49,6 +65,30 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  // Block dev-only routes in production
+  if (process.env.NODE_ENV === 'production') {
+    if (DEV_ONLY_ROUTES.some((r) => pathname === r || pathname.startsWith(r + '/'))) {
+      return NextResponse.redirect(new URL('/', req.url));
+    }
+  }
+
+  // Redirect unauthenticated users away from protected routes
+  const needsAuth = PROTECTED_ROUTES.some(
+    (route) => pathname === route || pathname.startsWith(route + '/')
+  );
+
+  if (needsAuth) {
+    const hasToken = req.cookies.get(AUTH_COOKIE)?.value;
+    if (!hasToken) {
+      const authUrl = new URL('/auth', req.url);
+      // Preserve the full path + query so we can redirect back after login
+      const returnTo = pathname + (req.nextUrl.search || '');
+      authUrl.searchParams.set('redirect', returnTo);
+      return NextResponse.redirect(authUrl);
+    }
+  }
+
+  // Anonymous session cookie (unchanged)
   const res = NextResponse.next();
   const existing = req.cookies.get(SESSION_COOKIE)?.value;
 

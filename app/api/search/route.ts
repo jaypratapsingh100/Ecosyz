@@ -20,6 +20,11 @@ import { getCurrentUser } from '../../../src/lib/auth';
 import { prisma } from '../../../src/lib/db';
 import { trackApiRequest } from '../../../src/lib/api-usage';
 
+// Anonymous search limit: 5 searches per session before login required
+const ANON_SEARCH_LIMIT = 5;
+const anonSearchCounts = new Map<string, { count: number; ts: number }>();
+const ANON_WINDOW_MS = 24 * 60 * 60 * 1000; // 24-hour window
+
 interface SearchCoverage {
   requestedProviders: string[];
   receivedCounts: Record<string, number>;
@@ -149,6 +154,38 @@ export async function GET(req: NextRequest) {
   const debug = searchParams.get('debug') === '1';
   if (!q) return NextResponse.json({ error: 'Missing q' }, { status: 400 });
 
+  // Enforce search limit for anonymous users
+  const user = await getCurrentUser();
+  if (!user) {
+    const sessionId = req.cookies.get('anon_session')?.value || 'unknown';
+    const entry = anonSearchCounts.get(sessionId);
+    const now = Date.now();
+
+    if (entry && now - entry.ts < ANON_WINDOW_MS) {
+      if (entry.count >= ANON_SEARCH_LIMIT) {
+        return NextResponse.json(
+          {
+            error: 'Search limit reached',
+            code: 'AUTH_REQUIRED',
+            message: `You've used your ${ANON_SEARCH_LIMIT} free searches. Sign in to continue searching.`,
+            limit: ANON_SEARCH_LIMIT,
+          },
+          { status: 429 }
+        );
+      }
+      entry.count++;
+    } else {
+      anonSearchCounts.set(sessionId, { count: 1, ts: now });
+    }
+
+    // Cleanup stale entries periodically
+    if (anonSearchCounts.size > 10000) {
+      for (const [key, val] of anonSearchCounts) {
+        if (now - val.ts > ANON_WINDOW_MS) anonSearchCounts.delete(key);
+      }
+    }
+  }
+
   // Pagination params must be part of the cache key
   const page = parseInt(searchParams.get('page') || '1', 10);
   const limit = parseInt(searchParams.get('limit') || '30', 10);
@@ -236,7 +273,6 @@ export async function GET(req: NextRequest) {
   
   // Track search (non-blocking, don't wait for it)
   try {
-    const user = await getCurrentUser();
     const providers = providerFns.map(p => p.name);
     
     // Track search asynchronously - don't block the response

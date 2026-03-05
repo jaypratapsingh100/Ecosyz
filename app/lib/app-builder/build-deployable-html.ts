@@ -205,7 +205,10 @@ export function buildDeployableHtml(
       const stripForBrowser = (code: string) => {
         let c = (code || '')
           .replace(/export\s+default\s+/g, '')
+          .replace(/export\s+(?:const|let|var|function|class)\s+/g, (m) => m.replace(/^export\s+/, ''))
           .replace(/import\s+[\s\S]*?from\s+['"][^'"]*['"]\s*;?\s*/g, '')
+          .replace(/(?:const|let|var)\s+\w+\s*=\s*require\s*\(\s*['"][^'"]*['"]\s*\)\s*;?\s*/g, '') // Remove require() assignments
+          .replace(/require\s*\(\s*['"][^'"]*['"]\s*\)\s*;?\s*/g, '') // Remove standalone require() calls
           .replace(/<\/script>/gi, '<\\/script>')
           .replace(/\$\{/g, '\\${');
         if (
@@ -286,7 +289,10 @@ export function buildDeployableHtml(
 
       let appContent = mainJsFile.content
         .replace(/export\s+default\s+/g, '')
-        .replace(/import\s+[\s\S]*?from\s+['"][^'"]*['"]\s*;?\s*/g, '');
+        .replace(/export\s+(?:const|let|var|function|class)\s+/g, (m) => m.replace(/^export\s+/, ''))
+        .replace(/import\s+[\s\S]*?from\s+['"][^'"]*['"]\s*;?\s*/g, '')
+        .replace(/(?:const|let|var)\s+\w+\s*=\s*require\s*\(\s*['"][^'"]*['"]\s*\)\s*;?\s*/g, '')
+        .replace(/require\s*\(\s*['"][^'"]*['"]\s*\)\s*;?\s*/g, '');
       appContent = appContent.trim();
       if (
         (appContent.includes('useState(') || appContent.includes('useEffect(')) &&

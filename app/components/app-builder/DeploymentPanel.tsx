@@ -25,7 +25,7 @@ export default function DeploymentPanel({ projectId, projectName, onAuthRequired
       duration: 6000,
       action: {
         label: 'Sign In',
-        onClick: () => router.push('/auth'),
+        onClick: () => router.push('/auth?redirect=%2Fstudio'),
       },
     });
   };

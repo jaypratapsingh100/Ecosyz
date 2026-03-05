@@ -9,7 +9,7 @@ export default async function WorkspacesPage() {
   const supabaseUser = await getCurrentUser();
   
   if (!supabaseUser) {
-    redirect('/auth');
+    redirect('/auth?redirect=%2Fworkspaces');
   }
 
   // Ensure user exists in database
@@ -21,7 +21,7 @@ export default async function WorkspacesPage() {
   });
 
   if (!prismaUser) {
-    redirect('/auth');
+    redirect('/auth?redirect=%2Fworkspaces');
   }
 
   // Get user's workspace (should be exactly one after ensureUserInDb consolidation)
@@ -33,7 +33,7 @@ export default async function WorkspacesPage() {
   let workspace;
   if (workspaces.length === 0) {
     // This shouldn't happen due to ensureUserWorkspace, but handle it gracefully
-    redirect('/auth');
+    redirect('/auth?redirect=%2Fworkspaces');
   } else {
     // Use the primary workspace (oldest one)
     // If multiple exist, consolidation will happen on next ensureUserInDb call

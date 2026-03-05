@@ -9,10 +9,10 @@ vi.mock('@/lib/auth/utils', () => ({
   initiateOAuth: (...args: any[]) => mockInitiateOAuth(...args),
 }));
 
-function buildRequest(provider: string) {
-  return new NextRequest(`http://localhost:3000/api/auth/oauth/${provider}`, {
-    method: 'GET',
-  });
+function buildRequest(provider: string, redirect?: string) {
+  const url = new URL(`http://localhost:3000/api/auth/oauth/${provider}`);
+  if (redirect) url.searchParams.set('redirect', redirect);
+  return new NextRequest(url, { method: 'GET' });
 }
 
 describe('GET /api/auth/oauth/[provider]', () => {
@@ -35,7 +35,7 @@ describe('GET /api/auth/oauth/[provider]', () => {
     expect(json.supportedProviders).toContain('github');
   });
 
-  it('initiates OAuth for google', async () => {
+  it('initiates OAuth for google without redirect', async () => {
     mockInitiateOAuth.mockResolvedValue(
       new Response(null, { status: 302, headers: { Location: 'https://accounts.google.com' } })
     );
@@ -43,11 +43,11 @@ describe('GET /api/auth/oauth/[provider]', () => {
     const res = await GET(buildRequest('google'), {
       params: Promise.resolve({ provider: 'google' }),
     });
-    expect(mockInitiateOAuth).toHaveBeenCalledWith(expect.anything(), 'google');
+    expect(mockInitiateOAuth).toHaveBeenCalledWith(expect.anything(), 'google', undefined);
     expect(res.status).toBe(302);
   });
 
-  it('initiates OAuth for github', async () => {
+  it('initiates OAuth for github without redirect', async () => {
     mockInitiateOAuth.mockResolvedValue(
       new Response(null, { status: 302, headers: { Location: 'https://github.com/login/oauth' } })
     );
@@ -55,7 +55,36 @@ describe('GET /api/auth/oauth/[provider]', () => {
     const res = await GET(buildRequest('github'), {
       params: Promise.resolve({ provider: 'github' }),
     });
-    expect(mockInitiateOAuth).toHaveBeenCalledWith(expect.anything(), 'github');
+    expect(mockInitiateOAuth).toHaveBeenCalledWith(expect.anything(), 'github', undefined);
     expect(res.status).toBe(302);
+  });
+
+  it('passes redirect param through to callback URL', async () => {
+    mockInitiateOAuth.mockResolvedValue(
+      new Response(null, { status: 302, headers: { Location: 'https://accounts.google.com' } })
+    );
+
+    const res = await GET(buildRequest('google', '/community?tab=barter'), {
+      params: Promise.resolve({ provider: 'google' }),
+    });
+    expect(res.status).toBe(302);
+
+    // callbackUrl should be the 3rd argument
+    const callbackUrl = mockInitiateOAuth.mock.calls[0][2] as string;
+    expect(callbackUrl).toContain('/auth/callback');
+    expect(callbackUrl).toContain('redirect=%2Fcommunity%3Ftab%3Dbarter');
+  });
+
+  it('does not pass callbackUrl when no redirect param', async () => {
+    mockInitiateOAuth.mockResolvedValue(
+      new Response(null, { status: 302, headers: { Location: 'https://accounts.google.com' } })
+    );
+
+    await GET(buildRequest('google'), {
+      params: Promise.resolve({ provider: 'google' }),
+    });
+
+    const callbackUrl = mockInitiateOAuth.mock.calls[0][2];
+    expect(callbackUrl).toBeUndefined();
   });
 });

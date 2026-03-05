@@ -10,6 +10,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
+import { getSafeRedirectUrl } from '@/src/lib/auth/utils/redirect';
 
 const signInSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -19,7 +20,11 @@ const signInSchema = z.object({
 const signUpSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   email: z.string().email('Please enter a valid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  password: z.string()
+    .min(8, 'Password must be at least 8 characters')
+    .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+    .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
+    .regex(/[0-9]/, 'Password must contain at least one number'),
 });
 
 const forgotPasswordSchema = z.object({
@@ -38,6 +43,9 @@ function AuthPageContent() {
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
+
+  // Determine where to redirect after successful login
+  const redirectTo = getSafeRedirectUrl(searchParams?.get('redirect'));
 
   // Handle error parameters from URL (e.g., OAuth errors)
   useEffect(() => {
@@ -84,8 +92,9 @@ function AuthPageContent() {
         duration: 6000,
       });
       
-      // Clean up URL parameters
-      router.replace('/auth');
+      // Clean up URL parameters but preserve redirect
+      const cleanUrl = redirectTo !== '/studio' ? `/auth?redirect=${encodeURIComponent(redirectTo)}` : '/auth';
+      router.replace(cleanUrl);
     }
   }, [searchParams, router]);
 
@@ -186,7 +195,7 @@ function AuthPageContent() {
       // Small delay to ensure cookies are set before redirect
       // Use window.location for full page reload to ensure cookies are picked up
       setTimeout(() => {
-        window.location.href = '/studio';
+        window.location.href = redirectTo;
       }, 300);
     } catch (error) {
       // Extract error message without logging full stack trace
@@ -197,12 +206,12 @@ function AuthPageContent() {
         errorMessage.includes('Invalid') || 
         errorMessage.includes('credentials') || 
         errorMessage.includes('email') && errorMessage.includes('not found') ||
-        errorMessage.includes('Too many requests');
-      
+        errorMessage.includes('Too many');
+
       if (!isExpectedError) {
         console.error('Sign in error:', errorMessage);
       }
-      
+
       // Provide helpful suggestions based on error message
       let description = 'Please check your credentials and try again.';
       if (errorMessage.includes('connect') || errorMessage.includes('network') || errorMessage.includes('server')) {
@@ -213,7 +222,7 @@ function AuthPageContent() {
         description = 'The email or password you entered is incorrect. Please check and try again.';
       } else if (errorMessage.includes('verify') || errorMessage.includes('confirmation')) {
         description = 'Please check your email inbox and click the confirmation link before signing in.';
-      } else if (errorMessage.includes('Too many requests')) {
+      } else if (errorMessage.includes('Too many')) {
         description = 'Too many login attempts. Please wait a few minutes before trying again.';
       }
       
@@ -228,6 +237,7 @@ function AuthPageContent() {
 
   const handleSignUp = async (data: SignUpForm) => {
     setLoading(true);
+    let result: any;
     try {
       let response: Response;
       try {
@@ -247,7 +257,6 @@ function AuthPageContent() {
       }
 
       // Check if response is ok before trying to parse JSON
-      let result: any;
       try {
         result = await response.json();
       } catch (jsonError) {
@@ -263,13 +272,13 @@ function AuthPageContent() {
       }
 
       toast.success('Account created successfully!', {
-        description: 'Welcome! Redirecting to App Builder...',
+        description: 'Welcome! Redirecting...',
         duration: 4000,
       });
-      // Redirect to app builder after successful sign up
+      // Redirect after successful sign up
       // Use window.location for full page reload to ensure cookies are picked up
       setTimeout(() => {
-        window.location.href = '/studio';
+        window.location.href = redirectTo;
       }, 1000);
     } catch (error) {
       // Extract error message without logging full stack trace
@@ -293,9 +302,10 @@ function AuthPageContent() {
       } else if (errorMessage.includes('email') && (errorMessage.includes('already') || errorMessage.includes('already registered'))) {
         description = 'An account with this email already exists. Please sign in instead.';
       } else if (errorMessage.includes('password')) {
-        description = 'Password must be at least 6 characters long.';
+        description = 'Password must be at least 8 characters with an uppercase letter, lowercase letter, and number.';
       } else if (errorMessage.includes('Invalid input')) {
-        description = 'Please check all fields and try again.';
+        // Show specific validation details from the API if available
+        description = result?.details || 'Please check all fields and try again. Password must be at least 8 characters with an uppercase letter, lowercase letter, and number.';
       }
       
       toast.error(errorMessage, {
@@ -309,7 +319,10 @@ function AuthPageContent() {
 
   const handleOAuthSignIn = async (provider: 'github' | 'google') => {
     try {
-      window.location.href = `/api/auth/oauth/${provider}`;
+      const oauthUrl = redirectTo !== '/studio'
+        ? `/api/auth/oauth/${provider}?redirect=${encodeURIComponent(redirectTo)}`
+        : `/api/auth/oauth/${provider}`;
+      window.location.href = oauthUrl;
     } catch (error) {
       console.error('OAuth signin error:', error);
       toast.error(`Failed to sign in with ${provider}`, {

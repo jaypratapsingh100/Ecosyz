@@ -235,7 +235,7 @@ export default function AdminApiUsagePage() {
       <div className="min-h-[80vh] flex flex-col items-center justify-center p-8">
         <p className="text-slate-300 mb-4">Sign in with an admin account to view API usage.</p>
         <Link
-          href="/auth"
+          href="/auth?redirect=%2Fadmin%2Fapi-usage"
           className="inline-flex items-center gap-2 px-6 py-3 bg-cyan-500/20 text-cyan-400 border border-cyan-500/50 rounded-lg hover:bg-cyan-500/30 transition-colors font-medium"
         >
           <LogIn className="w-5 h-5" /> Sign In

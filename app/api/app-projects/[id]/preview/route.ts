@@ -220,7 +220,10 @@ export async function POST(
         const stripForBrowser = (code: string) => {
           let c = (code || '')
             .replace(/export\s+default\s+/g, '')
-            .replace(/import\s+[\s\S]*?from\s+['"][^'"]*['"]\s*;?\s*/g, '') // Remove imports
+            .replace(/export\s+(?:const|let|var|function|class)\s+/g, (m) => m.replace(/^export\s+/, ''))
+            .replace(/import\s+[\s\S]*?from\s+['"][^'"]*['"]\s*;?\s*/g, '') // Remove ES6 imports
+            .replace(/(?:const|let|var)\s+\w+\s*=\s*require\s*\(\s*['"][^'"]*['"]\s*\)\s*;?\s*/g, '') // Remove require() assignments
+            .replace(/require\s*\(\s*['"][^'"]*['"]\s*\)\s*;?\s*/g, '') // Remove standalone require() calls
             .replace(/<\/script>/gi, '<\\/script>');
           // Inject all common React hooks and utilities so generated components work in preview
           const usesReactApi = /use(State|Effect|Ref|Context|Reducer|Callback|Memo|Id|LayoutEffect|DeferredValue|Transition)\s*\(/.test(c)
@@ -298,7 +301,10 @@ export async function POST(
         // Inject the App.jsx component with proper React rendering
         let appContent = mainJsFile.content
           .replace(/export\s+default\s+/g, '')
-          .replace(/import\s+[\s\S]*?from\s+['"][^'"]*['"]\s*;?\s*/g, ''); // Remove imports (components injected above)
+          .replace(/export\s+(?:const|let|var|function|class)\s+/g, (m) => m.replace(/^export\s+/, ''))
+          .replace(/import\s+[\s\S]*?from\s+['"][^'"]*['"]\s*;?\s*/g, '') // Remove ES6 imports (components injected above)
+          .replace(/(?:const|let|var)\s+\w+\s*=\s*require\s*\(\s*['"][^'"]*['"]\s*\)\s*;?\s*/g, '') // Remove require() assignments
+          .replace(/require\s*\(\s*['"][^'"]*['"]\s*\)\s*;?\s*/g, ''); // Remove standalone require() calls
         appContent = appContent.trim();
         // Ensure all common React hooks/utilities are in scope in iframe (same as component files)
         const appUsesReactApi = /use(State|Effect|Ref|Context|Reducer|Callback|Memo|Id|LayoutEffect|DeferredValue|Transition)\s*\(/.test(appContent)

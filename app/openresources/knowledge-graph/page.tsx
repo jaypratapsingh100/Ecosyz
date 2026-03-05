@@ -11,6 +11,7 @@ function KnowledgeGraphPage() {
   const q = params.get('q') || '';
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [authRequired, setAuthRequired] = useState(false);
 
   useEffect(() => {
     // First try to get results from sessionStorage (faster)
@@ -32,7 +33,15 @@ function KnowledgeGraphPage() {
     // Fallback to fetching if no stored results
     if (q) {
       fetch(`/api/search?q=${encodeURIComponent(q)}&type=all&limit=100`)
-        .then(res => res.json())
+        .then(res => {
+          if (res.status === 429) {
+            return res.json().then(errData => {
+              if (errData.code === 'AUTH_REQUIRED') { setAuthRequired(true); setLoading(false); }
+              return { results: [] };
+            });
+          }
+          return res.json();
+        })
         .then(data => {
           const fetchedResults = Array.isArray(data.results) ? data.results : [];
           setResults(fetchedResults);
@@ -90,6 +99,22 @@ function KnowledgeGraphPage() {
                 </svg>
                 <p className="text-gray-400">Loading connection map...</p>
                 <p className="text-gray-500 text-sm mt-2">You&apos;ll see papers, topics, authors, and sources as nodes; lines show how they connect.</p>
+              </div>
+            </div>
+          ) : authRequired ? (
+            <div className="flex items-center justify-center h-[60vh] min-h-[320px]">
+              <div className="p-8 rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-[#121f22] via-[#0c2321] to-[#0a1016] text-center space-y-4 max-w-md">
+                <div className="text-4xl mb-2">&#128270;</div>
+                <h3 className="text-2xl font-bold text-white">Free searches used up</h3>
+                <p className="text-gray-300">
+                  You&apos;ve used your 5 free searches. Sign in to get unlimited access.
+                </p>
+                <a
+                  href="/auth?redirect=%2Fopenresources"
+                  className="inline-block px-8 py-3 bg-gradient-to-r from-emerald-400 to-cyan-500 text-gray-900 font-semibold rounded-lg hover:shadow-lg hover:scale-105 transition-all"
+                >
+                  Sign in to continue
+                </a>
               </div>
             </div>
           ) : results.length > 0 ? (

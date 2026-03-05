@@ -73,6 +73,21 @@ export default function ChatSearch() {
       });
 
       const res = await fetch(`/api/search?${params}`);
+      if (res.status === 429) {
+        const errData = await res.json();
+        if (errData.code === 'AUTH_REQUIRED') {
+          setMessages((prev) => prev.filter((msg) => msg.id !== thinkingMessage.id));
+          const authMsg: Message = {
+            id: (Date.now() + 2).toString(),
+            type: 'assistant',
+            content: `You've used your 5 free searches. [Sign in](/auth?redirect=%2Fchat) to get unlimited access to our global research search.`,
+            timestamp: new Date(),
+          };
+          setMessages((prev) => [...prev, authMsg]);
+          setIsLoading(false);
+          return;
+        }
+      }
       if (!res.ok) throw new Error('Search failed');
       const data = await res.json();
 

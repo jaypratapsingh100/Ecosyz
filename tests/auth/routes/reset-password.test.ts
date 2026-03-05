@@ -53,16 +53,16 @@ describe('POST /api/auth/reset-password', () => {
     expect(res.status).toBe(400);
   });
 
-  it('returns success even if user not found (security)', async () => {
+  it('returns 404 when user not found', async () => {
     mockListUsers.mockResolvedValue({
       data: { users: [] },
       error: null,
     });
 
     const res = await POST(buildRequest({ email: 'noone@test.com' }));
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(404);
     const json = await res.json();
-    expect(json.success).toBe(true);
+    expect(json.error).toContain('No account found');
   });
 
   it('sends reset email when user is found', async () => {
