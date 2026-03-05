@@ -112,6 +112,9 @@ export async function POST(
     // Preview injects React + App directly for sandbox rendering
     html = html.replace(/<script[^>]*type=["']module["'][^>]*src=["'][^"']*["'][^>]*>[\s\S]*?<\/script>/gi, '');
     html = html.replace(/<script[^>]*src=["']\/src\/[^"']*["'][^>]*>[\s\S]*?<\/script>/gi, '');
+    // Also strip self-closing variants and src tags without leading slash
+    html = html.replace(/<script[^>]*src=["']src\/[^"']*["'][^>]*>[\s\S]*?<\/script>/gi, '');
+    html = html.replace(/<script[^>]*src=["']\.\/src\/[^"']*["'][^>]*>[\s\S]*?<\/script>/gi, '');
 
     // Inject CSS files for all project types
     const cssFiles = project.files.filter(
@@ -210,7 +213,30 @@ export async function POST(
         const reactScripts = `
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>`;
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script>
+    // Global error catcher: catches Babel compilation errors and uncaught runtime errors
+    // so the preview NEVER shows a blank screen
+    window.__previewErrors = [];
+    window.addEventListener('error', function(e) {
+      window.__previewErrors.push(e.message || String(e));
+      var root = document.getElementById('root');
+      if (root && (!root.innerHTML || root.innerHTML.trim() === '')) {
+        root.innerHTML = '<div style="padding:24px;font-family:system-ui,sans-serif;color:#1a1a1a">'
+          + '<h2 style="margin:0 0 12px;font-size:16px;color:#dc2626">Preview Error</h2>'
+          + '<pre style="margin:0;padding:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;white-space:pre-wrap;word-break:break-word;font-size:13px;max-height:300px;overflow:auto">'
+          + window.__previewErrors.map(function(m) { return m.replace(/</g, '&lt;'); }).join('\\n\\n')
+          + '</pre>'
+          + '<p style="margin:12px 0 0;font-size:12px;color:#6b7280">Copy this error and ask the AI in Chat to fix it.</p>'
+          + '</div>';
+      }
+    });
+    // Also catch unhandled promise rejections
+    window.addEventListener('unhandledrejection', function(e) {
+      var msg = e.reason && e.reason.message ? e.reason.message : String(e.reason);
+      window.__previewErrors.push(msg);
+    });
+  </script>`;
         if (!html.includes('react@18') && !html.includes('react.development.js')) {
           if (html.includes('</head>')) {
             html = html.replace('</head>', `${reactScripts}\n</head>`);
@@ -242,7 +268,7 @@ export async function POST(
         const sortedComponents = sortComponentsByDependency(componentFiles);
         const componentScripts = sortedComponents.map((f: { path: string; content: string }) => {
           const c = stripForBrowser(f.content);
-          return `<script type="text/babel">\n${c}\n</script>`;
+          return `<script type="text/babel" data-presets="typescript,react">\n${c}\n</script>`;
         }).join('\n');
 
         // Stub Link for preview: created code (e.g. Header) often uses Link; imports are stripped and Next/router aren't in iframe
@@ -330,7 +356,7 @@ const Route = function Route(props) { return props.element ?? null; };
           ? 'React.createElement(React.Fragment, null, React.createElement("div", { style: { padding: "6px 12px", fontSize: 11, background: "#fef3c7", color: "#92400e", borderBottom: "1px solid #fcd34d", fontFamily: "system-ui,sans-serif" } }, "Preview: React Router stubs active — routing is simplified. Your app should render below."), React.createElement(App))'
           : 'React.createElement(App)';
         const errorBoundaryScript = [
-          '  <script type="text/babel">',
+          '  <script type="text/babel" data-presets="typescript,react">',
           '    class PreviewErrorBoundary extends React.Component {',
           '      constructor(props) { super(props); this.state = { hasError: false, error: null }; }',
           '      static getDerivedStateFromError(error) { return { hasError: true, error }; }',
@@ -370,7 +396,7 @@ const Route = function Route(props) { return props.element ?? null; };
         }
       }
     } else {
-      // For non-React projects, inject JS/JSX files
+      // For non-React projects, inject JS/JSX/TSX files
       const jsFiles = project.files.filter(
         (f: {
           language: string | null;
@@ -378,14 +404,18 @@ const Route = function Route(props) { return props.element ?? null; };
           isMain: boolean;
         }) =>
           (f.language === 'jsx' ||
+            f.language === 'tsx' ||
+            f.language === 'typescript' ||
             f.language === 'javascript' ||
             f.path.endsWith('.js') ||
-            f.path.endsWith('.jsx')) &&
+            f.path.endsWith('.jsx') ||
+            f.path.endsWith('.tsx') ||
+            f.path.endsWith('.ts')) &&
           !f.isMain
       );
       for (const jsFile of jsFiles) {
         const safeContent = (jsFile.content || '').replace(/<\/script>/gi, '<\\/script>');
-        const scriptTag = `<script type="text/babel">${safeContent}</script>`;
+        const scriptTag = `<script type="text/babel" data-presets="typescript,react">${safeContent}</script>`;
         // Insert before closing body tag
         if (html.includes('</body>')) {
           html = html.replace('</body>', `${scriptTag}\n</body>`);
@@ -394,20 +424,20 @@ const Route = function Route(props) { return props.element ?? null; };
         }
       }
 
-      // Inject main JSX file if it exists and hasn't been injected yet
+      // Inject main JSX/TSX file if it exists and hasn't been injected yet
       const mainJsFile = project.files.find(
         (f: {
           language: string | null;
           path: string;
           isMain: boolean;
         }) =>
-          (f.language === 'jsx' || f.path.endsWith('.jsx')) &&
+          (f.language === 'jsx' || f.language === 'tsx' || f.path.endsWith('.jsx') || f.path.endsWith('.tsx')) &&
           f.isMain &&
           f.path !== 'index.html'
       );
       if (mainJsFile && !html.includes(mainJsFile.content)) {
         const safeContent = (mainJsFile.content || '').replace(/<\/script>/gi, '<\\/script>');
-        const scriptTag = `<script type="text/babel">${safeContent}</script>`;
+        const scriptTag = `<script type="text/babel" data-presets="typescript,react">${safeContent}</script>`;
         if (html.includes('</body>')) {
           html = html.replace('</body>', `${scriptTag}\n</body>`);
         } else {

@@ -8,8 +8,9 @@
  */
 
 /**
- * Remove import/export/require statements and inject React hooks
- * so generated component code runs directly in a browser with React UMD.
+ * Remove import/export/require statements, strip TypeScript syntax,
+ * and inject React hooks so generated component code runs directly
+ * in a browser with React UMD + Babel Standalone.
  */
 export function stripForBrowser(code: string): string {
   let c = (code || '')
@@ -22,6 +23,17 @@ export function stripForBrowser(code: string): string {
     .replace(/module\.exports\s*=\s*[^;]+;?/g, '') // Remove module.exports
     .replace(/exports\.\w+\s*=\s*[^;]+;?/g, '') // Remove exports.X assignments
     .replace(/<\/script>/gi, '<\\/script>');
+
+  // Strip TypeScript-only constructs that Babel with the TS preset handles,
+  // but doing it here too as a safety net for edge cases.
+  // Remove standalone interface/type declarations (whole blocks)
+  c = c.replace(/^(?:export\s+)?interface\s+\w+[^{]*\{[^}]*\}\s*;?\s*$/gm, '');
+  c = c.replace(/^(?:export\s+)?type\s+\w+\s*=\s*[^;]+;\s*$/gm, '');
+  // Remove `: TypeName` annotations from function params and return types
+  // e.g., (items: Product[]) → (items), (): JSX.Element → ()
+  c = c.replace(/:\s*(?:React\.)?(?:FC|FunctionComponent|JSX\.Element|ReactNode|ReactElement)(?:\s*[;{])/g, (m) => m.slice(-1));
+  // Remove `as TypeName` assertions: `value as string` → `value`
+  c = c.replace(/\s+as\s+(?:const|(?:[A-Z]\w*(?:\[\])?))\b/g, '');
 
   // Inject all common React hooks and utilities so generated components work in preview
   const usesReactApi = /use(State|Effect|Ref|Context|Reducer|Callback|Memo|Id|LayoutEffect|DeferredValue|Transition)\s*\(/.test(c)
