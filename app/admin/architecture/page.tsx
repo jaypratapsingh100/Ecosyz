@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 export default async function AdminArchitecturePage() {
   const user = await getCurrentUser();
   if (!user?.email) {
-    redirect('/auth');
+    redirect('/auth?redirect=%2Fadmin%2Farchitecture');
   }
   const userIsAdmin = await isAdmin();
   if (!userIsAdmin) {

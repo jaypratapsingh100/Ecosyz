@@ -2,7 +2,7 @@
 
 import React, { useRef, useMemo, useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
-import SpriteText from 'three-spritetext';
+import type SpriteTextType from 'three-spritetext';
 
 const NODE_COLORS: Record<string, string> = {
   resource: '#8b5cf6',
@@ -35,6 +35,11 @@ interface KnowledgeGraph3DProps {
 export default function KnowledgeGraph3D({ nodes, edges, onNodeClick, width: widthProp, height: heightProp }: KnowledgeGraph3DProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 800, height: 600 });
+  const SpriteTextRef = useRef<typeof SpriteTextType | null>(null);
+
+  useEffect(() => {
+    import('three-spritetext').then((mod) => { SpriteTextRef.current = mod.default; });
+  }, []);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -73,11 +78,12 @@ export default function KnowledgeGraph3D({ nodes, edges, onNodeClick, width: wid
         nodeThreeObject={(n: any) => {
           const node = n as GraphNode;
           const label = node.label || node.id;
+          const SpriteText = SpriteTextRef.current;
+          if (!SpriteText) return undefined as any;
           const sprite = new SpriteText(label);
           sprite.color = '#e5e7eb';
           sprite.textHeight = 4;
           (sprite as any).position.y = 8;
-          // Keep text visible even when behind nodes
           (sprite as any).material.depthWrite = false;
           return sprite;
         }}

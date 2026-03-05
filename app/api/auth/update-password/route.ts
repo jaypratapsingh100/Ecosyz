@@ -1,17 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/src/lib/supabase';
+import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
+import { verifyResetToken } from '@/app/lib/utils/reset-token';
+import { maskEmail } from '@/app/lib/utils/logger';
 
 const UpdatePasswordSchema = z.object({
-  password: z.string().min(8, 'Password must be at least 8 characters'),
+  token: z.string().min(1, 'Reset token is required'),
+  password: z.string()
+    .min(8, 'Password must be at least 8 characters')
+    .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+    .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
+    .regex(/[0-9]/, 'Password must contain at least one number'),
 });
 
 /**
- * Update password after reset
- * Requires authenticated session (user must come from Supabase reset link)
+ * Update password using a custom reset token.
+ *
+ * 1. Verify the HMAC-signed token (email + userId + expiry)
+ * 2. Use Supabase admin API to update the user's password
+ *
+ * No Supabase session required — the signed token is proof of email ownership.
  */
 export async function POST(req: NextRequest) {
-  if (!supabase) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceKey) {
     return NextResponse.json(
       { error: 'Authentication service unavailable' },
       { status: 503 }
@@ -23,68 +37,72 @@ export async function POST(req: NextRequest) {
     const parse = UpdatePasswordSchema.safeParse(body);
 
     if (!parse.success) {
-      const errorMessages = parse.error.issues.map(err => {
-        const field = err.path.join('.');
-        return `${field}: ${err.message}`;
-      }).join(', ');
-      
+      const errorMessages = parse.error.issues
+        .map((err) => `${err.path.join('.')}: ${err.message}`)
+        .join(', ');
       return NextResponse.json(
         { error: `Invalid input: ${errorMessages}` },
         { status: 400 }
       );
     }
 
-    const { password } = parse.data;
+    const { token, password } = parse.data;
 
-    console.log('[UpdatePassword] Processing password update request');
+    // Verify the reset token
+    const payload = verifyResetToken(token, supabaseServiceKey);
 
-    // Check if user is authenticated (required for password update)
-    // User should have a session from clicking the reset link
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      console.error('[UpdatePassword] No authenticated session:', authError?.message);
+    if (!payload) {
+      console.error('[UpdatePassword] Invalid or expired reset token');
       return NextResponse.json(
-        { error: 'Authentication required. Please use the password reset link from your email.' },
+        { error: 'This reset link is invalid or has expired. Please request a new one.' },
         { status: 401 }
       );
     }
 
-    console.log('[UpdatePassword] User authenticated:', { userId: user.id, email: user.email });
-
-    // Update password using Supabase
-    const { error: updateError } = await supabase.auth.updateUser({
-      password: password
+    console.log('[UpdatePassword] Token verified:', {
+      email: maskEmail(payload.email),
+      userId: payload.userId,
     });
 
+    // Create admin client
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    // Update password via admin API (no session required)
+    const { error: updateError } = await supabase.auth.admin.updateUserById(
+      payload.userId,
+      { password }
+    );
+
     if (updateError) {
-      console.error('[UpdatePassword] Password update failed:', updateError);
-      
-      // Handle specific Supabase errors
+      console.error('[UpdatePassword] Admin password update failed:', updateError.message);
+
       if (updateError.message?.includes('same password')) {
         return NextResponse.json(
           { error: 'New password must be different from your current password' },
           { status: 400 }
         );
       }
-      
+
       return NextResponse.json(
         { error: 'Failed to update password. Please try again.' },
         { status: 500 }
       );
     }
 
-    console.log('[UpdatePassword] Password updated successfully:', { 
-      userId: user.id,
-      email: user.email 
+    console.log('[UpdatePassword] Password updated successfully:', {
+      userId: payload.userId,
+      email: maskEmail(payload.email),
     });
 
     return NextResponse.json({
       message: 'Password has been updated successfully',
-      success: true
+      success: true,
     });
   } catch (error) {
-    console.error('[UpdatePassword] Unexpected error:', error);
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[UpdatePassword] Unexpected error:', { message });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

@@ -4,6 +4,7 @@ import { useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/src/lib/supabase';
 import { toast } from 'sonner';
+import { getSafeRedirectUrl } from '@/src/lib/auth/utils/redirect';
 
 /**
  * Client-side OAuth Callback Page
@@ -21,6 +22,9 @@ import { toast } from 'sonner';
 function OAuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+
+  // Determine where to redirect after successful OAuth
+  const redirectTo = getSafeRedirectUrl(searchParams?.get('redirect'));
 
   useEffect(() => {
     async function handleCallback() {
@@ -117,7 +121,7 @@ function OAuthCallbackContent() {
         await new Promise(resolve => setTimeout(resolve, 300));
         
         // Use window.location for full page reload to ensure cookies are picked up
-        window.location.href = '/studio';
+        window.location.href = redirectTo;
       } catch (error: any) {
         console.error('❌ OAuth callback error:', error);
         toast.error('Authentication error', {
@@ -129,7 +133,7 @@ function OAuthCallbackContent() {
     }
 
     handleCallback();
-  }, [router, searchParams]);
+  }, [router, searchParams, redirectTo]);
 
   // Listen for auth state changes (recommended by Supabase)
   useEffect(() => {
@@ -142,7 +146,7 @@ function OAuthCallbackContent() {
       
       if (event === 'SIGNED_IN' && session) {
         console.log('✅ User signed in via auth state change');
-        router.replace('/studio');
+        router.replace(redirectTo);
       } else if (event === 'SIGNED_OUT') {
         console.log('👋 User signed out');
         router.replace('/auth');
@@ -152,7 +156,7 @@ function OAuthCallbackContent() {
     return () => {
       subscription.unsubscribe();
     };
-  }, [router]);
+  }, [router, redirectTo]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-emerald-900 to-gray-900">

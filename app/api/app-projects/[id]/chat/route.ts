@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
 import { getScaffoldFiles, DEFAULT_APP_CONTENT } from '@/app/lib/app-builder/scaffolds';
-import { createAIClient, hasAIClient } from '@/lib/ai/provider';
+import { createAIClient, hasAIClient, getMaxOutputTokens, isSlowProvider } from '@/lib/ai/provider';
+import type { AIProvider } from '@/lib/ai/provider';
 import { trackApiRequest } from '@/lib/api-usage';
 import {
   extractAgentResponse,
+  parseCodeBlocksToFiles,
   ALLOWED_PATHS,
   COMPONENT_PATH_PATTERN,
   SRC_ROOT_COMPONENT_PATTERN,
@@ -14,8 +16,12 @@ import {
 import { buildFixPrompt, buildRetryPrompt } from '@/lib/app-builder/promptBuilder';
 import { buildPlannerPrompt, parsePlannerResponse } from '@/lib/app-builder/agents/planner';
 import { buildArchitectPrompt, parseArchitectResponse } from '@/lib/app-builder/agents/architect';
-import { buildAppBuilderPrompts } from '@/lib/app-builder/contextBuilder';
+import { buildAppBuilderPrompts, buildFastPathPrompts } from '@/lib/app-builder/contextBuilder';
 import { validateProjectFiles, checkComponentStructureAndStyling } from '../../../../../src/lib/utils/validateJSX';
+import { createSSEStream, sseResponse } from '@/lib/app-builder/sse';
+import { enforceGenerationLimit } from '@/lib/app-builder/usage';
+import { getFallbackRoute, isRetryableError } from '@/lib/app-builder/model-router';
+import { trackGeneration, createGenerationTimer } from '@/lib/app-builder/pipeline/generation-tracker';
 import type { ChatMessage, ChatRequestBody, DatabaseError, QuestionnaireData, ProjectFile } from '@/app/types/app-builder';
 import type { PlannerPlan, ArchitectTaskPlan, AppProjectState } from '@/app/types/app-builder';
 
@@ -272,6 +278,7 @@ export async function POST(
     
     let { message, userProvider, userModel } = body;
     const currentFile = body.currentFile;
+    const useStreaming = body.stream === true;
     
     // Validate message
     if (!message || typeof message !== 'string') {
@@ -290,6 +297,18 @@ export async function POST(
         { error: 'Message is required' },
         { status: 400 }
       );
+    }
+
+    // ============================================
+    // ENFORCE GENERATION LIMITS
+    // ============================================
+    const limitViolation = await enforceGenerationLimit(
+      prismaUser.id,
+      (prismaUser as any).subscriptionPlan ?? null,
+      userProvider ?? undefined
+    );
+    if (limitViolation) {
+      return NextResponse.json(limitViolation.body, { status: limitViolation.status });
     }
 
     // ============================================
@@ -467,11 +486,12 @@ export async function POST(
       });
     }
     
-    // Step 6: Create AI client (Groq or OpenRouter; user can select via userProvider/userModel)
+    // Step 6: Create AI client (Groq, OpenRouter, OpenAI, or Anthropic; user can select via userProvider/userModel)
+    const validProviders: AIProvider[] = ['groq', 'openrouter', 'openai', 'anthropic'];
     let client;
     try {
       const clientResult = createAIClient({
-        userProvider: userProvider === 'openrouter' || userProvider === 'groq' ? userProvider : undefined,
+        userProvider: validProviders.includes(userProvider as AIProvider) ? (userProvider as AIProvider) : undefined,
         userModel: typeof userModel === 'string' ? userModel : undefined,
       });
       client = clientResult.client;
@@ -507,70 +527,411 @@ export async function POST(
       });
     }
     
-    // Both Groq and OpenRouter (DeepSeek V3) support 8192 output tokens for consistent multi-file responses
-    const maxOutputTokens = 8192;
+    // Dynamic max output tokens per provider — Claude/OpenAI support higher limits for more complete apps
+    const maxOutputTokens = getMaxOutputTokens(provider as AIProvider, model);
     console.log(`✅ Using ${provider.toUpperCase()}:`, {
       model: model,
-      maxContext: provider === 'groq' ? '128K tokens' : '128K tokens (DeepSeek V3)',
       maxNewTokens: maxOutputTokens
     });
-    
+
     const existingFilePaths = project.files?.map((f: { path: string }) => f.path) || [];
     let plan: PlannerPlan | null = null;
     let taskPlan: ArchitectTaskPlan | null = null;
 
-    // Optional: run Planner + Architect for new projects (agentic pipeline)
-    if (existingFilePaths.length === 0) {
-      try {
-        const plannerUserPrompt = buildPlannerPrompt(message, questionnaireData);
-        const plannerRes = await client.chat.completions.create({
-          model,
-          messages: [
-            { role: 'system', content: 'You are a product planner. Output valid JSON only: {"name":"","description":"","techstack":"","features":[],"files":[{"path":"","purpose":""}]}' },
-            { role: 'user', content: plannerUserPrompt },
-          ],
-          temperature: 0.4,
-          max_tokens: 1024,
-          stream: false,
-        });
-        const plannerText = plannerRes.choices[0]?.message?.content || '';
-        plan = parsePlannerResponse(plannerText);
-        if (plan && plan.files?.length) {
-          const architectUserPrompt = buildArchitectPrompt(plan, existingFilePaths);
-          const architectRes = await client.chat.completions.create({
+    // ============================================
+    // STREAMING MODE: Return SSE response and run pipeline in background
+    // ============================================
+    if (useStreaming) {
+      const { stream: sseStream, emit, close } = createSSEStream();
+      const slowProvider = isSlowProvider(provider as AIProvider, model);
+
+      // Run pipeline in background (not awaited — response is returned immediately)
+      (async () => {
+        const timer = createGenerationTimer();
+        let activeClient = client;
+        let activeModel = model;
+        let activeProvider = provider;
+        let usedFallback = false;
+
+        try {
+          let promptRes;
+          let streamPlan: PlannerPlan | null = null;
+
+          if (slowProvider) {
+            // ── FAST PATH (OpenRouter/DeepSeek) ──
+            console.log('⚡ [FAST PATH] Skipping Planner/Architect for slow provider:', activeProvider);
+            emit({ type: 'status', data: 'coding' });
+
+            promptRes = buildFastPathPrompts({
+              message,
+              questionnaireData,
+              frameworkForScaffold,
+              useTypeScript,
+              existingFilePaths,
+              hasScaffoldFiles,
+              fileExtension,
+              currentFilePath,
+              projectFiles: project.files as unknown as { path: string; name: string; content: string }[],
+            });
+          } else {
+            // ── FULL PATH (Groq, OpenAI, Claude) ──
+            const SCAFFOLD_PATHS_S = new Set([
+              'index.html', 'src/App.jsx', 'src/App.tsx', 'src/main.jsx', 'src/main.tsx',
+              'src/index.css', 'src/index.js', 'src/index.ts',
+            ]);
+            const hasUserFiles = existingFilePaths.some((p: string) => !SCAFFOLD_PATHS_S.has(p));
+
+            if (!hasUserFiles) {
+              emit({ type: 'status', data: 'planning' });
+              try {
+                const plannerPrompt = buildPlannerPrompt(message, questionnaireData);
+                const planRes = await activeClient.chat.completions.create({
+                  model: activeModel,
+                  messages: [
+                    { role: 'system', content: 'You are a product planner. Output valid JSON only: {"name":"","description":"","techstack":"","features":[],"files":[{"path":"","purpose":""}]}' },
+                    { role: 'user', content: plannerPrompt },
+                  ],
+                  temperature: 0.4,
+                  max_tokens: 1024,
+                  stream: false,
+                });
+                streamPlan = parsePlannerResponse(planRes.choices[0]?.message?.content || '');
+
+                if (streamPlan?.files?.length) {
+                  emit({ type: 'status', data: 'architecting' });
+                  const archPrompt = buildArchitectPrompt(streamPlan, existingFilePaths);
+                  const archRes = await activeClient.chat.completions.create({
+                    model: activeModel,
+                    messages: [
+                      { role: 'system', content: 'You are a software architect. Output valid JSON only: {"implementationSteps":[{"filepath":"","taskDescription":"","priority":"high|medium|low"}]}' },
+                      { role: 'user', content: archPrompt },
+                    ],
+                    temperature: 0.4,
+                    max_tokens: 1024,
+                    stream: false,
+                  });
+                  parseArchitectResponse(archRes.choices[0]?.message?.content || '');
+                }
+              } catch (err) {
+                console.warn('Planner/Architect failed in stream mode:', err);
+              }
+            }
+
+            emit({ type: 'status', data: 'coding' });
+            promptRes = buildAppBuilderPrompts({
+              message,
+              questionnaireData,
+              frameworkForScaffold,
+              useTypeScript,
+              existingFilePaths,
+              hasScaffoldFiles,
+              fileExtension,
+              plan: streamPlan,
+              taskPlan: null,
+              currentFilePath,
+              projectFiles: project.files as unknown as { path: string; name: string; content: string }[],
+            });
+          }
+
+          // ── Stream AI coder response (with fallback on failure) ──
+          const coderTemperature = slowProvider ? 0.3 : 0.5;
+          let fullResponse = '';
+
+          const streamWithProvider = async (aiClient: typeof client, aiModel: string, aiMaxTokens: number) => {
+            const completion = await aiClient.chat.completions.create({
+              model: aiModel,
+              messages: [
+                { role: 'system', content: promptRes.systemPrompt },
+                { role: 'user', content: promptRes.userMessage },
+              ],
+              temperature: coderTemperature,
+              max_tokens: aiMaxTokens,
+              stream: true,
+            });
+            for await (const chunk of completion) {
+              const delta = chunk.choices[0]?.delta?.content || '';
+              if (delta) {
+                fullResponse += delta;
+                emit({ type: 'token', data: delta });
+              }
+            }
+          };
+
+          try {
+            await streamWithProvider(activeClient, activeModel, maxOutputTokens);
+          } catch (primaryErr) {
+            // ── FALLBACK: Try alternative provider on retryable errors ──
+            if (isRetryableError(primaryErr)) {
+              const fallback = getFallbackRoute({
+                provider: activeProvider as AIProvider,
+                model: activeModel,
+                maxTokens: maxOutputTokens,
+                isFast: !slowProvider,
+                timeout: 180_000,
+              });
+              if (fallback) {
+                console.warn(`🔄 [FALLBACK] ${activeProvider}/${activeModel} failed, trying ${fallback.provider}/${fallback.model}`);
+                emit({ type: 'status', data: `fallback-${fallback.provider}` });
+                usedFallback = true;
+                fullResponse = ''; // Reset for fresh attempt
+
+                const fallbackClient = createAIClient({
+                  userProvider: fallback.provider,
+                  userModel: fallback.model,
+                });
+                activeClient = fallbackClient.client;
+                activeModel = fallbackClient.model;
+                activeProvider = fallbackClient.provider;
+
+                trackGeneration({
+                  projectId: id,
+                  userId: prismaUser.id,
+                  provider,
+                  model,
+                  durationMs: timer.elapsed(),
+                  status: 'fallback',
+                  filesCreated: 0,
+                  errorMessage: primaryErr instanceof Error ? primaryErr.message : 'Unknown',
+                  usedFallback: true,
+                  fallbackProvider: fallback.provider,
+                  fallbackModel: fallback.model,
+                });
+
+                await streamWithProvider(activeClient, activeModel, fallback.maxTokens);
+              } else {
+                throw primaryErr; // No fallback available
+              }
+            } else {
+              throw primaryErr; // Not retryable
+            }
+          }
+
+          // ── Parse and create files ──
+          emit({ type: 'status', data: 'creating-files' });
+
+          const agentResult = extractAgentResponse(fullResponse);
+          const filesToCreate = agentResult?.files?.length
+            ? agentResult.files
+            : parseCodeBlocksToFiles(fullResponse);
+
+          const createdPaths: string[] = [];
+          for (const f of filesToCreate) {
+            try {
+              const fName = f.name || f.path.split('/').pop() || f.path;
+              const lang = f.language || (f.path.endsWith('.tsx') ? 'typescript' : f.path.endsWith('.jsx') ? 'javascript' : 'css');
+              await prisma.appFile.upsert({
+                where: { projectId_path: { projectId: id, path: f.path } },
+                update: { content: f.content, language: lang, isMain: f.isMain ?? false, name: fName },
+                create: { projectId: id, path: f.path, name: fName, content: f.content, language: lang, isMain: f.isMain ?? false },
+              });
+              createdPaths.push(f.path);
+              emit({ type: 'file-created', data: { path: f.path, success: true } });
+            } catch (err) {
+              emit({ type: 'file-created', data: { path: f.path, success: false, error: err instanceof Error ? err.message : 'Unknown' } });
+            }
+          }
+
+          // ── Auto-retry (fast providers only) ──
+          if (!slowProvider && !usedFallback) {
+            const jsxCreated = createdPaths.filter(p => p.endsWith('.jsx') || p.endsWith('.tsx'));
+            const planExpected = streamPlan?.files?.length ?? 0;
+
+            if (jsxCreated.length < 3 && planExpected > 3) {
+              emit({ type: 'status', data: 'retrying' });
+              try {
+                const missingFiles = (streamPlan?.files?.map(f => f.path) ?? []).filter(p => !createdPaths.includes(p));
+                const retryPrompt = buildRetryPrompt(
+                  `You only generated ${jsxCreated.length} component file(s) but the plan requires ${planExpected} files. Missing: ${missingFiles.join(', ')}. Generate the REMAINING files now.`,
+                  fileExtension,
+                );
+                let retryResponse = '';
+                const retryStream = await activeClient.chat.completions.create({
+                  model: activeModel,
+                  messages: [
+                    { role: 'system', content: promptRes.systemPrompt },
+                    { role: 'user', content: promptRes.userMessage },
+                    { role: 'assistant', content: fullResponse },
+                    { role: 'user', content: retryPrompt },
+                  ],
+                  temperature: 0.5,
+                  max_tokens: maxOutputTokens,
+                  stream: true,
+                });
+                for await (const chunk of retryStream) {
+                  const delta = chunk.choices[0]?.delta?.content || '';
+                  if (delta) {
+                    retryResponse += delta;
+                    emit({ type: 'token', data: delta });
+                  }
+                }
+
+                const retryResult = extractAgentResponse(retryResponse);
+                const retryFiles = retryResult?.files?.length
+                  ? retryResult.files
+                  : parseCodeBlocksToFiles(retryResponse);
+
+                for (const f of retryFiles) {
+                  try {
+                    const fName = f.name || f.path.split('/').pop() || f.path;
+                    const lang = f.language || (f.path.endsWith('.tsx') ? 'typescript' : f.path.endsWith('.jsx') ? 'javascript' : 'css');
+                    await prisma.appFile.upsert({
+                      where: { projectId_path: { projectId: id, path: f.path } },
+                      update: { content: f.content, language: lang, isMain: f.isMain ?? false, name: fName },
+                      create: { projectId: id, path: f.path, name: fName, content: f.content, language: lang, isMain: f.isMain ?? false },
+                    });
+                    if (!createdPaths.includes(f.path)) createdPaths.push(f.path);
+                    emit({ type: 'file-created', data: { path: f.path, success: true } });
+                  } catch (err) {
+                    emit({ type: 'file-created', data: { path: f.path, success: false, error: err instanceof Error ? err.message : 'Unknown' } });
+                  }
+                }
+                fullResponse += '\n\n' + retryResponse;
+              } catch (retryErr) {
+                console.warn('[STREAM RETRY] Failed:', retryErr);
+              }
+            }
+          }
+
+          // Save chat history
+          try {
+            const existingChat = await prisma.appChat.findFirst({ where: { projectId: id } });
+            const msgs = existingChat ? (existingChat.messages as any[]) : [];
+            msgs.push({ role: 'user', content: message, timestamp: new Date().toISOString() });
+            msgs.push({ role: 'assistant', content: fullResponse, timestamp: new Date().toISOString(), provider: activeProvider, model: activeModel });
+            await prisma.appChat.upsert({
+              where: { id: existingChat?.id || 'temp' },
+              update: { messages: msgs as any, updatedAt: new Date() },
+              create: { projectId: id, messages: msgs as any },
+            });
+          } catch { /* non-critical */ }
+
+          // Update project timestamp
+          if (createdPaths.length > 0) {
+            await prisma.appProject.update({ where: { id }, data: { updatedAt: new Date() } }).catch(() => {});
+          }
+
+          void trackApiRequest(activeProvider, 'llm');
+
+          // ── Track generation metrics ──
+          trackGeneration({
+            projectId: id,
+            userId: prismaUser.id,
+            provider: activeProvider,
+            model: activeModel,
+            durationMs: timer.elapsed(),
+            status: 'completed',
+            filesCreated: createdPaths.length,
+            themePreset: (questionnaireData?.themePreset as string) || (questionnaireData?.designStyle as string) || undefined,
+            usedFallback,
+          });
+
+          emit({
+            type: 'done',
+            data: {
+              filesCreated: createdPaths.map(p => ({ path: p, success: true })),
+              summary: { totalFiles: createdPaths.length, successful: createdPaths.length, provider: activeProvider, model: activeModel },
+              response: fullResponse,
+            },
+          });
+        } catch (err) {
+          trackGeneration({
+            projectId: id,
+            userId: prismaUser.id,
+            provider: activeProvider,
+            model: activeModel,
+            durationMs: timer.elapsed(),
+            status: 'failed',
+            filesCreated: 0,
+            errorMessage: err instanceof Error ? err.message : 'Unknown',
+          });
+          emit({ type: 'error', data: { message: err instanceof Error ? err.message : 'Generation failed' } });
+        } finally {
+          close();
+        }
+      })();
+
+      return sseResponse(sseStream);
+    }
+
+    // ============================================
+    // NON-STREAMING MODE (existing behavior)
+    // ============================================
+
+    const slowProviderNS = isSlowProvider(provider as AIProvider, model);
+    let promptResult;
+
+    if (slowProviderNS) {
+      // ── FAST PATH (OpenRouter/DeepSeek) — skip Planner + Architect ──
+      console.log('⚡ [FAST PATH] Non-streaming: skipping Planner/Architect for slow provider:', provider);
+      promptResult = buildFastPathPrompts({
+        message,
+        questionnaireData,
+        frameworkForScaffold,
+        useTypeScript,
+        existingFilePaths,
+        hasScaffoldFiles,
+        fileExtension,
+        currentFilePath,
+        projectFiles: project.files as unknown as { path: string; name: string; content: string }[],
+      });
+    } else {
+      // ── FULL PATH (Groq, OpenAI, Claude) ──
+      const SCAFFOLD_PATHS = new Set([
+        'index.html', 'src/App.jsx', 'src/App.tsx', 'src/main.jsx', 'src/main.tsx',
+        'src/index.css', 'src/index.js', 'src/index.ts',
+      ]);
+      const hasUserGeneratedFiles = existingFilePaths.some((p: string) => !SCAFFOLD_PATHS.has(p));
+      if (!hasUserGeneratedFiles) {
+        try {
+          const plannerUserPrompt = buildPlannerPrompt(message, questionnaireData);
+          const plannerRes = await client.chat.completions.create({
             model,
             messages: [
-              { role: 'system', content: 'You are a software architect. Output valid JSON only: {"implementationSteps":[{"filepath":"","taskDescription":"","priority":"high|medium|low"}]}' },
-              { role: 'user', content: architectUserPrompt },
+              { role: 'system', content: 'You are a product planner. Output valid JSON only: {"name":"","description":"","techstack":"","features":[],"files":[{"path":"","purpose":""}]}' },
+              { role: 'user', content: plannerUserPrompt },
             ],
             temperature: 0.4,
             max_tokens: 1024,
             stream: false,
           });
-          const architectText = architectRes.choices[0]?.message?.content || '';
-          taskPlan = parseArchitectResponse(architectText);
-        }
-      } catch (agentErr) {
-        if (process.env.NODE_ENV === 'development') {
-          console.warn('Planner/Architect step failed (continuing with direct coder):', agentErr);
+          const plannerText = plannerRes.choices[0]?.message?.content || '';
+          plan = parsePlannerResponse(plannerText);
+          if (plan && plan.files?.length) {
+            const architectUserPrompt = buildArchitectPrompt(plan, existingFilePaths);
+            const architectRes = await client.chat.completions.create({
+              model,
+              messages: [
+                { role: 'system', content: 'You are a software architect. Output valid JSON only: {"implementationSteps":[{"filepath":"","taskDescription":"","priority":"high|medium|low"}]}' },
+                { role: 'user', content: architectUserPrompt },
+              ],
+              temperature: 0.4,
+              max_tokens: 1024,
+              stream: false,
+            });
+            const architectText = architectRes.choices[0]?.message?.content || '';
+            taskPlan = parseArchitectResponse(architectText);
+          }
+        } catch (agentErr) {
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('Planner/Architect step failed (continuing with direct coder):', agentErr);
+          }
         }
       }
-    }
 
-    // Token-optimized system + user prompts with scaffold structure for correct rendering
-    const promptResult = buildAppBuilderPrompts({
-      message,
-      questionnaireData,
-      frameworkForScaffold,
-      useTypeScript,
-      existingFilePaths,
-      hasScaffoldFiles,
-      fileExtension,
-      plan,
-      taskPlan,
-      currentFilePath,
-      projectFiles: project.files as unknown as { path: string; name: string; content: string }[],
-    });
+      promptResult = buildAppBuilderPrompts({
+        message,
+        questionnaireData,
+        frameworkForScaffold,
+        useTypeScript,
+        existingFilePaths,
+        hasScaffoldFiles,
+        fileExtension,
+        plan,
+        taskPlan,
+        currentFilePath,
+        projectFiles: project.files as unknown as { path: string; name: string; content: string }[],
+      });
+    }
 
     const systemPrompt = promptResult.systemPrompt;
     message = promptResult.userMessage;
@@ -677,253 +1038,38 @@ export async function POST(
       console.log(responseText.substring(0, 500));
       console.log('-'.repeat(40));
 
-      // ============================================
-      // TWO-PASS PARSING: explicit paths first, then infer from content
-      // ============================================
-      const KNOWN_LANG_TAGS = new Set([
-        'jsx', 'javascript', 'typescript', 'tsx', 'js', 'ts', 'css', 'html',
-        'json', 'markdown', 'python', 'java', 'cpp', 'c', 'bash', 'sh',
-        'sql', 'yaml', 'yml', 'xml', 'text', 'plaintext', 'diff', 'md',
-      ]);
-      const VALID_FILE_EXTENSIONS = ['.js', '.jsx', '.ts', '.tsx', '.css', '.html', '.json', '.md'];
-
+      // Use shared parsing from agentSchema.ts (single source of truth)
       const allMatches: Array<{ path: string; content: string }> = [];
 
       console.log('📝 Parsing response for file creation...');
       console.log('Response length:', responseText.length);
 
-      // Extract ALL code blocks with a simple, reliable regex
-      const codeBlockRegex = /```([^\n`]*)\n([\s\S]*?)```/g;
-      let match;
-      const rawBlocks: Array<{ header: string; content: string }> = [];
-
-      while ((match = codeBlockRegex.exec(responseText)) !== null) {
-        const header = (match[1] || '').trim();
-        const content = (match[2] || '').trim();
-        if (content.length > 0) {
-          rawBlocks.push({ header, content });
+      // Use shared parsing from agentSchema.ts — single source of truth
+      // Try structured JSON extraction first, then fall back to markdown code blocks
+      const agentResult = extractAgentResponse(responseText);
+      if (agentResult && agentResult.files.length > 0) {
+        for (const f of agentResult.files) {
+          allMatches.push({ path: f.path, content: f.content });
         }
+        console.log(`✅ Extracted ${agentResult.files.length} files via JSON parsing`);
+      } else {
+        // Fallback: parse markdown code blocks
+        const codeBlockFiles = parseCodeBlocksToFiles(responseText);
+        for (const f of codeBlockFiles) {
+          allMatches.push({ path: f.path, content: f.content });
+        }
+        console.log(`✅ Extracted ${codeBlockFiles.length} files via code block parsing`);
       }
 
-      console.log(`📊 Extracted ${rawBlocks.length} non-empty code blocks`);
-
-      // Helper: clean and normalize a file path
-      const normalizePath = (p: string): string => {
-        return p
-          .replace(/\s+/g, '')       // Remove spaces
-          .replace(/\\/g, '/')       // Backslash → forward slash
-          .replace(/\/+/g, '/')      // Collapse double slashes
-          .replace(/\.jxs$/i, '.jsx') // Fix typos
-          .replace(/\.tsxs$/i, '.tsx')
-          .replace(/^\.\//, '')      // Remove leading ./
-          .trim();
-      };
-
-      // Helper: check if a string looks like a file path
-      const isFilePath = (s: string): boolean => {
-        if (!s) return false;
-        const cleaned = normalizePath(s);
-        const hasExt = cleaned.includes('.');
-        const hasSep = cleaned.includes('/');
-        // Must have a valid extension
-        const hasValidExt = VALID_FILE_EXTENSIONS.some(ext => cleaned.toLowerCase().endsWith(ext));
-        return hasValidExt || (hasExt && hasSep);
-      };
-
-      // Helper: infer file path from code content
-      const inferPathFromContent = (content: string, langTag: string): string | null => {
-        // Determine extension
-        let ext = '.jsx';
-        if (langTag === 'tsx' || langTag === 'typescript') ext = '.tsx';
-        else if (langTag === 'ts') ext = '.ts';
-        else if (langTag === 'css') ext = '.css';
-        else if (langTag === 'html') ext = '.html';
-        else if (langTag === 'json') ext = '.json';
-        else if (content.includes('interface ') || content.match(/:\s*(string|number|boolean|React)/)) ext = '.tsx';
-
-        // For CSS files
-        if (ext === '.css') {
-          if (content.includes('.App')) return 'src/App.css';
-          return 'src/styles.css';
-        }
-
-        // For HTML files
-        if (ext === '.html') return 'index.html';
-
-        // For JSON files
-        if (content.includes('"name"') && content.includes('"version"')) return 'package.json';
-
-        // Find the FIRST component/function name defined in the file
-        // Order matters: check specific patterns first
-        const patterns = [
-          // export default function ComponentName
-          /export\s+default\s+function\s+([A-Z][a-zA-Z0-9]*)/,
-          // function ComponentName
-          /(?:^|\n)\s*function\s+([A-Z][a-zA-Z0-9]*)/,
-          // const ComponentName = 
-          /(?:^|\n)\s*(?:export\s+)?const\s+([A-Z][a-zA-Z0-9]*)\s*=/,
-          // class ComponentName
-          /(?:^|\n)\s*(?:export\s+)?class\s+([A-Z][a-zA-Z0-9]*)/,
-          // export default ComponentName (at end of file)
-          /export\s+default\s+([A-Z][a-zA-Z0-9]*)\s*;?\s*$/,
-        ];
-
-        let componentName: string | null = null;
-        for (const pattern of patterns) {
-          const m = content.match(pattern);
-          if (m) {
-            componentName = m[1];
-            break;
-          }
-        }
-
-        if (!componentName) return null;
-
-        // Map component name to path
-        if (componentName === 'App') {
-          return `src/App${ext}`;
-        }
-        // Everything else goes into components/
-        return `src/components/${componentName}${ext}`;
-      };
-
-      // ---- PASS 1: Extract blocks with explicit file paths ----
-      const inferredBlocks: Array<{ header: string; content: string }> = [];
-
-      for (const block of rawBlocks) {
-        let { header, content } = block;
-        let filePath: string | null = null;
-
-        // Format 1: ```file:src/components/Todo.jsx
-        if (header.startsWith('file:')) {
-          filePath = header.substring(5).trim();
-        }
-        // Format 2: ```jsx:src/components/Todo.jsx  or ```javascript:src/App.jsx
-        else if (header.includes(':') && !KNOWN_LANG_TAGS.has(header.split(':')[0].toLowerCase())) {
-          filePath = header; // entire header is path-like
-        }
-        else if (header.includes(':')) {
-          // e.g. "jsx:src/components/Todo.jsx"
-          const afterColon = header.split(':').slice(1).join(':').trim();
-          if (isFilePath(afterColon)) {
-            filePath = afterColon;
-          }
-        }
-
-        // Format 3: ```jsx src/components/Todo.jsx  (language + space + path)
-        if (!filePath && header.includes(' ')) {
-          const parts = header.split(/\s+/);
-          if (parts.length >= 2) {
-            const possiblePath = parts.slice(1).join(' ').trim();
-            if (isFilePath(possiblePath)) {
-              filePath = possiblePath;
-            }
-          }
-        }
-
-        // Format 4: header IS the file path directly  (e.g. ```src/App.jsx)
-        if (!filePath && isFilePath(header)) {
-          filePath = header;
-        }
-
-        // Format 5: first non-empty line inside the block is a path
-        // Many models emit:
-        //   src/components/Contact.jsx
-        //   import React from 'react';
-        //   ...
-        // so treat that leading line as the file path and strip it.
-        if (!filePath) {
-          const lines = content.split('\n');
-          const firstNonEmptyIndex = lines.findIndex((line) => line.trim().length > 0);
-          if (firstNonEmptyIndex !== -1) {
-            const firstLine = lines[firstNonEmptyIndex].trim();
-            if (isFilePath(firstLine)) {
-              filePath = firstLine;
-              content = [
-                ...lines.slice(0, firstNonEmptyIndex),
-                ...lines.slice(firstNonEmptyIndex + 1),
-              ]
-                .join('\n')
-                .trim();
-            }
-          }
-        }
-
-        if (filePath) {
-          const normalized = normalizePath(filePath);
-          console.log(`✅ [PASS1] Explicit path: ${normalized} (header: "${header}")`);
-          // Deduplicate: keep longer content
-          const existing = allMatches.findIndex(m => m.path === normalized);
-          if (existing >= 0) {
-            if (content.length > allMatches[existing].content.length) {
-              allMatches[existing].content = content;
-            }
-          } else {
-            allMatches.push({ path: normalized, content });
-          }
-        } else {
-          // No explicit path found — queue for inference
-          inferredBlocks.push(block);
-        }
-      }
-
-      console.log(`📁 PASS 1 result: ${allMatches.length} files with explicit paths, ${inferredBlocks.length} blocks need inference`);
-
-      // ---- PASS 2: Infer paths from code content ----
-      for (const block of inferredBlocks) {
-        const { header, content } = block;
-
-        // Determine language tag
-        const langTag = KNOWN_LANG_TAGS.has(header.toLowerCase()) ? header.toLowerCase() : '';
-
-        // Skip non-code blocks (plain text explanations, etc.)
-        const looksLikeCode = content.includes('import ') || content.includes('export ') ||
-          content.includes('function ') || content.includes('const ') || content.includes('class ') ||
-          content.includes('return ') || content.includes('{') || content.includes('<');
-
-        if (!looksLikeCode) {
-          console.log(`⏭️ [PASS2] Skipping non-code block (header: "${header}", preview: "${content.substring(0, 60)}")`);
-          continue;
-        }
-
-        const inferredPath = inferPathFromContent(content, langTag);
-
-        if (inferredPath) {
-          const normalized = normalizePath(inferredPath);
-          console.log(`✅ [PASS2] Inferred path: ${normalized} (header: "${header}")`);
-          const existing = allMatches.findIndex(m => m.path === normalized);
-          if (existing >= 0) {
-            if (content.length > allMatches[existing].content.length) {
-              allMatches[existing].content = content;
-              console.log(`   ↳ Replaced with longer content (${content.length} > ${allMatches[existing].content.length})`);
-            }
-          } else {
-            allMatches.push({ path: normalized, content });
-          }
-        } else {
-          console.log(`⚠️ [PASS2] Could not infer path (header: "${header}", preview: "${content.substring(0, 80)}")`);
-        }
-      }
-
-      // ---- Final results ----
-      console.log('\n' + '='.repeat(60));
-      console.log(`📁 FILE PARSING RESULTS`);
-      console.log('='.repeat(60));
-      console.log(`Total files found: ${allMatches.length}`);
-      
+      console.log(`📁 Total files found: ${allMatches.length}`);
       if (allMatches.length > 0) {
-        console.log('\n📋 Files to create:');
         allMatches.forEach((m, idx) => {
           console.log(`  ${idx + 1}. ${m.path} (${m.content.length} chars)`);
         });
       } else {
-        console.warn('\n⚠️ NO FILES FOUND IN RESPONSE!');
-        console.warn('Raw blocks extracted:', rawBlocks.length);
-        rawBlocks.slice(0, 3).forEach((b, idx) => {
-          console.warn(`  Block ${idx + 1}: header="${b.header}", content preview: "${b.content.substring(0, 150)}"`);
-        });
+        console.warn('⚠️ NO FILES FOUND IN RESPONSE!');
+        console.warn('Response preview:', responseText.substring(0, 300));
       }
-      console.log('='.repeat(60));
 
       // Process each match — paths are already normalized from PASS 1/PASS 2
       for (const fileMatch of allMatches) {
@@ -1014,69 +1160,24 @@ export async function POST(
           fixesApplied.push('Fixed typo: exprot → export');
         }
         
-        // Fix 2: Malformed JSX tags (spaces in closing tags)
-        processedContent = processedContent.replace(/<\s*\/\s*(\w+)\s*>/g, '</$1>');
-        processedContent = processedContent.replace(/<\s*(\w+)\s*\/\s*>/g, '<$1 />');
-        
-        // Fix 3: Fix malformed self-closing tags with spaces
-        processedContent = processedContent.replace(/<\s*(\w+)\s+([^>]*?)\s*\/\s*>/g, '<$1 $2 />');
-        
-        // Fix 4: Fix broken closing tags like </option> -> </option>
-        processedContent = processedContent.replace(/<\s*\/\s*(\w+)\s*>/g, '</$1>');
-        
-        // Fix 5: Fix malformed attributes (spaces around =)
-        processedContent = processedContent.replace(/\s*=\s*["']/g, '="');
-        processedContent = processedContent.replace(/["']\s*>/g, '">');
-        
-        // Fix 6: Remove extra spaces in JSX
-        processedContent = processedContent.replace(/\s+>/g, '>');
-        processedContent = processedContent.replace(/<\s+/g, '<');
-        
-        // Fix 7: Fix broken imports (spaces in import paths)
+        // Fix 2: Fix broken imports (spaces in import paths)
         processedContent = processedContent.replace(/import\s+.*?from\s+["']\s*([^"']+?)\s*["']/g, (match, path) => {
           return match.replace(path, path.trim());
         });
-        
-        // Fix 8: Fix React import (lowercase 'react' should be 'React')
+
+        // Fix 3: Fix React import (lowercase 'react' should be 'React')
         if (processedContent.includes("import react from") && !processedContent.includes("import React from")) {
           processedContent = processedContent.replace(/import\s+react\s+from\s+["']react["']/gi, "import React from 'react'");
           fixesApplied.push('Fixed: import react → import React');
         }
-        
-        // Fix 9: Fix malformed component names in JSX (spaces)
-        processedContent = processedContent.replace(/<\s*(\w+)\s+([^>]*?)\s*>/g, '<$1 $2>');
-        
-        // Fix 10: Fix broken export statements
-        processedContent = processedContent.replace(/export\s+default\s+(\w+)\s*;/g, 'export default $1;');
-        
-        // Fix 11: Fix classname → className (common React error)
-        if (processedContent.includes('classname') && !processedContent.includes('className')) {
-          processedContent = processedContent.replace(/classname\s*=/gi, 'className=');
-          processedContent = processedContent.replace(/classname-/gi, 'className-');
-          processedContent = processedContent.replace(/classname\s*:/gi, 'className:');
+
+        // Fix 4: Fix classname → className (common React error)
+        if (processedContent.includes('classname=') && !processedContent.includes('className=')) {
+          processedContent = processedContent.replace(/\bclassname\s*=/gi, 'className=');
           fixesApplied.push('Fixed: classname → className');
         }
-        
-        // Fix 12: Fix uppercase closing tags (</H1> → </h1>)
-        processedContent = processedContent.replace(/<\/([A-Z][a-zA-Z0-9]+)>/g, (match, tag) => {
-          const lowerTag = tag.toLowerCase();
-          if (lowerTag !== tag) {
-            fixesApplied.push(`Fixed: </${tag}> → </${lowerTag}>`);
-            return `</${lowerTag}>`;
-          }
-          return match;
-        });
-        
-        // Fix 13: Fix malformed attribute syntax (classname-"text-3xl → className="text-3xl")
-        processedContent = processedContent.replace(/(\w+)-("[\w\s-]+)/g, (match, attr, value) => {
-          if (attr === 'classname') {
-            fixesApplied.push(`Fixed malformed attribute: ${match}`);
-            return `className=${value}`;
-          }
-          return match;
-        });
-        
-        // Fix 14: Fix export name mismatches (export default Headername when component is Header)
+
+        // Fix 5: Fix export name mismatches (export default Headername when component is Header)
         const componentMatch = processedContent.match(/(?:const|function|var|let)\s+(\w+)\s*[=(]/);
         const exportMatch = processedContent.match(/export\s+default\s+(\w+)\s*;/);
         if (componentMatch && exportMatch) {
@@ -1087,9 +1188,6 @@ export async function POST(
             fixesApplied.push(`Fixed export mismatch: ${exportName} → ${componentName}`);
           }
         }
-        
-        // Fix 15: Fix incomplete return statements (return( → return ())
-        processedContent = processedContent.replace(/return\(/g, 'return (');
         
         // Update fileContent with processed content if fixes were applied
         if (fixesApplied.length > 0) {
@@ -1764,9 +1862,9 @@ root.render(
           { role: 'system', content: systemPrompt },
           { role: 'user', content: message },
         ],
-        temperature: 0.5, // Lower for more consistent output across Groq and OpenRouter
+        temperature: slowProviderNS ? 0.3 : 0.5,
         max_tokens: maxOutputTokens,
-        stream: false, // Non-streaming for reliability
+        stream: false,
       });
       
       if (timeoutId) {
@@ -1909,9 +2007,6 @@ root.render(
     try {
       // Agent path: try structured JSON (Lovable/Replit style)
       const agentResponse = extractAgentResponse(response);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:extractAgentResponse',message:'chat agentResponse result',data:{hasAgentResponse:!!agentResponse,fileCount:agentResponse?.files?.length??0,responseLen:response?.length,firstChars:response?.substring(0,150)},timestamp:Date.now(),hypothesisId:'H1,H3'})}).catch(()=>{});
-      // #endregion
       if (agentResponse && agentResponse.files.length > 0) {
         agentProvidedApp = agentResponse.files.some(f =>
           f.path === 'src/App.jsx' || f.path === 'src/App.tsx'
@@ -1933,9 +2028,6 @@ root.render(
             createdFiles.push({ path: f.path, success: false, error: err instanceof Error ? err.message : 'Unknown error' });
           }
         }
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:agentFiles',message:'agent files created',data:{paths:agentResponse.files.map(x=>x.path),successCount:agentResponse.files.length},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
-        // #endregion
       }
 
       // Fallback: regex-based parsing (legacy)
@@ -1944,13 +2036,7 @@ root.render(
           const codeBlockCount = (response.match(/```/g) || []).length / 2;
           console.log(`[FILE] No JSON files - parsing ${response.length} chars, ${codeBlockCount} code blocks`);
         }
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:parseAndCreateFiles',message:'fallback parseAndCreateFiles called',data:{responseLen:response?.length,codeBlockCount:(response.match(/```/g)||[]).length/2},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
-        // #endregion
         createdFiles = await parseAndCreateFiles(response);
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/00543828-0b03-4c01-9747-95de7c10ba7d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat/route.ts:parseAndCreateFiles',message:'parseAndCreateFiles result',data:{createdCount:createdFiles.length,paths:createdFiles.map(f=>f.path),successCount:createdFiles.filter(f=>f.success).length},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
-        // #endregion
       }
       
       if (createdFiles.length === 0 && codeBlockCount === 0) {
@@ -1966,6 +2052,56 @@ root.render(
         }
       }
       
+      // AUTO-RETRY: If AI returned too few JSX files but plan expected more, retry once
+      const successfulJsxFiles = createdFiles.filter((f: FileCreationResult) =>
+        f.success && (f.path.endsWith('.jsx') || f.path.endsWith('.tsx'))
+      );
+      const planExpectedFiles = plan?.files?.length ?? 0;
+      if (successfulJsxFiles.length < 3 && planExpectedFiles > 3 && client) {
+        console.log(`⚠️ Only ${successfulJsxFiles.length} JSX files created but plan expected ${planExpectedFiles}. Auto-retrying...`);
+        try {
+          const retryMessage = buildRetryPrompt(message, fileExtension);
+          const retryCompletion = await client.chat.completions.create({
+            model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: retryMessage },
+            ],
+            temperature: 0.4,
+            max_tokens: maxOutputTokens,
+            stream: false,
+          });
+          const retryText = retryCompletion.choices[0]?.message?.content || '';
+          const retryAgent = extractAgentResponse(retryText);
+          if (retryAgent && retryAgent.files.length > successfulJsxFiles.length) {
+            console.log(`✅ Retry returned ${retryAgent.files.length} files (up from ${successfulJsxFiles.length})`);
+            for (const f of retryAgent.files) {
+              try {
+                const fName = f.name || f.path.split('/').pop() || f.path;
+                const lang = f.language || (f.path.endsWith('.tsx') ? 'typescript' : f.path.endsWith('.jsx') ? 'javascript' : 'css');
+                await prisma.appFile.upsert({
+                  where: { projectId_path: { projectId: id, path: f.path } },
+                  update: { content: f.content, language: lang, isMain: f.isMain, name: fName },
+                  create: { projectId: id, path: f.path, name: fName, content: f.content, language: lang, isMain: f.isMain },
+                });
+                // Add to createdFiles if not already present
+                if (!createdFiles.some(cf => cf.path === f.path)) {
+                  createdFiles.push({ path: f.path, success: true, validated: true });
+                }
+              } catch (retryErr) {
+                console.error(`  ❌ Retry file ${f.path} failed:`, retryErr);
+              }
+            }
+            // Update agentProvidedApp flag
+            if (retryAgent.files.some(f => f.path === 'src/App.jsx' || f.path === 'src/App.tsx')) {
+              agentProvidedApp = true;
+            }
+          }
+        } catch (retryErr) {
+          console.warn('Auto-retry for insufficient files failed:', retryErr);
+        }
+      }
+
       // AUTO-FIX: If files were created but have validation errors, attempt to fix them
       const filesWithErrors = createdFiles.filter((f: FileCreationResult) => f.success && f.validated === false);
       if (filesWithErrors.length > 0) {

@@ -27,7 +27,8 @@ export function isValidOAuthProvider(provider: string): provider is OAuthProvide
  */
 export async function initiateOAuth(
   req: NextRequest,
-  provider: OAuthProvider
+  provider: OAuthProvider,
+  callbackUrl?: string
 ): Promise<NextResponse> {
   if (!supabase) {
     return NextResponse.json(
@@ -37,7 +38,7 @@ export async function initiateOAuth(
   }
 
   try {
-    const redirectUrl = `${req.nextUrl.origin}/auth/callback`;
+    const redirectUrl = callbackUrl || `${req.nextUrl.origin}/auth/callback`;
     
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider,

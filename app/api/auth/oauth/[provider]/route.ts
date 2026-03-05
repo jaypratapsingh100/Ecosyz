@@ -39,5 +39,14 @@ export async function GET(
     );
   }
   
-  return initiateOAuth(req, provider as ValidProvider);
+  // Pass redirect param through to callback URL so user returns to original page
+  const redirectAfterLogin = req.nextUrl.searchParams.get('redirect');
+  let callbackUrl: string | undefined;
+  if (redirectAfterLogin) {
+    const cb = new URL(`${req.nextUrl.origin}/auth/callback`);
+    cb.searchParams.set('redirect', redirectAfterLogin);
+    callbackUrl = cb.toString();
+  }
+
+  return initiateOAuth(req, provider as ValidProvider, callbackUrl);
 }

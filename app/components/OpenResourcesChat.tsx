@@ -557,6 +557,7 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
   ]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [chatLimitReached, setChatLimitReached] = useState(false);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [citationStyle, setCitationStyle] = useState<'simple' | 'apa' | 'mla' | 'chicago' | 'bibtex'>('simple');
@@ -983,12 +984,22 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
           }
           return next;
         });
+      } else if (response.status === 429) {
+        // Check for anonymous chat limit
+        let errorData: any = {};
+        try { errorData = await response.json(); } catch {}
+        if (errorData.code === 'AUTH_REQUIRED') {
+          setChatLimitReached(true);
+          setIsLoading(false);
+          return;
+        }
+        throw new Error(errorData.error || 'Rate limit exceeded. Please try again later.');
       } else {
         let errorMessage = 'Failed to get response';
         try {
           const errorData = await response.json();
           errorMessage = errorData.error || errorData.message || `HTTP ${response.status}: ${response.statusText}`;
-          
+
           // Add details if available
           if (errorData.details) {
             errorMessage += `\n\nDetails: ${JSON.stringify(errorData.details)}`;
@@ -1806,7 +1817,21 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
         </div>
       )}
 
+      {/* Chat Limit Banner */}
+      {chatLimitReached && (
+        <div className="border-t border-emerald-500/30 p-4 flex-shrink-0 bg-gradient-to-r from-[#0c2321] to-[#0a1016] text-center space-y-3">
+          <p className="text-sm text-gray-300">You&apos;ve used your 3 free chat messages.</p>
+          <a
+            href="/auth?redirect=%2Fopenresources"
+            className="inline-block px-6 py-2.5 bg-gradient-to-r from-emerald-400 to-cyan-500 text-gray-900 font-semibold rounded-lg hover:shadow-lg hover:scale-105 transition-all text-sm"
+          >
+            Sign in for unlimited chat
+          </a>
+        </div>
+      )}
+
       {/* Input Area - Fixed at Bottom */}
+      {!chatLimitReached && (
       <div className="border-t border-white/10 p-4 flex-shrink-0 bg-[#0a0a0a]/80 backdrop-blur-sm">
         <form onSubmit={handleSend} className="relative">
           <div className="flex items-center gap-0 w-full">
@@ -1839,6 +1864,7 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
           </div>
         </form>
       </div>
+      )}
       </div>
 
       {/* Settings Modal */}

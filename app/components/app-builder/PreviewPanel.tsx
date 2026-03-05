@@ -7,12 +7,15 @@ interface PreviewPanelProps {
   projectId: string;
   projectType: string;
   onRefresh?: () => void;
+  /** Increment this value to force a preview refresh (e.g. after files are created) */
+  refreshKey?: number;
 }
 
 export default function PreviewPanel({
   projectId,
   projectType,
   onRefresh,
+  refreshKey = 0,
 }: PreviewPanelProps) {
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -120,6 +123,14 @@ export default function PreviewPanel({
 
     return () => clearTimeout(timer);
   }, [projectId, generatePreview]);
+
+  // Refresh when refreshKey changes (prop-driven refresh from parent)
+  useEffect(() => {
+    if (refreshKey > 0 && projectId) {
+      const timer = setTimeout(() => generatePreview(), 500);
+      return () => clearTimeout(timer);
+    }
+  }, [refreshKey, projectId, generatePreview]);
 
   // Debounced refresh events – only refresh when our project was updated
   useEffect(() => {

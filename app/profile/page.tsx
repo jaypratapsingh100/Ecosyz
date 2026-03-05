@@ -12,7 +12,7 @@ async function getProfileData() {
   const user = await getCurrentUser();
 
   if (!user) {
-    redirect('/auth');
+    redirect('/auth?redirect=%2Fprofile');
   }
 
   try {

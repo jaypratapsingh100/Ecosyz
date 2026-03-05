@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
 import { DEFAULT_APP_CONTENT, SCAFFOLD_STYLES, PREVIEW_BASE_CSS } from '@/app/lib/app-builder/scaffolds';
+import { stripForBrowser, sortComponentsByDependency } from '@/app/lib/app-builder/strip-for-browser';
 
 export async function POST(
   req: NextRequest,
@@ -111,6 +112,9 @@ export async function POST(
     // Preview injects React + App directly for sandbox rendering
     html = html.replace(/<script[^>]*type=["']module["'][^>]*src=["'][^"']*["'][^>]*>[\s\S]*?<\/script>/gi, '');
     html = html.replace(/<script[^>]*src=["']\/src\/[^"']*["'][^>]*>[\s\S]*?<\/script>/gi, '');
+    // Also strip self-closing variants and src tags without leading slash
+    html = html.replace(/<script[^>]*src=["']src\/[^"']*["'][^>]*>[\s\S]*?<\/script>/gi, '');
+    html = html.replace(/<script[^>]*src=["']\.\/src\/[^"']*["'][^>]*>[\s\S]*?<\/script>/gi, '');
 
     // Inject CSS files for all project types
     const cssFiles = project.files.filter(
@@ -126,12 +130,35 @@ export async function POST(
       );
     }
 
-    // Tailwind CSS via CDN so utility classNames (flex, items-center, gap-4, etc.) render in preview
-    const tailwindCdn = `<script src="https://cdn.tailwindcss.com"></script>`;
+    // Google Fonts (Inter) for modern typography in generated apps
+    const googleFonts = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">`;
+    // Tailwind CSS via CDN with extended config for production-grade output
+    const tailwindCdn = `<script src="https://cdn.tailwindcss.com"></script>
+    <script>tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+          colors: { gray: { 950: '#030712' } },
+          animation: {
+            'fade-in': 'fadeIn 0.5s ease-out',
+            'slide-up': 'slideUp 0.5s ease-out',
+          },
+          keyframes: {
+            fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
+            slideUp: { '0%': { opacity: '0', transform: 'translateY(10px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } },
+          },
+        },
+      },
+    }</script>`;
+    // Global styles for polished preview rendering
+    const previewStyles = `<style id="preview-globals">
+      html { scroll-behavior: smooth; }
+      body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
+    </style>`;
     if (html.includes('</head>')) {
-      html = html.replace('</head>', `${tailwindCdn}\n</head>`);
+      html = html.replace('</head>', `${googleFonts}\n${tailwindCdn}\n${previewStyles}\n</head>`);
     } else {
-      html = tailwindCdn + html;
+      html = googleFonts + tailwindCdn + previewStyles + html;
     }
 
     // Standardize preview: inject base CSS for all projects so user always sees a styled app
@@ -186,7 +213,30 @@ export async function POST(
         const reactScripts = `
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>`;
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script>
+    // Global error catcher: catches Babel compilation errors and uncaught runtime errors
+    // so the preview NEVER shows a blank screen
+    window.__previewErrors = [];
+    window.addEventListener('error', function(e) {
+      window.__previewErrors.push(e.message || String(e));
+      var root = document.getElementById('root');
+      if (root && (!root.innerHTML || root.innerHTML.trim() === '')) {
+        root.innerHTML = '<div style="padding:24px;font-family:system-ui,sans-serif;color:#1a1a1a">'
+          + '<h2 style="margin:0 0 12px;font-size:16px;color:#dc2626">Preview Error</h2>'
+          + '<pre style="margin:0;padding:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;white-space:pre-wrap;word-break:break-word;font-size:13px;max-height:300px;overflow:auto">'
+          + window.__previewErrors.map(function(m) { return m.replace(/</g, '&lt;'); }).join('\\n\\n')
+          + '</pre>'
+          + '<p style="margin:12px 0 0;font-size:12px;color:#6b7280">Copy this error and ask the AI in Chat to fix it.</p>'
+          + '</div>';
+      }
+    });
+    // Also catch unhandled promise rejections
+    window.addEventListener('unhandledrejection', function(e) {
+      var msg = e.reason && e.reason.message ? e.reason.message : String(e.reason);
+      window.__previewErrors.push(msg);
+    });
+  </script>`;
         if (!html.includes('react@18') && !html.includes('react.development.js')) {
           if (html.includes('</head>')) {
             html = html.replace('</head>', `${reactScripts}\n</head>`);
@@ -214,30 +264,11 @@ export async function POST(
             f.path !== mainJsFile.path &&
             !f.path.match(/^src\/main\.(jsx|tsx)$/) // Exclude entry - we inject App directly
         );
-        const stripForBrowser = (code: string) => {
-          let c = (code || '')
-            .replace(/export\s+default\s+/g, '')
-            .replace(/import\s+[\s\S]*?from\s+['"][^'"]*['"]\s*;?\s*/g, '') // Remove imports
-            .replace(/<\/script>/gi, '<\\/script>')
-            .replace(/\$\{/g, '\\${'); // Escape template literals
-          if ((c.includes('useState(') || c.includes('useEffect(')) && !c.includes('React.useState') && !c.includes('const { useState')) {
-            c = 'const { useState, useEffect, useCallback, useMemo } = React;\n' + c;
-          }
-          return c.trim();
-        };
         // Sort: dependencies first (TodoItem before TodoList, etc.)
-        const sortedComponents = [...componentFiles].sort((a, b) => {
-          const aContent = (a.content || '');
-          const bName = (b.path || '').split('/').pop()?.replace(/\.[^.]+$/, '') || '';
-          if (aContent.includes(bName) || aContent.includes(`/${bName}'`) || aContent.includes(`/${bName}"`)) return 1;
-          const bContent = (b.content || '');
-          const aName = (a.path || '').split('/').pop()?.replace(/\.[^.]+$/, '') || '';
-          if (bContent.includes(aName) || bContent.includes(`/${aName}'`) || bContent.includes(`/${aName}"`)) return -1;
-          return (a.path || '').localeCompare(b.path || '');
-        });
+        const sortedComponents = sortComponentsByDependency(componentFiles);
         const componentScripts = sortedComponents.map((f: { path: string; content: string }) => {
           const c = stripForBrowser(f.content);
-          return `<script type="text/babel">\n${c}\n</script>`;
+          return `<script type="text/babel" data-presets="typescript,react">\n${c}\n</script>`;
         }).join('\n');
 
         // Stub Link for preview: created code (e.g. Header) often uses Link; imports are stripped and Next/router aren't in iframe
@@ -288,11 +319,21 @@ export async function POST(
         // Inject the App.jsx component with proper React rendering
         let appContent = mainJsFile.content
           .replace(/export\s+default\s+/g, '')
-          .replace(/import\s+[\s\S]*?from\s+['"][^'"]*['"]\s*;?\s*/g, ''); // Remove imports (components injected above)
+          .replace(/export\s+(?:const|let|var|function|class)\s+/g, (m) => m.replace(/^export\s+/, ''))
+          .replace(/import\s+[\s\S]*?from\s+['"][^'"]*['"]\s*;?\s*/g, '') // Remove ES6 imports (components injected above)
+          .replace(/(?:const|let|var)\s+\w+\s*=\s*require\s*\(\s*['"][^'"]*['"]\s*\)\s*;?\s*/g, '') // Remove require() assignments
+          .replace(/require\s*\(\s*['"][^'"]*['"]\s*\)\s*;?\s*/g, ''); // Remove standalone require() calls
         appContent = appContent.trim();
-        // Ensure React hooks are in scope in iframe (same as component files)
-        if ((appContent.includes('useState(') || appContent.includes('useEffect(')) && !appContent.includes('React.useState') && !appContent.includes('const { useState')) {
-          appContent = 'const { useState, useEffect, useCallback, useMemo } = React;\n' + appContent;
+        // Ensure all common React hooks/utilities are in scope in iframe (same as component files)
+        const appUsesReactApi = /use(State|Effect|Ref|Context|Reducer|Callback|Memo|Id|LayoutEffect|DeferredValue|Transition)\s*\(/.test(appContent)
+          || /\b(memo|forwardRef|createContext|Fragment|Children|cloneElement|lazy|Suspense|createPortal)\b/.test(appContent);
+        if (appUsesReactApi && !appContent.includes('React.useState') && !appContent.includes('const { useState')) {
+          appContent = [
+            'const { useState, useEffect, useRef, useContext, useReducer, useCallback, useMemo,',
+            '  useId, useLayoutEffect, useDeferredValue, useTransition,',
+            '  memo, forwardRef, createContext, Fragment, Children, cloneElement, lazy, Suspense } = React;',
+            'const { createPortal } = ReactDOM;',
+          ].join('\n') + '\n' + appContent;
         }
         // If app uses React Router but imports were stripped, provide Router/Routes/Route stubs so "Router is not defined" doesn't occur
         const usesReactRouter = /<Router[\s>]|<Routes[\s>]|<Route\s/.test(appContent);
@@ -306,8 +347,8 @@ const Route = function Route(props) { return props.element ?? null; };
 
         // CRITICAL: Escape </script> so HTML parser doesn't close script tag early
         appContent = appContent.replace(/<\/script>/gi, '<\\/script>');
-        // Escape template literals so ${} in source isn't interpreted when we build the HTML
-        appContent = appContent.replace(/\$\{/g, '\\${');
+        // NOTE: Do NOT escape template literals (${}). The code runs inside <script type="text/babel">
+        // where Babel handles template literals natively. Escaping them breaks dynamic content.
         
         // Wrap app in an error boundary so runtime errors (e.g. .map on undefined) show a message instead of blank preview
         // When router stubs are active, render a small banner so the fix is visible; also highlight "Router is not defined" in errors
@@ -315,7 +356,7 @@ const Route = function Route(props) { return props.element ?? null; };
           ? 'React.createElement(React.Fragment, null, React.createElement("div", { style: { padding: "6px 12px", fontSize: 11, background: "#fef3c7", color: "#92400e", borderBottom: "1px solid #fcd34d", fontFamily: "system-ui,sans-serif" } }, "Preview: React Router stubs active — routing is simplified. Your app should render below."), React.createElement(App))'
           : 'React.createElement(App)';
         const errorBoundaryScript = [
-          '  <script type="text/babel">',
+          '  <script type="text/babel" data-presets="typescript,react">',
           '    class PreviewErrorBoundary extends React.Component {',
           '      constructor(props) { super(props); this.state = { hasError: false, error: null }; }',
           '      static getDerivedStateFromError(error) { return { hasError: true, error }; }',
@@ -355,7 +396,7 @@ const Route = function Route(props) { return props.element ?? null; };
         }
       }
     } else {
-      // For non-React projects, inject JS/JSX files
+      // For non-React projects, inject JS/JSX/TSX files
       const jsFiles = project.files.filter(
         (f: {
           language: string | null;
@@ -363,14 +404,18 @@ const Route = function Route(props) { return props.element ?? null; };
           isMain: boolean;
         }) =>
           (f.language === 'jsx' ||
+            f.language === 'tsx' ||
+            f.language === 'typescript' ||
             f.language === 'javascript' ||
             f.path.endsWith('.js') ||
-            f.path.endsWith('.jsx')) &&
+            f.path.endsWith('.jsx') ||
+            f.path.endsWith('.tsx') ||
+            f.path.endsWith('.ts')) &&
           !f.isMain
       );
       for (const jsFile of jsFiles) {
         const safeContent = (jsFile.content || '').replace(/<\/script>/gi, '<\\/script>');
-        const scriptTag = `<script type="text/babel">${safeContent}</script>`;
+        const scriptTag = `<script type="text/babel" data-presets="typescript,react">${safeContent}</script>`;
         // Insert before closing body tag
         if (html.includes('</body>')) {
           html = html.replace('</body>', `${scriptTag}\n</body>`);
@@ -379,20 +424,20 @@ const Route = function Route(props) { return props.element ?? null; };
         }
       }
 
-      // Inject main JSX file if it exists and hasn't been injected yet
+      // Inject main JSX/TSX file if it exists and hasn't been injected yet
       const mainJsFile = project.files.find(
         (f: {
           language: string | null;
           path: string;
           isMain: boolean;
         }) =>
-          (f.language === 'jsx' || f.path.endsWith('.jsx')) &&
+          (f.language === 'jsx' || f.language === 'tsx' || f.path.endsWith('.jsx') || f.path.endsWith('.tsx')) &&
           f.isMain &&
           f.path !== 'index.html'
       );
       if (mainJsFile && !html.includes(mainJsFile.content)) {
         const safeContent = (mainJsFile.content || '').replace(/<\/script>/gi, '<\\/script>');
-        const scriptTag = `<script type="text/babel">${safeContent}</script>`;
+        const scriptTag = `<script type="text/babel" data-presets="typescript,react">${safeContent}</script>`;
         if (html.includes('</body>')) {
           html = html.replace('</body>', `${scriptTag}\n</body>`);
         } else {

@@ -46,6 +46,7 @@ function OpenResourcesPage() {
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [authRequired, setAuthRequired] = useState(false);
   const [coverage, setCoverage] = useState<any>(null);
   const [total, setTotal] = useState(0);
   const [limit, setLimit] = useState(30);
@@ -279,6 +280,10 @@ function OpenResourcesPage() {
     setGeneralSummary(null); // Clear previous summary
     try {
       const res = await fetch(`/api/search?q=${encodeURIComponent(customQ)}&type=${customType}&limit=${customLimit}` , { cache: 'no-store', signal: controller.signal });
+      if (res.status === 429) {
+        const errData = await res.json();
+        if (errData.code === 'AUTH_REQUIRED') { setAuthRequired(true); setLoading(false); return; }
+      }
       if (!res.ok) throw new Error('Search failed');
       const data = await res.json();
       const searchResults = Array.isArray(data.results) ? data.results : [];
@@ -419,6 +424,10 @@ Output ONLY the JSON object, no markdown code fence, no extra text. Example shap
     setLoading(true); setError('');
     try {
       const res = await fetch(`/api/search?cursor=${encodeURIComponent(nextCursor)}`, { cache: 'no-store', signal: controller.signal });
+      if (res.status === 429) {
+        const errData = await res.json();
+        if (errData.code === 'AUTH_REQUIRED') { setAuthRequired(true); setLoading(false); return; }
+      }
       if (!res.ok) throw new Error('Load more failed');
       const data = await res.json();
       const newItems = Array.isArray(data.results) ? data.results : [];
@@ -561,6 +570,10 @@ Output ONLY the JSON object, no markdown code fence, no extra text. Example shap
                   setLoading(true);
                   try {
                     const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&type=all&limit=20`, { cache: 'no-store' });
+                    if (res.status === 429) {
+                      const errData = await res.json();
+                      if (errData.code === 'AUTH_REQUIRED') { setAuthRequired(true); setLoading(false); return []; }
+                    }
                     if (!res.ok) throw new Error('Search failed');
                     const data = await res.json();
                     const searchResults = Array.isArray(data.results) ? data.results : [];
@@ -1132,6 +1145,22 @@ Output ONLY the JSON object, no markdown code fence, no extra text. Example shap
                 </button>
               </div>
               </div>
+
+              {/* Sample search suggestions */}
+              {!results.length && !loading && (
+                <div className="flex flex-wrap gap-2 mt-1">
+                  <span className="text-xs text-white/40 mr-1 self-center">Try:</span>
+                  {['Machine Learning', 'Quantum Computing', 'Neural Networks', 'Climate Change', 'Robotics', 'CRISPR'].map((sample) => (
+                    <button
+                      key={sample}
+                      onClick={() => { setQ(sample); search(sample, type, limit); }}
+                      className="px-3 py-1.5 text-xs rounded-full border border-white/10 bg-white/5 text-white/70 hover:bg-emerald-500/20 hover:border-emerald-400/40 hover:text-emerald-300 transition-all duration-200"
+                    >
+                      {sample}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             {/* Federated search results */}
             {(q || loading) && (
@@ -1165,8 +1194,27 @@ Output ONLY the JSON object, no markdown code fence, no extra text. Example shap
                   </div>
                 )}
                 
+                {/* Auth Required State */}
+                {authRequired && (
+                  <div className="mb-8 p-8 rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-[#121f22] via-[#0c2321] to-[#0a1016] text-center space-y-4">
+                    <div className="text-4xl mb-2">&#128270;</div>
+                    <h3 className="text-2xl font-bold text-white">Free searches used up</h3>
+                    <p className="text-gray-300 max-w-md mx-auto">
+                      You&apos;ve used your 5 free searches. Sign in to get unlimited access to our global research search across papers, datasets, code, models, and more.
+                    </p>
+                    <div className="flex justify-center gap-3 pt-2">
+                      <a
+                        href="/auth?redirect=%2Fopenresources"
+                        className="px-8 py-3 bg-gradient-to-r from-emerald-400 to-cyan-500 text-gray-900 font-semibold rounded-lg hover:shadow-lg hover:scale-105 transition-all"
+                      >
+                        Sign in to continue
+                      </a>
+                    </div>
+                  </div>
+                )}
+
                 {/* Empty State */}
-                {!loading && results.length === 0 && q && (
+                {!loading && results.length === 0 && q && !authRequired && (
                   <div className="text-center py-12 px-4">
                     <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-white/5 border border-white/10 mb-4">
                       <svg className="w-8 h-8 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">

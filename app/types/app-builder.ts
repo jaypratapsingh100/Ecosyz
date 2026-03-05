@@ -13,12 +13,14 @@ export interface ChatMessage {
 export interface ChatRequestBody {
   message: string;
   currentFile?: string;
-  /** User-selected AI provider: groq | openrouter (enables OpenRouter DeepSeek Coder, etc.) */
-  userProvider?: 'groq' | 'openrouter';
+  /** User-selected AI provider: groq | openrouter | openai | anthropic */
+  userProvider?: 'groq' | 'openrouter' | 'openai' | 'anthropic';
   /** User-selected model id (e.g. deepseek/deepseek-coder, llama-3.3-70b-versatile) */
   userModel?: string;
   userApiKey?: string;
   questionnaireData?: unknown;
+  /** Enable SSE streaming for real-time progress updates */
+  stream?: boolean;
 }
 
 /** Planner agent output: high-level project plan */
@@ -81,6 +83,8 @@ export interface QuestionnaireData {
   layoutStyle?: string;
   brandName?: string;
   tagline?: string;
+  /** Theme preset ID: modern-minimal, bold-vibrant, corporate-clean, dark-elegance */
+  themePreset?: string;
   language?: 'javascript' | 'typescript';
   frameworkPreference?: string;
   [key: string]: unknown;

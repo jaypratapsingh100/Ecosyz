@@ -151,7 +151,7 @@ export default function AdminSearchesPage() {
               You must be signed in as an admin to view search logs.
             </p>
             <Link
-              href="/auth"
+              href="/auth?redirect=%2Fadmin%2Fsearches"
               className="inline-flex items-center gap-2 px-6 py-3 bg-cyan-500/20 text-cyan-400 border border-cyan-500/50 rounded-lg hover:bg-cyan-500/30 transition-colors font-medium"
             >
               <LogIn className="w-5 h-5" />

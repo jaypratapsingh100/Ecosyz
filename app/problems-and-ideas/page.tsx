@@ -413,7 +413,7 @@ export default function ProblemsAndIdeasPage() {
                 Post problems and ideas, and comment on others&apos; posts.
               </p>
               <button
-                onClick={() => router.push('/auth')}
+                onClick={() => router.push('/auth?redirect=%2Fproblems-and-ideas')}
                 className="px-8 py-3 bg-gradient-to-r from-[#38bdf8] to-[#0ff0fc] text-gray-900 font-semibold rounded-lg hover:scale-[1.02] transition-all"
               >
                 Sign in

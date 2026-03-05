@@ -722,7 +722,7 @@ export default function AdminAnalyticsPage() {
                 You need to be signed in to access the admin analytics dashboard.
               </p>
               <Link
-                href="/auth"
+                href="/auth?redirect=%2Fadmin%2Fanalytics"
                 className="inline-flex items-center gap-2 px-6 py-3 bg-cyan-500/20 text-cyan-400 border border-cyan-500/50 rounded-lg hover:bg-cyan-500/30 transition-colors backdrop-blur-sm font-medium"
               >
                 <LogIn className="w-5 h-5" />

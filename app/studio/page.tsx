@@ -49,6 +49,7 @@ function AppBuilderPageContent() {
   const [projectToDelete, setProjectToDelete] = useState<{ ids: string[]; title: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [projectFiles, setProjectFiles] = useState<{ id: string; path: string; name: string; content: string; language?: string; isMain?: boolean }[]>([]);
+  const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
   const [selectedFile, setSelectedFile] = useState<{ id: string; path: string; name: string; content: string; language?: string; isMain?: boolean } | null>(null);
 
   const [isMobile, setIsMobile] = useState(false);
@@ -449,7 +450,7 @@ function AppBuilderPageContent() {
               <p className="text-gray-400 mb-8 text-sm">Build amazing applications with AI-powered code generation</p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <button
-                  onClick={() => router.push('/auth')}
+                  onClick={() => router.push('/auth?redirect=%2Fstudio')}
                   className="px-8 py-3 bg-gradient-to-r from-emerald-400 to-cyan-500 hover:from-emerald-500 hover:to-cyan-600 text-gray-900 font-semibold rounded-lg transition-all shadow-lg shadow-emerald-500/20 hover:shadow-lg hover:scale-105"
                 >
                   Sign In
@@ -583,6 +584,7 @@ function AppBuilderPageContent() {
                         if (!selectedProjectId) return;
                         const pathToPreserve = selectedFile?.path;
                         setTimeout(() => fetchProjectFiles(selectedProjectId, pathToPreserve), 200);
+                        setPreviewRefreshKey(k => k + 1);
                       }}
                         projectTitle="New Project"
                         projectFramework="react"
@@ -594,7 +596,6 @@ function AppBuilderPageContent() {
                       <DeploymentPanel
                         projectId={selectedProjectId}
                         projectName="Untitled Project"
-                        onAuthRequired={checkAuth}
                       />
                     </ErrorBoundary>
                   )}
@@ -715,6 +716,7 @@ function AppBuilderPageContent() {
                     projectId={selectedProjectId}
                     projectType="web"
                     onRefresh={() => {}}
+                    refreshKey={previewRefreshKey}
                   />
                 </ErrorBoundary>
               ) : (

@@ -32,13 +32,12 @@ describe('DeploymentPanel Error Handling', () => {
 
     render(<DeploymentPanel projectId="test-id" projectName="Test" />);
 
-    // Wait for component to load
     await waitFor(() => {
-      const downloadButton = screen.getByText(/Download ZIP/i);
+      const downloadButton = screen.getByRole('button', { name: /Download ZIP/i });
       expect(downloadButton).toBeInTheDocument();
     });
 
-    const downloadButton = screen.getByText(/Download ZIP/i);
+    const downloadButton = screen.getByRole('button', { name: /Download ZIP/i });
     await user.click(downloadButton);
 
     await waitFor(() => {

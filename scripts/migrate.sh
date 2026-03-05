@@ -15,8 +15,15 @@ fi
 # Run migrate deploy - it's idempotent and only applies pending migrations
 # This is safe to run multiple times
 # Capture output and exit code
-MIGRATE_OUTPUT=$(pnpm prisma migrate deploy 2>&1)
+# Timeout after 60s to prevent hanging builds if DB is unreachable
+MIGRATE_OUTPUT=$(timeout 60 pnpm prisma migrate deploy 2>&1)
 MIGRATE_EXIT=$?
+
+if [ $MIGRATE_EXIT -eq 124 ]; then
+  echo "⚠️  Migration timed out after 60s - database may be unreachable"
+  echo "   Build will continue without migrations."
+  exit 0
+fi
 
 if [ $MIGRATE_EXIT -eq 0 ]; then
   echo "✅ Migrations applied successfully (or already up to date)"

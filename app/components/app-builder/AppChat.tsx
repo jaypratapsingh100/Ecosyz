@@ -25,7 +25,9 @@ interface AIOption {
 interface AIOptionsState {
   groqAvailable: boolean;
   openRouterAvailable: boolean;
-  models: { groq: AIOption[]; openrouter: AIOption[] };
+  openaiAvailable: boolean;
+  anthropicAvailable: boolean;
+  models: { groq: AIOption[]; openrouter: AIOption[]; openai: AIOption[]; anthropic: AIOption[] };
 }
 
 interface AppChatProps {
@@ -48,7 +50,7 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const [aiOptions, setAiOptions] = useState<AIOptionsState | null>(null);
-  const [selectedProvider, setSelectedProvider] = useState<'groq' | 'openrouter'>('groq');
+  const [selectedProvider, setSelectedProvider] = useState<'groq' | 'openrouter' | 'openai' | 'anthropic'>('groq');
   const [selectedModel, setSelectedModel] = useState<string>('');
 
   const [extractingMessageId, setExtractingMessageId] = useState<string | null>(null);
@@ -71,11 +73,22 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
         setAiOptions({
           groqAvailable: !!data.groqAvailable,
           openRouterAvailable: !!data.openRouterAvailable,
-          models: data.models ?? { groq: [], openrouter: [] },
+          openaiAvailable: !!data.openaiAvailable,
+          anthropicAvailable: !!data.anthropicAvailable,
+          models: data.models ?? { groq: [], openrouter: [], openai: [], anthropic: [] },
         });
         const groq = data.models?.groq ?? [];
         const openrouter = data.models?.openrouter ?? [];
-        if (data.groqAvailable && groq.length > 0) {
+        const openai = data.models?.openai ?? [];
+        const anthropic = data.models?.anthropic ?? [];
+        // Default to best available provider (Claude > OpenAI > Groq > OpenRouter)
+        if (data.anthropicAvailable && anthropic.length > 0) {
+          setSelectedProvider('anthropic');
+          setSelectedModel((m) => m || anthropic[0].id);
+        } else if (data.openaiAvailable && openai.length > 0) {
+          setSelectedProvider('openai');
+          setSelectedModel((m) => m || openai[0].id);
+        } else if (data.groqAvailable && groq.length > 0) {
           setSelectedProvider('groq');
           setSelectedModel((m) => m || groq[0].id);
         } else if (data.openRouterAvailable && openrouter.length > 0) {
@@ -92,11 +105,9 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
 
   useEffect(() => {
     if (!aiOptions) return;
-    if (selectedProvider === 'groq' && aiOptions.models.groq?.length && !aiOptions.models.groq.some((m) => m.id === selectedModel)) {
-      setSelectedModel(aiOptions.models.groq[0].id);
-    }
-    if (selectedProvider === 'openrouter' && aiOptions.models.openrouter?.length && !aiOptions.models.openrouter.some((m) => m.id === selectedModel)) {
-      setSelectedModel(aiOptions.models.openrouter[0].id);
+    const providerModels = aiOptions.models[selectedProvider];
+    if (providerModels?.length && !providerModels.some((m) => m.id === selectedModel)) {
+      setSelectedModel(providerModels[0].id);
     }
   }, [aiOptions, selectedProvider, selectedModel]);
 
@@ -181,71 +192,180 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
           message: description,
           userProvider: selectedProvider,
           userModel: selectedModel || undefined,
+          stream: true,
         }),
       });
-      
-      const data = await res.json().catch(() => ({}));
-      
+
       if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
         let errorMessage = data?.error || 'Failed to send message';
-        
-        // Provide more specific error messages based on status code
-        if (res.status === 401) {
-          errorMessage = 'Please sign in to use the chat feature';
+        if (res.status === 401) errorMessage = 'Please sign in to use the chat feature';
+        else if (res.status === 403 && data?.code === 'PROVIDER_RESTRICTED') {
+          errorMessage = `${data.provider} is not available on your plan. Allowed providers: ${(data.allowedProviders || []).join(', ')}`;
+          toast.error('Provider Restricted', {
+            description: errorMessage,
+            action: { label: 'Upgrade', onClick: () => window.open(data.upgradeUrl || '/pricing', '_blank') },
+            duration: 8000,
+          });
         } else if (res.status === 403) {
           errorMessage = 'You don\'t have permission to chat in this project';
-        } else if (res.status === 404) {
-          errorMessage = 'Project not found. Please select a valid project';
+        } else if (res.status === 429 && data?.code === 'GENERATION_LIMIT') {
+          errorMessage = `Monthly generation limit reached (${data.used}/${data.limit}). Upgrade your plan for more.`;
+          toast.error('Generation Limit Reached', {
+            description: errorMessage,
+            action: { label: 'Upgrade', onClick: () => window.open(data.upgradeUrl || '/pricing', '_blank') },
+            duration: 8000,
+          });
+          setError(errorMessage);
+          setMessages((prev) => prev.filter((msg) => msg.id !== userMessage.id));
+          return;
         } else if (res.status === 429) {
           errorMessage = 'Too many requests. Please wait a moment and try again';
+        } else if (res.status === 404) {
+          errorMessage = 'Project not found. Please select a valid project';
         } else if (res.status >= 500) {
           errorMessage = 'Server error. Please try again in a few moments';
         }
-        
         setError(errorMessage);
-        toast.error('Chat Error', {
-          description: errorMessage,
-          duration: 5000,
-        });
-        // Remove user message on error
+        if (data?.code !== 'PROVIDER_RESTRICTED') {
+          toast.error('Chat Error', { description: errorMessage, duration: 5000 });
+        }
         setMessages((prev) => prev.filter((msg) => msg.id !== userMessage.id));
         return;
       }
 
-      const filesCreated = data.filesCreated ?? [];
-      const successfulPaths = Array.isArray(filesCreated)
-        ? filesCreated.filter((f: { success?: boolean; path?: string }) => f?.success).map((f: { path?: string }) => f?.path)
-        : [];
-      let responseContent = data.response || data.message || 'Response received';
-      if (successfulPaths.length > 0) {
-        toast.success('Files extracted', {
-          description:
-            successfulPaths.length === 1
-              ? `Created file: ${successfulPaths[0]}`
-              : `Created ${successfulPaths.length} files: ${successfulPaths.join(', ')}`,
-          duration: 4000,
-        });
-        responseContent += `\n\n**Added ${successfulPaths.length} file(s):** ${successfulPaths.join(', ')}`;
-      }
+      // Check if response is SSE stream or JSON fallback
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('text/event-stream') && res.body) {
+        // --- SSE Streaming Mode ---
+        const assistantId = `assistant-${Date.now()}`;
+        let streamedContent = '';
+        const streamedFiles: string[] = [];
+        let streamProvider = '';
+        let streamModel = '';
 
-      const assistantMessage: ChatMessage = {
-        id: `assistant-${Date.now()}`,
-        role: 'assistant',
-        content: responseContent,
-        timestamp: new Date(),
-        provider: data.provider,
-        model: data.model,
-      };
+        // Add placeholder assistant message
+        setMessages((prev) => [...prev, {
+          id: assistantId,
+          role: 'assistant' as const,
+          content: '_Generating..._',
+          timestamp: new Date(),
+        }]);
 
-      setMessages((prev) => [...prev, assistantMessage]);
-      onFilesCreated?.();
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
 
-      if (typeof window !== 'undefined' && successfulPaths.length > 0) {
-        window.dispatchEvent(new CustomEvent('files-updated', { detail: { projectId } }));
-        // Delay so DB writes are visible to preview API (avoids "generated vs render" mismatch)
-        setTimeout(() => {
-          window.dispatchEvent(new CustomEvent('auto-refresh-preview', { detail: { projectId } }));
-        }, 400);
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            try {
+              const event = JSON.parse(line.slice(6));
+
+              if (event.type === 'status') {
+                const statusLabels: Record<string, string> = {
+                  planning: 'Planning app structure...',
+                  architecting: 'Designing architecture...',
+                  coding: 'Writing code...',
+                  'creating-files': 'Saving files...',
+                };
+                const label = statusLabels[event.data] || event.data;
+                setMessages((prev) => prev.map((m) =>
+                  m.id === assistantId ? { ...m, content: `_${label}_` } : m
+                ));
+              } else if (event.type === 'token') {
+                streamedContent += event.data;
+                // Update message with streamed content (throttled)
+                const content = streamedContent;
+                setMessages((prev) => prev.map((m) =>
+                  m.id === assistantId ? { ...m, content } : m
+                ));
+              } else if (event.type === 'file-created') {
+                if (event.data?.success) {
+                  streamedFiles.push(event.data.path);
+                  toast.success(`Created: ${event.data.path}`, { duration: 2000 });
+                }
+              } else if (event.type === 'done') {
+                streamProvider = event.data?.summary?.provider || '';
+                streamModel = event.data?.summary?.model || '';
+                const finalContent = event.data?.response || streamedContent;
+                const fileSummary = streamedFiles.length > 0
+                  ? `\n\n**Added ${streamedFiles.length} file(s):** ${streamedFiles.join(', ')}`
+                  : '';
+                setMessages((prev) => prev.map((m) =>
+                  m.id === assistantId
+                    ? { ...m, content: finalContent + fileSummary, provider: streamProvider, model: streamModel }
+                    : m
+                ));
+              } else if (event.type === 'error') {
+                setError(event.data?.message || 'Generation failed');
+                toast.error('Generation Error', { description: event.data?.message, duration: 5000 });
+              }
+            } catch {
+              // Skip malformed SSE lines
+            }
+          }
+        }
+
+        // Notify parent and trigger preview refresh
+        if (streamedFiles.length > 0) {
+          onFilesCreated?.();
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('files-updated', { detail: { projectId } }));
+            setTimeout(() => {
+              window.dispatchEvent(new CustomEvent('auto-refresh-preview', { detail: { projectId } }));
+            }, 400);
+          }
+          toast.success('Files extracted', {
+            description: `Created ${streamedFiles.length} files: ${streamedFiles.join(', ')}`,
+            duration: 4000,
+          });
+        }
+      } else {
+        // --- JSON Fallback Mode (non-streaming) ---
+        const data = await res.json().catch(() => ({}));
+
+        const filesCreated = data.filesCreated ?? [];
+        const successfulPaths = Array.isArray(filesCreated)
+          ? filesCreated.filter((f: { success?: boolean; path?: string }) => f?.success).map((f: { path?: string }) => f?.path)
+          : [];
+        let responseContent = data.response || data.message || 'Response received';
+        if (successfulPaths.length > 0) {
+          toast.success('Files extracted', {
+            description:
+              successfulPaths.length === 1
+                ? `Created file: ${successfulPaths[0]}`
+                : `Created ${successfulPaths.length} files: ${successfulPaths.join(', ')}`,
+            duration: 4000,
+          });
+          responseContent += `\n\n**Added ${successfulPaths.length} file(s):** ${successfulPaths.join(', ')}`;
+        }
+
+        const assistantMessage: ChatMessage = {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          content: responseContent,
+          timestamp: new Date(),
+          provider: data.provider,
+          model: data.model,
+        };
+
+        setMessages((prev) => [...prev, assistantMessage]);
+        onFilesCreated?.();
+
+        if (typeof window !== 'undefined' && successfulPaths.length > 0) {
+          window.dispatchEvent(new CustomEvent('files-updated', { detail: { projectId } }));
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('auto-refresh-preview', { detail: { projectId } }));
+          }, 400);
+        }
       }
     } catch (err) {
       const errorMessage = err instanceof Error 
@@ -602,6 +722,16 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
               <div className="text-red-400 font-semibold text-sm mb-1">Error</div>
               <div className="bg-[#1a1a1a] border border-red-500/30 rounded-2xl px-4 py-3 shadow-lg">
                 <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap break-words">{error}</p>
+                {(error.includes('generation limit') || error.includes('Generation limit') || error.includes('not available on your plan')) && (
+                  <a
+                    href="/pricing"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-block mt-2 px-4 py-1.5 text-xs font-medium rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 text-white hover:from-emerald-600 hover:to-cyan-600 transition-colors"
+                  >
+                    Upgrade Plan
+                  </a>
+                )}
               </div>
             </div>
           </div>
@@ -610,15 +740,17 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
       </div>
 
       <div className="border-t border-white/10 p-4 flex-shrink-0 bg-[#0a0a0a] z-10">
-        {aiOptions && (aiOptions.groqAvailable || aiOptions.openRouterAvailable) && (
+        {aiOptions && (aiOptions.groqAvailable || aiOptions.openRouterAvailable || aiOptions.openaiAvailable || aiOptions.anthropicAvailable) && (
           <div className="flex flex-wrap items-center gap-2 mb-3">
             <span className="text-xs text-gray-500">Model:</span>
             <select
               value={selectedProvider}
-              onChange={(e) => setSelectedProvider(e.target.value as 'groq' | 'openrouter')}
+              onChange={(e) => setSelectedProvider(e.target.value as 'groq' | 'openrouter' | 'openai' | 'anthropic')}
               className="bg-[#1a1a1a] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
               aria-label="AI Provider"
             >
+              {aiOptions.anthropicAvailable && <option value="anthropic">Claude (Anthropic)</option>}
+              {aiOptions.openaiAvailable && <option value="openai">OpenAI</option>}
               {aiOptions.groqAvailable && <option value="groq">Groq (Llama)</option>}
               {aiOptions.openRouterAvailable && <option value="openrouter">OpenRouter (DeepSeek)</option>}
             </select>
@@ -628,18 +760,11 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
               className="bg-[#1a1a1a] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 min-w-[180px]"
               aria-label="AI Model"
             >
-              {selectedProvider === 'groq' &&
-                aiOptions.models.groq?.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label}
-                  </option>
-                ))}
-              {selectedProvider === 'openrouter' &&
-                aiOptions.models.openrouter?.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label}
-                  </option>
-                ))}
+              {(aiOptions.models[selectedProvider] || []).map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
             </select>
           </div>
         )}

@@ -1,7 +1,8 @@
 // Prisma schema for Basic Project Workspace
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
 }
 
 datasource db {
@@ -11,79 +12,79 @@ datasource db {
 }
 
 model User {
-  id                    String                @id @default(cuid())
-  supabaseId            String                @unique
-  email                 String                @unique
-  name                  String?
-  avatarUrl             String?
-  createdAt             DateTime              @default(now())
-  updatedAt             DateTime              @updatedAt
-  workspaces            Workspace[]
-  profile               Profile?
-  subscriptionPlan      String?
-  subscriptionStatus    String?
-  subscriptionStartDate DateTime?
-  lastPaymentAmount     Float?
-  lastPaymentId         String?
-  lastPaymentDate       DateTime?
-  appProjects           AppProject[]
+  id                       String                    @id @default(cuid())
+  supabaseId               String                    @unique
+  email                    String                    @unique
+  name                     String?
+  avatarUrl                String?
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  workspaces               Workspace[]
+  profile                  Profile?
+  subscriptionPlan         String?
+  subscriptionStatus       String?
+  subscriptionStartDate    DateTime?
+  lastPaymentAmount        Float?
+  lastPaymentId            String?
+  lastPaymentDate          DateTime?
+  appProjects              AppProject[]
   // Community relations
-  groupMembers          GroupMember[]
-  createdGroups         CommunityGroup[]      @relation("GroupCreator")
-  discussions           Discussion[]
-  discussionReplies     DiscussionReply[]
-  createdEvents         Event[]
-  eventRegistrations    EventRegistration[]
-  createdChallenges     Challenge[]
-  challengeSubmissions  ChallengeSubmission[]
-  following             UserFollow[]          @relation("UserFollowing")
-  followers             UserFollow[]          @relation("UserFollowers")
-  activities            Activity[]
-  pageVisits            PageVisit[]
-  searchLogs            SearchLog[]
-  resourceViews         ResourceView[]
-  problemIdeaPosts      ProblemIdeaPost[]
-  problemIdeaComments   ProblemIdeaComment[]
-  problemIdeaPostLikes    ProblemIdeaPostLike[]
-  problemIdeaCommentLikes ProblemIdeaCommentLike[]
-  savedNews             SavedNews[]
-  barterAsks            BarterAsk[]
-  barterPitches         BarterPitch[]
-  gigs                  Gig[]
-  gigRequests           GigRequest[]
-  appProjectUpvotes     AppProjectUpvote[]
+  groupMembers             GroupMember[]
+  createdGroups            CommunityGroup[]          @relation("GroupCreator")
+  discussions              Discussion[]
+  discussionReplies        DiscussionReply[]
+  createdEvents            Event[]
+  eventRegistrations       EventRegistration[]
+  createdChallenges        Challenge[]
+  challengeSubmissions     ChallengeSubmission[]
+  following                UserFollow[]              @relation("UserFollowing")
+  followers                UserFollow[]              @relation("UserFollowers")
+  activities               Activity[]
+  pageVisits               PageVisit[]
+  searchLogs               SearchLog[]
+  resourceViews            ResourceView[]
+  problemIdeaPosts         ProblemIdeaPost[]
+  problemIdeaComments      ProblemIdeaComment[]
+  problemIdeaPostLikes     ProblemIdeaPostLike[]
+  problemIdeaCommentLikes  ProblemIdeaCommentLike[]
+  savedNews                SavedNews[]
+  barterAsks               BarterAsk[]
+  barterPitches            BarterPitch[]
+  gigs                     Gig[]
+  gigRequests              GigRequest[]
+  appProjectUpvotes        AppProjectUpvote[]
   conversationParticipants ConversationParticipant[] @relation("UserConversationParticipants")
   conversationMessages     ConversationMessage[]     @relation("UserConversationMessages")
 }
 
 model Profile {
-  id          String   @id @default(cuid())
-  userId      String   @unique
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  displayName String?
-  bio         String?  @db.Text
-  avatarUrl   String?
-  portfolioImageUrl String? // Optional cover/banner image for portfolio
-  preferences Json? // { theme: "system"|"light"|"dark", language: "en-IN", emailNotifications: boolean, marketingEmails: boolean }
+  id                String  @id @default(cuid())
+  userId            String  @unique
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  displayName       String?
+  bio               String? @db.Text
+  avatarUrl         String?
+  portfolioImageUrl String?
+  preferences       Json?
 
   // Enhanced Profile Fields
-  location        String?   // City, Country
-  affiliation     String?   // University, Company, Organization
-  website         String?   // Personal website URL
-  expertiseTags   String[]  // Array of expertise areas (e.g., ["machine-learning", "climate-science", "open-source"])
-  primaryRole     String?   // founder, researcher, student, operator, investor, etc.
-  roles           String[]  // Additional role tags if the user wears multiple hats
+  location      String?
+  affiliation   String?
+  website       String?
+  expertiseTags String[]
+  primaryRole   String?
+  roles         String[]
 
-  // Deeper "about" fields shown on profile
-  headline        String?   @db.Text // 1–2 line summary shown under name
-  currentFocus    String?   @db.Text // What I am working on now
-  lookingFor      String?   @db.Text // What I am looking for here (co-founder, funding, collaborators, etc.)
-  canHelpWith     String?   @db.Text // Areas where I can help others
+  // Deeper "about" fields
+  headline     String? @db.Text
+  currentFocus String? @db.Text
+  lookingFor   String? @db.Text
+  canHelpWith  String? @db.Text
 
   // Founder-specific fields
   startupName        String?
-  startupStage       String? // idea, prototype, mvp, revenue, scaling
-  startupSector      String? // ai, climate, fintech, health, etc.
+  startupStage       String?
+  startupSector      String?
   startupDescription String? @db.Text
 
   // Researcher-specific fields
@@ -93,66 +94,66 @@ model Profile {
   selectedPublications String? @db.Text
 
   // External Integrations
-  orcidId         String?  @unique // ORCID identifier for researchers
-  githubUsername  String?  // GitHub username
-  linkedinUrl     String?  // LinkedIn profile URL
-  twitterHandle   String?  // Twitter/X handle
-  
-  // Contribution Stats (computed fields, updated via triggers or background jobs)
-  projectsCreated     Int @default(0)
-  resourcesShared     Int @default(0)
-  discussionsStarted  Int @default(0)
-  discussionsReplied  Int @default(0)
-  groupsCreated       Int @default(0)
-  eventsCreated       Int @default(0)
-  challengesCreated   Int @default(0)
-  
+  orcidId        String? @unique
+  githubUsername String?
+  linkedinUrl    String?
+  twitterHandle  String?
+
+  // Contribution Stats
+  projectsCreated    Int @default(0)
+  resourcesShared    Int @default(0)
+  discussionsStarted Int @default(0)
+  discussionsReplied Int @default(0)
+  groupsCreated      Int @default(0)
+  eventsCreated      Int @default(0)
+  challengesCreated  Int @default(0)
+
   // Reputation & Achievements
-  reputationScore     Float @default(0) // Calculated reputation score
-  achievementBadges   String[] // Array of badge IDs earned
-  
+  reputationScore   Float    @default(0)
+  achievementBadges String[]
+
   // Metadata
-  lastActivityAt      DateTime? // Last activity timestamp
-  profileCompleted   Boolean @default(false) // Whether profile is fully set up
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
+  lastActivityAt   DateTime?
+  profileCompleted Boolean   @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([orcidId])
   @@index([githubUsername])
   @@index([reputationScore])
 }
 
 model Workspace {
-  id          String       @id @default(cuid())
-  title       String
-  ownerId     String
-  owner       User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  createdAt   DateTime     @default(now())
-  resources   Resource[]
-  shares      ShareLink[]
-  appProjects AppProject[]
-  discussions Discussion[]
+  id            String         @id @default(cuid())
+  title         String
+  ownerId       String
+  owner         User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt     DateTime       @default(now())
+  resources     Resource[]
+  shares        ShareLink[]
+  appProjects   AppProject[]
+  discussions   Discussion[]
   resourceViews ResourceView[]
 }
 
 model Resource {
-  id          String       @id @default(cuid())
-  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  id          String         @id @default(cuid())
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   workspaceId String
   title       String
   url         String?
   type        String?
   tags        Json?
   data        Json?
-  createdAt   DateTime     @default(now())
+  createdAt   DateTime       @default(now())
   annotations Annotation[]
   views       ResourceView[]
 
   // Plagiarism check fields
-  plagiarismScore  Float?  // 0–100 or provider-specific score
-  plagiarismStatus String? // not_checked | clean | flagged | error
-  plagiarismMeta   Json?   // Raw provider response or matches
+  plagiarismScore  Float?
+  plagiarismStatus String?
+  plagiarismMeta   Json?
 }
 
 model Annotation {
@@ -175,46 +176,43 @@ model ShareLink {
 }
 
 model AppProject {
-  id               String         @id @default(cuid())
-  title            String
-  description      String?
-  type             String         @default("web") // web, fullstack, other
-  framework        String? // react, nextjs, python, etc.
-  previewVersion   String         @default("v1") // v1 (legacy) | v2 (esbuild)
-  ownerId          String
-  owner            User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  thumbnailUrl     String?
-  isPublic         Boolean        @default(false)
-  workspaceId      String?
-  workspace        Workspace?     @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
-  config           Json? // Project configuration
-  // Questionnaire data
-  questionnaireData Json? // Complete questionnaire answers
-  appType          String? // portfolio, business, ecommerce, saas, blog, landing, other
-  targetAudience   String? // general, b2b, b2c, developers, students, other
-  designStyle      String? // modern-minimal, bold-colorful, professional, creative, clean-simple
-  colorScheme      String? // blue, orange-red, green-teal, purple, gray-black, custom, auto
-  layoutStyle      String? // single-page, multi-page, dashboard, blog, landing
-  requiredFeatures String[] // Array of required features
-  brandName        String?
-  tagline          String?
-  keyPoints        String? @db.Text // Key points to highlight
-  // Deployment fields
-  deploymentUrl    String? // URL where the app is deployed
-  deploymentStatus String? // pending, deployed, failed, building
-  deploymentPlatform String? // coolify, vercel, render, github, static
-  deploymentId     String? // Platform-specific deployment ID
-  claimUrl         String? // Claimable deployment URL (for Vercel)
-  deployedAt       DateTime? // When deployment completed
-  // Agentic pipeline state (Planner → Architect → Coder)
-  generationState   Json? // AppProjectState: plan, taskPlan, coderState, status
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-  files             AppFile[]
-  images            AppImage[]
-  chats             AppChat[]
-  executions        AppExecution[]
-  appProjectUpvotes AppProjectUpvote[]
+  id                 String             @id @default(cuid())
+  title              String
+  description        String?
+  type               String             @default("web")
+  framework          String?
+  previewVersion     String             @default("v1")
+  ownerId            String
+  owner              User               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  thumbnailUrl       String?
+  isPublic           Boolean            @default(false)
+  workspaceId        String?
+  workspace          Workspace?         @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  config             Json?
+  questionnaireData  Json?
+  appType            String?
+  targetAudience     String?
+  designStyle        String?
+  colorScheme        String?
+  layoutStyle        String?
+  requiredFeatures   String[]
+  brandName          String?
+  tagline            String?
+  keyPoints          String?            @db.Text
+  deploymentUrl      String?
+  deploymentStatus   String?
+  deploymentPlatform String?
+  deploymentId       String?
+  claimUrl           String?
+  deployedAt         DateTime?
+  generationState    Json?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  files              AppFile[]
+  images             AppImage[]
+  chats              AppChat[]
+  executions         AppExecution[]
+  appProjectUpvotes  AppProjectUpvote[]
 }
 
 model AppProjectUpvote {
@@ -234,11 +232,11 @@ model AppFile {
   id        String     @id @default(cuid())
   projectId String
   project   AppProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  path      String // File path within project (e.g., "src/App.jsx")
-  name      String // File name (e.g., "App.jsx")
+  path      String
+  name      String
   content   String     @db.Text
-  language  String? // Programming language (jsx, ts, py, etc.)
-  isMain    Boolean    @default(false) // Is this the main entry file?
+  language  String?
+  isMain    Boolean    @default(false)
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 
@@ -249,9 +247,9 @@ model AppImage {
   id        String     @id @default(cuid())
   projectId String
   project   AppProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  url       String     @db.Text // Image URL, base64 data, or SVG code
-  name      String // Display name for the image
-  type      String     @default("url") // url, base64, svg
+  url       String     @db.Text
+  name      String
+  type      String     @default("url")
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 
@@ -262,7 +260,7 @@ model AppChat {
   id        String     @id @default(cuid())
   projectId String
   project   AppProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  messages  Json // Array of chat messages
+  messages  Json
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 }
@@ -271,7 +269,7 @@ model AppExecution {
   id        String     @id @default(cuid())
   projectId String
   project   AppProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  status    String // success, error, running
+  status    String
   output    String?    @db.Text
   error     String?    @db.Text
   createdAt DateTime   @default(now())
@@ -285,7 +283,7 @@ model CommunityGroup {
   description String?       @db.Text
   slug        String        @unique
   isPublic    Boolean       @default(true)
-  topics      String[] // Array of topic tags
+  topics      String[]
   avatarUrl   String?
   bannerUrl   String?
   creatorId   String
@@ -305,7 +303,7 @@ model GroupMember {
   group    CommunityGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
   userId   String
   user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role     String         @default("member") // member, moderator, admin
+  role     String         @default("member")
   joinedAt DateTime       @default(now())
 
   @@unique([groupId, userId])
@@ -356,10 +354,10 @@ model Event {
   description   String              @db.Text
   startDate     DateTime
   endDate       DateTime?
-  location      String? // Physical location or "Online"
-  eventUrl      String? // Link to event (Zoom, etc.)
+  location      String?
+  eventUrl      String?
   imageUrl      String?
-  category      String? // workshop, webinar, hackathon, meetup, etc.
+  category      String?
   maxAttendees  Int?
   isPublic      Boolean             @default(true)
   creatorId     String
@@ -378,7 +376,7 @@ model EventRegistration {
   event        Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
   userId       String
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  status       String   @default("registered") // registered, cancelled, attended
+  status       String   @default("registered")
   registeredAt DateTime @default(now())
 
   @@unique([eventId, userId])
@@ -391,12 +389,12 @@ model Challenge {
   title        String
   description  String                @db.Text
   requirements String?               @db.Text
-  prize        String? // Prize description
+  prize        String?
   startDate    DateTime
   endDate      DateTime
   imageUrl     String?
-  category     String? // innovation, coding, research, etc.
-  status       String                @default("upcoming") // upcoming, active, ended, judging, completed
+  category     String?
+  status       String                @default("upcoming")
   creatorId    String
   creator      User                  @relation(fields: [creatorId], references: [id], onDelete: Cascade)
   submissions  ChallengeSubmission[]
@@ -416,8 +414,8 @@ model ChallengeSubmission {
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   title       String
   description String?   @db.Text
-  url         String? // Link to submission (GitHub, demo, etc.)
-  status      String    @default("submitted") // submitted, shortlisted, winner, rejected
+  url         String?
+  status      String    @default("submitted")
   submittedAt DateTime  @default(now())
 
   @@unique([challengeId, userId])
@@ -443,12 +441,12 @@ model Activity {
   id          String   @id @default(cuid())
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type        String // discussion_created, reply_added, group_joined, event_registered, challenge_submitted, etc.
-  entityType  String? // discussion, group, event, challenge, etc.
+  type        String
+  entityType  String?
   entityId    String?
   title       String?
   description String?  @db.Text
-  metadata    Json? // Additional data
+  metadata    Json?
   createdAt   DateTime @default(now())
 
   @@index([userId])
@@ -460,13 +458,13 @@ model Activity {
 
 model PageVisit {
   id        String   @id @default(cuid())
-  userId    String?  // Nullable for anonymous visits
+  userId    String?
   user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   path      String
   referrer  String?
   userAgent String?
   ipAddress String?
-  sessionId String?  // For tracking sessions
+  sessionId String?
   createdAt DateTime @default(now())
 
   @@index([userId])
@@ -476,17 +474,17 @@ model PageVisit {
 }
 
 model SearchLog {
-  id              String   @id @default(cuid())
-  userId          String?  // Nullable for anonymous searches
-  user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  query           String
-  resourceType    String?  // paper, code, model, etc.
-  resultCount     Int
-  clicked         Boolean  @default(false)
+  id                String   @id @default(cuid())
+  userId            String?
+  user              User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  query             String
+  resourceType      String?
+  resultCount       Int
+  clicked           Boolean  @default(false)
   clickedResourceId String?
-  providers       String[] // Which providers were queried
-  sessionId       String?  // For tracking sessions
-  createdAt       DateTime @default(now())
+  providers         String[]
+  sessionId         String?
+  createdAt         DateTime @default(now())
 
   @@index([userId])
   @@index([createdAt])
@@ -495,15 +493,15 @@ model SearchLog {
 }
 
 model ResourceView {
-  id         String   @id @default(cuid())
-  resourceId String
-  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
-  userId     String?  // Nullable for anonymous views
-  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  id          String     @id @default(cuid())
+  resourceId  String
+  resource    Resource   @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
   workspaceId String?
-  workspace  Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
-  sessionId  String?  // For tracking sessions
-  createdAt  DateTime @default(now())
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  sessionId   String?
+  createdAt   DateTime   @default(now())
 
   @@index([resourceId])
   @@index([userId])
@@ -511,19 +509,19 @@ model ResourceView {
   @@index([sessionId])
 }
 
-// Problems & Ideas feed (social-style posts and comments)
+// Problems & Ideas feed
 
 model ProblemIdeaPost {
-  id        String                 @id @default(cuid())
-  content   String                 @db.Text
-  imageUrls String[]               // URLs of attached images
-  type      String                 @default("idea") // "problem" | "idea"
+  id        String                @id @default(cuid())
+  content   String                @db.Text
+  imageUrls String[]
+  type      String                @default("idea")
   authorId  String
-  author    User                   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  author    User                  @relation(fields: [authorId], references: [id], onDelete: Cascade)
   comments  ProblemIdeaComment[]
   likes     ProblemIdeaPostLike[]
-  createdAt DateTime               @default(now())
-  updatedAt DateTime               @updatedAt
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
 
   @@index([authorId])
   @@index([createdAt])
@@ -531,12 +529,12 @@ model ProblemIdeaPost {
 }
 
 model ProblemIdeaPostLike {
-  id        String         @id @default(cuid())
+  id        String          @id @default(cuid())
   postId    String
   post      ProblemIdeaPost @relation(fields: [postId], references: [id], onDelete: Cascade)
   userId    String
-  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime       @default(now())
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime        @default(now())
 
   @@unique([postId, userId])
   @@index([postId])
@@ -544,15 +542,15 @@ model ProblemIdeaPostLike {
 }
 
 model ProblemIdeaComment {
-  id        String                  @id @default(cuid())
+  id        String                   @id @default(cuid())
   postId    String
-  post      ProblemIdeaPost         @relation(fields: [postId], references: [id], onDelete: Cascade)
-  content   String                  @db.Text
+  post      ProblemIdeaPost          @relation(fields: [postId], references: [id], onDelete: Cascade)
+  content   String                   @db.Text
   authorId  String
-  author    User                    @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  author    User                     @relation(fields: [authorId], references: [id], onDelete: Cascade)
   likes     ProblemIdeaCommentLike[]
-  createdAt DateTime                @default(now())
-  updatedAt DateTime                @updatedAt
+  createdAt DateTime                 @default(now())
+  updatedAt DateTime                 @updatedAt
 
   @@index([postId])
   @@index([authorId])
@@ -571,7 +569,7 @@ model ProblemIdeaCommentLike {
   @@index([userId])
 }
 
-// AI News: user-saved articles and "add to newsletter" suggestions
+// AI News: user-saved articles
 model SavedNews {
   id                  String   @id @default(cuid())
   userId              String
@@ -590,45 +588,44 @@ model SavedNews {
   @@index([includeInNewsletter])
 }
 
-// Newsletter: collect emails and send automated mail
+// Newsletter subscribers
 model NewsletterSubscriber {
-  id         String   @id @default(cuid())
-  email      String   @unique
-  status     String   @default("subscribed") // subscribed, unsubscribed, bounced
+  id           String   @id @default(cuid())
+  email        String   @unique
+  status       String   @default("subscribed")
   subscribedAt DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  updatedAt    DateTime @updatedAt
 
   @@index([email])
   @@index([status])
 }
 
-// Admin: track external API requests for news, search providers, and LLM
+// Admin: track external API requests
 model ExternalApiRequest {
   id          String   @id @default(cuid())
-  provider    String   // e.g. hackernews, devto, gnews, openalex, arxiv, groq, openrouter
-  category    String   // news | search | llm
+  provider    String
+  category    String
   requestedAt DateTime @default(now())
 
   @@index([provider, requestedAt])
   @@index([category, requestedAt])
 }
 
-// Community Barter: post asks, others pitch in
+// Community Barter
 model BarterAsk {
-  id          String        @id @default(cuid())
-  title       String
-  description String        @db.Text
-  whatINeed   String?       @db.Text
-  whatIOffer  String?       @db.Text
-  status      String        @default("open") // open, closed
-  attachments Json? // [{ url, name, type, size }]
-  authorId    String
-  author      User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  pitches     BarterPitch[]
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-
+  id            String         @id @default(cuid())
+  title         String
+  description   String         @db.Text
+  whatINeed     String?        @db.Text
+  whatIOffer    String?        @db.Text
+  status        String         @default("open")
+  attachments   Json?
+  authorId      String
+  author        User           @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  pitches       BarterPitch[]
   conversations Conversation[] @relation("BarterAskConversations")
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
   @@index([authorId])
   @@index([status])
@@ -648,25 +645,24 @@ model BarterPitch {
   @@index([authorId])
 }
 
-// Community Gigs: offer services (Fiverr-style)
+// Community Gigs
 model Gig {
-  id               String        @id @default(cuid())
+  id               String         @id @default(cuid())
   title            String
-  description      String        @db.Text
+  description      String         @db.Text
   category         String?
   priceFrom        Int?
   priceTo          Int?
-  currency         String?       @default("USD")
+  currency         String?        @default("USD")
   deliveryTimeDays Int?
   tags             String[]
-  status           String        @default("active") // active, paused, closed
+  status           String         @default("active")
   authorId         String
-  author           User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  author           User           @relation(fields: [authorId], references: [id], onDelete: Cascade)
   requests         GigRequest[]
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-
-  conversations Conversation[] @relation("GigConversations")
+  conversations    Conversation[] @relation("GigConversations")
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
   @@index([authorId])
   @@index([status])
@@ -679,7 +675,7 @@ model GigRequest {
   gig       Gig      @relation(fields: [gigId], references: [id], onDelete: Cascade)
   message   String   @db.Text
   budget    Int?
-  status    String   @default("open") // open, accepted, rejected
+  status    String   @default("open")
   authorId  String
   author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
@@ -688,21 +684,20 @@ model GigRequest {
   @@index([authorId])
 }
 
-// Direct messaging between users, scoped to a Gig or BarterAsk
+// Direct messaging
 model Conversation {
-  id          String                   @id @default(cuid())
-  // Optional links to a specific Gig or BarterAsk context
+  id          String     @id @default(cuid())
   gigId       String?
-  gig         Gig?                     @relation("GigConversations", fields: [gigId], references: [id], onDelete: Cascade)
+  gig         Gig?       @relation("GigConversations", fields: [gigId], references: [id], onDelete: Cascade)
   barterAskId String?
-  barterAsk   BarterAsk?               @relation("BarterAskConversations", fields: [barterAskId], references: [id], onDelete: Cascade)
+  barterAsk   BarterAsk? @relation("BarterAskConversations", fields: [barterAskId], references: [id], onDelete: Cascade)
 
   participants ConversationParticipant[]
   messages     ConversationMessage[]
 
-  createdAt    DateTime                @default(now())
-  updatedAt    DateTime                @updatedAt
-  lastMessageAt DateTime?              @default(now())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastMessageAt DateTime? @default(now())
 
   @@index([gigId])
   @@index([barterAskId])
@@ -715,7 +710,6 @@ model ConversationParticipant {
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   userId         String
   user           User         @relation("UserConversationParticipants", fields: [userId], references: [id], onDelete: Cascade)
-  // When this user last read the conversation (for unread counts)
   readAt         DateTime?
   createdAt      DateTime     @default(now())
 
@@ -737,12 +731,12 @@ model ConversationMessage {
   @@index([senderId])
 }
 
-// Open Resources page: chat history per search query (anonymous by session)
+// Open Resources page: chat history per search query
 model OpenResourcesChat {
   id          String   @id @default(cuid())
-  sessionId   String   // Client-generated session (localStorage), groups chats per browser
+  sessionId   String
   searchQuery String
-  messages    Json     // Array of { id, role, content, timestamp, ... }
+  messages    Json
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

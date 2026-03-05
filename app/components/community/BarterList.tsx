@@ -276,7 +276,7 @@ export default function BarterList() {
           </p>
           <div className="flex justify-center gap-3">
             <Link
-              href="/auth"
+              href="/auth?redirect=%2Fcommunity%3Ftab%3Dbarter"
               className="px-6 py-2 bg-gradient-to-r from-amber-400 to-orange-400 text-gray-900 font-semibold rounded-lg hover:scale-105 transition shadow-lg shadow-amber-400/20"
             >
               Log in / Sign up

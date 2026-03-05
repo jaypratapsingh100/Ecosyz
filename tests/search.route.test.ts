@@ -2,7 +2,11 @@
  * Vitest tests for federated search API route.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { GET } from '../app/api/search/route';
+
+// Mock auth and db before importing route (avoids @/lib resolution in auth.ts)
+vi.mock('../src/lib/auth', () => ({ getCurrentUser: vi.fn().mockResolvedValue(null) }));
+vi.mock('../src/lib/db', () => ({ prisma: { searchLog: { create: vi.fn().mockResolvedValue({}) } } }));
+vi.mock('../src/lib/api-usage', () => ({ trackApiRequest: vi.fn() }));
 
 // Mock provider modules (only providers used by tests; others may run but are wrapped in try/catch)
 vi.mock('../app/api/search/providers/openalex', () => ({ searchOpenAlex: vi.fn() }));
@@ -19,6 +23,7 @@ vi.mock('@/lib/auth', () => ({ getCurrentUser: vi.fn().mockResolvedValue(null) }
 vi.mock('@/lib/db', () => ({ prisma: { searchLog: { create: vi.fn().mockResolvedValue({}) } } }));
 vi.mock('@/lib/api-usage', () => ({ trackApiRequest: vi.fn() }));
 
+import { GET } from '../app/api/search/route';
 import { searchOpenAlex } from '../app/api/search/providers/openalex';
 import { searchArxiv } from '../app/api/search/providers/arxiv';
 import { searchZenodo } from '../app/api/search/providers/zenodo';

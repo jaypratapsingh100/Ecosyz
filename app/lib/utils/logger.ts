@@ -3,6 +3,16 @@
  * Allows easy toggling of log levels and reduces console clutter
  */
 
+/**
+ * Mask an email for safe logging: "testuser@example.com" → "te***@***"
+ */
+export function maskEmail(email: string): string {
+  const atIndex = email.indexOf('@');
+  if (atIndex <= 0) return '***@***';
+  const prefix = email.substring(0, Math.min(2, atIndex));
+  return `${prefix}***@***`;
+}
+
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 const LOG_LEVEL: LogLevel = process.env.NODE_ENV === 'development' ? 'debug' : 'error';
