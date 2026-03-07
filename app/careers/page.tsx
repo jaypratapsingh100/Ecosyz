@@ -185,6 +185,14 @@ export default function CareersPage() {
                 <p className="text-center text-lg sm:text-xl text-teal-100/80 max-w-2xl mx-auto">
                   Join us in building India&apos;s first AI-powered innovation platform. Internship and fellowship opportunities available.
                 </p>
+                <div className="flex justify-center mt-4">
+                  <Link
+                    href="/intern-fellowship"
+                    className="inline-flex items-center gap-2 text-[#38bdf8] hover:text-[#0ff0fc] transition-colors text-sm font-medium"
+                  >
+                    Milestone-based Fellowship Program →
+                  </Link>
+                </div>
               </div>
               <div className="flex justify-center gap-6 text-sm text-teal-100/60">
                 <span>Remote</span>

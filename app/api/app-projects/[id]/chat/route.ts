@@ -13,7 +13,7 @@ import {
   SRC_ROOT_COMPONENT_PATTERN,
   CSS_PATH_PATTERN,
 } from '@/lib/app-builder/agentSchema';
-import { buildFixPrompt, buildRetryPrompt } from '@/lib/app-builder/promptBuilder';
+import { buildRetryPrompt } from '@/lib/app-builder/promptBuilder';
 import { buildPlannerPrompt, parsePlannerResponse } from '@/lib/app-builder/agents/planner';
 import { buildArchitectPrompt, parseArchitectResponse } from '@/lib/app-builder/agents/architect';
 import { buildAppBuilderPrompts, buildFastPathPrompts } from '@/lib/app-builder/contextBuilder';
@@ -22,6 +22,8 @@ import { createSSEStream, sseResponse } from '@/lib/app-builder/sse';
 import { enforceGenerationLimit } from '@/lib/app-builder/usage';
 import { getFallbackRoute, isRetryableError } from '@/lib/app-builder/model-router';
 import { trackGeneration, createGenerationTimer } from '@/lib/app-builder/pipeline/generation-tracker';
+import { runGenerationPipeline } from '@/lib/app-builder/pipeline/generation-pipeline';
+import { getStageParams } from '@/lib/app-builder/ai-params';
 import type { ChatMessage, ChatRequestBody, DatabaseError, QuestionnaireData, ProjectFile } from '@/app/types/app-builder';
 import type { PlannerPlan, ArchitectTaskPlan, AppProjectState } from '@/app/types/app-builder';
 
@@ -305,7 +307,8 @@ export async function POST(
     const limitViolation = await enforceGenerationLimit(
       prismaUser.id,
       (prismaUser as any).subscriptionPlan ?? null,
-      userProvider ?? undefined
+      userProvider ?? undefined,
+      prismaUser.email
     );
     if (limitViolation) {
       return NextResponse.json(limitViolation.body, { status: limitViolation.status });
@@ -634,7 +637,7 @@ export async function POST(
           }
 
           // ── Stream AI coder response (with fallback on failure) ──
-          const coderTemperature = slowProvider ? 0.3 : 0.5;
+          const coderParams = getStageParams('coder');
           let fullResponse = '';
 
           const streamWithProvider = async (aiClient: typeof client, aiModel: string, aiMaxTokens: number) => {
@@ -644,7 +647,8 @@ export async function POST(
                 { role: 'system', content: promptRes.systemPrompt },
                 { role: 'user', content: promptRes.userMessage },
               ],
-              temperature: coderTemperature,
+              temperature: coderParams.temperature,
+              top_p: coderParams.top_p,
               max_tokens: aiMaxTokens,
               stream: true,
             });
@@ -706,32 +710,38 @@ export async function POST(
             }
           }
 
-          // ── Parse and create files ──
+          // ── Parse, validate, and create files via deterministic pipeline ──
           emit({ type: 'status', data: 'creating-files' });
 
-          const agentResult = extractAgentResponse(fullResponse);
-          const filesToCreate = agentResult?.files?.length
-            ? agentResult.files
-            : parseCodeBlocksToFiles(fullResponse);
+          const pipelineResult = await runGenerationPipeline({
+            projectId: id,
+            responseText: fullResponse,
+            client: activeClient,
+            model: activeModel,
+            systemPrompt: promptRes.systemPrompt,
+            maxFixRetries: 2,
+            userMessage: message,
+            existingFiles: project.files?.map((f: { path: string; content: string }) => ({ path: f.path, content: f.content })),
+            onFileCreated: (result) => {
+              emit({ type: 'file-created', data: result });
+            },
+            onStatus: (status) => {
+              emit({ type: 'status', data: status });
+            },
+          });
 
-          const createdPaths: string[] = [];
-          for (const f of filesToCreate) {
-            try {
-              const fName = f.name || f.path.split('/').pop() || f.path;
-              const lang = f.language || (f.path.endsWith('.tsx') ? 'typescript' : f.path.endsWith('.jsx') ? 'javascript' : 'css');
-              await prisma.appFile.upsert({
-                where: { projectId_path: { projectId: id, path: f.path } },
-                update: { content: f.content, language: lang, isMain: f.isMain ?? false, name: fName },
-                create: { projectId: id, path: f.path, name: fName, content: f.content, language: lang, isMain: f.isMain ?? false },
-              });
-              createdPaths.push(f.path);
-              emit({ type: 'file-created', data: { path: f.path, success: true } });
-            } catch (err) {
-              emit({ type: 'file-created', data: { path: f.path, success: false, error: err instanceof Error ? err.message : 'Unknown' } });
-            }
+          const createdPaths = pipelineResult.files
+            .filter(f => f.success)
+            .map(f => f.path);
+
+          if (pipelineResult.rejectedPaths.length > 0) {
+            console.warn(`🛡️ [STREAM] Blocked ${pipelineResult.rejectedPaths.length} protected paths:`, pipelineResult.rejectedPaths);
+          }
+          if (pipelineResult.removedImports.size > 0) {
+            console.warn('📦 [STREAM] Removed disallowed imports:', Object.fromEntries(pipelineResult.removedImports));
           }
 
-          // ── Auto-retry (fast providers only) ──
+          // ── Auto-retry (fast providers only) — if too few files created ──
           if (!slowProvider && !usedFallback) {
             const jsxCreated = createdPaths.filter(p => p.endsWith('.jsx') || p.endsWith('.tsx'));
             const planExpected = streamPlan?.files?.length ?? 0;
@@ -753,7 +763,8 @@ export async function POST(
                     { role: 'assistant', content: fullResponse },
                     { role: 'user', content: retryPrompt },
                   ],
-                  temperature: 0.5,
+                  temperature: coderParams.temperature,
+                  top_p: coderParams.top_p,
                   max_tokens: maxOutputTokens,
                   stream: true,
                 });
@@ -765,24 +776,19 @@ export async function POST(
                   }
                 }
 
-                const retryResult = extractAgentResponse(retryResponse);
-                const retryFiles = retryResult?.files?.length
-                  ? retryResult.files
-                  : parseCodeBlocksToFiles(retryResponse);
-
-                for (const f of retryFiles) {
-                  try {
-                    const fName = f.name || f.path.split('/').pop() || f.path;
-                    const lang = f.language || (f.path.endsWith('.tsx') ? 'typescript' : f.path.endsWith('.jsx') ? 'javascript' : 'css');
-                    await prisma.appFile.upsert({
-                      where: { projectId_path: { projectId: id, path: f.path } },
-                      update: { content: f.content, language: lang, isMain: f.isMain ?? false, name: fName },
-                      create: { projectId: id, path: f.path, name: fName, content: f.content, language: lang, isMain: f.isMain ?? false },
-                    });
-                    if (!createdPaths.includes(f.path)) createdPaths.push(f.path);
-                    emit({ type: 'file-created', data: { path: f.path, success: true } });
-                  } catch (err) {
-                    emit({ type: 'file-created', data: { path: f.path, success: false, error: err instanceof Error ? err.message : 'Unknown' } });
+                // Run retry response through the pipeline too
+                const retryPipeline = await runGenerationPipeline({
+                  projectId: id,
+                  responseText: retryResponse,
+                  userMessage: message,
+                  existingFiles: project.files?.map((f: { path: string; content: string }) => ({ path: f.path, content: f.content })),
+                  onFileCreated: (result) => {
+                    emit({ type: 'file-created', data: result });
+                  },
+                });
+                for (const f of retryPipeline.files) {
+                  if (f.success && !createdPaths.includes(f.path)) {
+                    createdPaths.push(f.path);
                   }
                 }
                 fullResponse += '\n\n' + retryResponse;
@@ -1856,13 +1862,15 @@ root.render(
         controller.abort();
       }, 120000);
       
+      const nsCoderParams = getStageParams('coder');
       const completion = await client.chat.completions.create({
         model: model,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: message },
         ],
-        temperature: slowProviderNS ? 0.3 : 0.5,
+        temperature: nsCoderParams.temperature,
+        top_p: nsCoderParams.top_p,
         max_tokens: maxOutputTokens,
         stream: false,
       });
@@ -2000,58 +2008,41 @@ root.render(
       console.log(`✅ Response contains ${hasJsonFiles ? 'JSON' : ''}${hasJsonFiles && codeBlockCount > 0 ? ' + ' : ''}${codeBlockCount > 0 ? `${codeBlockCount} code blocks` : ''}`);
     }
     
-    // Parse response: JSON-first (agent schema), then regex fallback
+    // ── Parse, validate, and create files via deterministic pipeline ──
     let createdFiles: FileCreationResult[] = [];
     let agentProvidedApp = false;
 
     try {
-      // Agent path: try structured JSON (Lovable/Replit style)
-      const agentResponse = extractAgentResponse(response);
-      if (agentResponse && agentResponse.files.length > 0) {
-        agentProvidedApp = agentResponse.files.some(f =>
-          f.path === 'src/App.jsx' || f.path === 'src/App.tsx'
-        );
-        console.log(`[AGENT] Parsed ${agentResponse.files.length} files from JSON response${agentProvidedApp ? ' (App provided - skip auto-integration)' : ''}`);
-        for (const f of agentResponse.files) {
-          try {
-            const fileName = f.name || f.path.split('/').pop() || f.path;
-            const language = f.language || (f.path.endsWith('.tsx') ? 'typescript' : f.path.endsWith('.jsx') ? 'javascript' : 'css');
-            await prisma.appFile.upsert({
-              where: { projectId_path: { projectId: id, path: f.path } },
-              update: { content: f.content, language, isMain: f.isMain, name: fileName },
-              create: { projectId: id, path: f.path, name: fileName, content: f.content, language, isMain: f.isMain },
-            });
-            createdFiles.push({ path: f.path, success: true, validated: true });
-            console.log(`  ✅ [AGENT] Created: ${f.path}`);
-          } catch (err) {
-            console.error(`  ❌ [AGENT] Failed ${f.path}:`, err);
-            createdFiles.push({ path: f.path, success: false, error: err instanceof Error ? err.message : 'Unknown error' });
-          }
-        }
+      const nsPipelineResult = await runGenerationPipeline({
+        projectId: id,
+        responseText: response,
+        client,
+        model,
+        systemPrompt,
+        maxFixRetries: 2,
+        userMessage: message,
+        existingFiles: project.files?.map((f: { path: string; content: string }) => ({ path: f.path, content: f.content })),
+      });
+
+      createdFiles = nsPipelineResult.files;
+
+      // Check if pipeline created an App file
+      agentProvidedApp = createdFiles.some(f =>
+        f.success && (f.path === 'src/App.jsx' || f.path === 'src/App.tsx')
+      );
+
+      if (nsPipelineResult.rejectedPaths.length > 0) {
+        console.warn(`🛡️ Blocked ${nsPipelineResult.rejectedPaths.length} protected paths:`, nsPipelineResult.rejectedPaths);
+      }
+      if (nsPipelineResult.removedImports.size > 0) {
+        console.warn('📦 Removed disallowed imports:', Object.fromEntries(nsPipelineResult.removedImports));
+      }
+      if (nsPipelineResult.fixLoopAttempts > 0) {
+        console.log(`🔧 Fix loop: ${nsPipelineResult.fixLoopAttempts} attempt(s), resolved: ${nsPipelineResult.wasFixed}`);
       }
 
-      // Fallback: regex-based parsing (legacy)
-      if (createdFiles.length === 0) {
-        if (process.env.NODE_ENV === 'development') {
-          const codeBlockCount = (response.match(/```/g) || []).length / 2;
-          console.log(`[FILE] No JSON files - parsing ${response.length} chars, ${codeBlockCount} code blocks`);
-        }
-        createdFiles = await parseAndCreateFiles(response);
-      }
-      
-      if (createdFiles.length === 0 && codeBlockCount === 0) {
-        console.warn('⚠️ No files created and no code blocks detected after retry.');
-      }
-      
-      if (process.env.NODE_ENV === 'development') {
-        const successful = createdFiles.filter((f: FileCreationResult) => f.success).length;
-        const failed = createdFiles.filter((f: FileCreationResult) => !f.success).length;
-        console.log(`[FILE] Parsing complete: ${successful} successful, ${failed} failed`);
-        if (createdFiles.length === 0) {
-          console.warn('[FILE] No files were created from response');
-        }
-      }
-      
+      console.log(`[PIPELINE] ${nsPipelineResult.totalSaved}/${nsPipelineResult.totalParsed} files saved`);
+
       // AUTO-RETRY: If AI returned too few JSX files but plan expected more, retry once
       const successfulJsxFiles = createdFiles.filter((f: FileCreationResult) =>
         f.success && (f.path.endsWith('.jsx') || f.path.endsWith('.tsx'))
@@ -2061,41 +2052,34 @@ root.render(
         console.log(`⚠️ Only ${successfulJsxFiles.length} JSX files created but plan expected ${planExpectedFiles}. Auto-retrying...`);
         try {
           const retryMessage = buildRetryPrompt(message, fileExtension);
+          const retryParams = getStageParams('coder');
           const retryCompletion = await client.chat.completions.create({
             model,
             messages: [
               { role: 'system', content: systemPrompt },
               { role: 'user', content: retryMessage },
             ],
-            temperature: 0.4,
+            temperature: retryParams.temperature,
+            top_p: retryParams.top_p,
             max_tokens: maxOutputTokens,
             stream: false,
           });
           const retryText = retryCompletion.choices[0]?.message?.content || '';
-          const retryAgent = extractAgentResponse(retryText);
-          if (retryAgent && retryAgent.files.length > successfulJsxFiles.length) {
-            console.log(`✅ Retry returned ${retryAgent.files.length} files (up from ${successfulJsxFiles.length})`);
-            for (const f of retryAgent.files) {
-              try {
-                const fName = f.name || f.path.split('/').pop() || f.path;
-                const lang = f.language || (f.path.endsWith('.tsx') ? 'typescript' : f.path.endsWith('.jsx') ? 'javascript' : 'css');
-                await prisma.appFile.upsert({
-                  where: { projectId_path: { projectId: id, path: f.path } },
-                  update: { content: f.content, language: lang, isMain: f.isMain, name: fName },
-                  create: { projectId: id, path: f.path, name: fName, content: f.content, language: lang, isMain: f.isMain },
-                });
-                // Add to createdFiles if not already present
-                if (!createdFiles.some(cf => cf.path === f.path)) {
-                  createdFiles.push({ path: f.path, success: true, validated: true });
-                }
-              } catch (retryErr) {
-                console.error(`  ❌ Retry file ${f.path} failed:`, retryErr);
-              }
+
+          // Run retry through the pipeline
+          const retryPipeline = await runGenerationPipeline({
+            projectId: id,
+            responseText: retryText,
+            userMessage: message,
+            existingFiles: project.files?.map((f: { path: string; content: string }) => ({ path: f.path, content: f.content })),
+          });
+          for (const f of retryPipeline.files) {
+            if (f.success && !createdFiles.some(cf => cf.path === f.path)) {
+              createdFiles.push(f);
             }
-            // Update agentProvidedApp flag
-            if (retryAgent.files.some(f => f.path === 'src/App.jsx' || f.path === 'src/App.tsx')) {
-              agentProvidedApp = true;
-            }
+          }
+          if (retryPipeline.files.some(f => f.success && (f.path === 'src/App.jsx' || f.path === 'src/App.tsx'))) {
+            agentProvidedApp = true;
           }
         } catch (retryErr) {
           console.warn('Auto-retry for insufficient files failed:', retryErr);
@@ -2330,61 +2314,8 @@ root.render(
         }
       }
 
-      // Sandbox validation + auto-fix loop (Lovable/Replit: validate, fix render errors, retry)
-      if (createdFiles.length > 0 && createdFiles.some((f: FileCreationResult) => f.success)) {
-        let validated = false;
-        for (let fixAttempt = 0; fixAttempt < 2 && !validated; fixAttempt++) {
-          const updatedProject = await prisma.appProject.findUnique({
-            where: { id },
-            include: { files: { orderBy: { path: 'asc' } } },
-          });
-          if (!updatedProject?.files?.length) break;
-
-          const validation = validateProjectFiles(updatedProject.files);
-          if (validation.valid) {
-            validated = true;
-            console.log('✅ Sandbox validation passed');
-            break;
-          }
-
-          const errMsg = validation.errors.map((e: { message: string }) => e.message).join('; ');
-          const failedPaths = validation.errors
-            .map((e: { message: string }) => e.message.split(':')[0]?.trim())
-            .filter(Boolean) as string[];
-          console.warn(`⚠️ Render/compile errors (attempt ${fixAttempt + 1}):`, errMsg);
-
-          if (fixAttempt < 1 && client) {
-            try {
-              const fixPrompt = buildFixPrompt(errMsg, failedPaths.length > 0 ? failedPaths : createdFiles.map((f: FileCreationResult) => f.path).slice(0, 5), fixAttempt + 1);
-              const fixRes = await client.chat.completions.create({
-                model,
-                messages: [
-                  { role: 'system', content: 'You fix React/JSX syntax and render errors. Return JSON only: {"files":[{"path":"...","name":"...","content":"...","language":"jsx","isMain":false}],"summary":"Fixed: ..."}' },
-                  { role: 'user', content: fixPrompt },
-                ],
-                temperature: 0.2,
-                max_tokens: 4000,
-                stream: false,
-              });
-              const fixContent = fixRes.choices[0]?.message?.content || '';
-              const fixAgent = extractAgentResponse(fixContent);
-              if (fixAgent?.files?.length) {
-                for (const f of fixAgent.files) {
-                  await prisma.appFile.upsert({
-                    where: { projectId_path: { projectId: id, path: f.path } },
-                    update: { content: f.content },
-                    create: { projectId: id, path: f.path, name: f.name || f.path.split('/').pop() || '', content: f.content, language: f.language || 'javascript', isMain: f.isMain ?? false },
-                  });
-                }
-                console.log(`🔧 Applied fix: ${fixAgent.files.length} file(s)`);
-              }
-            } catch (fixErr) {
-              console.error('Fix request failed:', fixErr);
-              break;
-            }
-          }
-        }
-      }
+      // Note: Validation + fix-loop is now handled inside runGenerationPipeline above.
+      // The pipeline validates syntax, resolves imports, and runs the AI fix-loop automatically.
     } catch (parseError: unknown) {
       const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
       const errorStack = parseError instanceof Error ? parseError.stack : undefined;

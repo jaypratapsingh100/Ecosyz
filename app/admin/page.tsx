@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { BarChart3, Mail, LogIn, Loader2, Activity, Search as SearchIcon } from 'lucide-react';
+import { BarChart3, Mail, LogIn, Loader2, Activity, Search as SearchIcon, Users } from 'lucide-react';
 
 export default function AdminPage() {
   const [authLoading, setAuthLoading] = useState(true);
@@ -132,6 +132,20 @@ export default function AdminPage() {
             <div>
               <h2 className="text-xl font-semibold text-white">Architecture</h2>
               <p className="text-slate-400 text-sm mt-1">View the system architecture and C4 model docs</p>
+            </div>
+          </div>
+        </Link>
+        <Link
+          href="/admin/interns"
+          className="group block p-6 bg-slate-900/90 backdrop-blur-sm rounded-xl border border-slate-700/50 hover:border-cyan-500/50 transition-colors"
+        >
+          <div className="flex items-center gap-4">
+            <div className="p-3 rounded-lg bg-cyan-500/20 text-cyan-400 group-hover:bg-cyan-500/30 transition-colors">
+              <Users className="w-8 h-8" />
+            </div>
+            <div>
+              <h2 className="text-xl font-semibold text-white">Office Interns</h2>
+              <p className="text-slate-400 text-sm mt-1">Manage fellowship interns, add tasks by track</p>
             </div>
           </div>
         </Link>

@@ -3,7 +3,8 @@ import { getCurrentUser } from './auth';
 // Admin emails - can be configured via environment variable
 const ADMIN_EMAILS = process.env.ADMIN_EMAILS?.split(',').map(email => email.trim().toLowerCase()) || [
   'sohni2012@gmail.com',
-  'tesla@gmail.com'
+  'tesla@gmail.com',
+  'info@openidea.world',
 ];
 
 /**

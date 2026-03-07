@@ -89,6 +89,12 @@ export default function Footer() {
                 >
                   Careers
                 </Link>
+                <Link
+                  href="/intern-fellowship"
+                  className="text-sm text-emerald-400/90 hover:text-emerald-400 transition-colors"
+                >
+                  Fellowship
+                </Link>
               </div>
             </div>
           </div>

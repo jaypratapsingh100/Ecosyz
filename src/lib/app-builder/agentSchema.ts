@@ -7,8 +7,12 @@
  * Schema: { files: Array<{ path, name, content, language, isMain }> }
  */
 
+/**
+ * Allowed file paths for AI-generated output.
+ * Infrastructure files (package.json, vite.config, etc.) are excluded —
+ * they are managed by the scaffold system and protected by scaffold-guard.ts.
+ */
 export const ALLOWED_PATHS = [
-  'index.html',
   'styles.css',
   'src/index.css',
   'src/App.jsx',
@@ -16,9 +20,6 @@ export const ALLOWED_PATHS = [
   'src/App.css',
   'src/main.jsx',
   'src/main.tsx',
-  'package.json',
-  'vite.config.js',
-  'README.md',
 ] as const;
 
 /** Paths matching src/components/*.jsx | *.tsx */

@@ -5,12 +5,13 @@
  * AppChat messages as the source of truth (each assistant message = 1 generation).
  *
  * Tiers are aligned with the subscription plans set via Razorpay payment:
- *   FREE  → 20 generations/month, Groq only, max 10 files/generation
+ *   FREE  → 5 generations/month, all providers, max 10 files/generation
  *   PLUS  → 200 generations/month, all providers, max 25 files/generation
  *   ENTERPRISE → unlimited, all providers, unlimited files
  */
 
 import { prisma } from '@/lib/db';
+import { isAdminEmail } from '@/lib/admin';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -45,7 +46,7 @@ const ALL_PROVIDERS = ['groq', 'openrouter', 'openai', 'anthropic'];
 const PLAN_CONFIG: Record<PlanTier, PlanLimits> = {
   free: {
     tier: 'free',
-    maxGenerationsPerMonth: 20,
+    maxGenerationsPerMonth: 5,
     maxFilesPerGeneration: 10,
     allowedProviders: ALL_PROVIDERS,
   },
@@ -160,8 +161,15 @@ export async function checkGenerationQuota(userId: string, subscriptionPlan: str
 export async function enforceGenerationLimit(
   userId: string,
   subscriptionPlan: string | null | undefined,
-  requestedProvider?: string
+  requestedProvider?: string,
+  userEmail?: string | null
 ): Promise<{ status: 429 | 403; body: Record<string, unknown> } | null> {
+  // Admin accounts bypass all limits
+  if (userEmail && isAdminEmail(userEmail)) {
+    console.log(`✅ Admin bypass: ${userEmail} — skipping generation limit`);
+    return null;
+  }
+
   const usage = await checkGenerationQuota(userId, subscriptionPlan);
 
   // Provider restriction

@@ -23,8 +23,11 @@ function OAuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // Determine where to redirect after successful OAuth
-  const redirectTo = getSafeRedirectUrl(searchParams?.get('redirect'));
+  // Determine where to redirect after successful OAuth.
+  // Check URL param first; fallback to sessionStorage (OAuth providers may strip query params from callback URL)
+  const redirectFromUrl = searchParams?.get('redirect');
+  const redirectFromStorage = typeof window !== 'undefined' ? sessionStorage.getItem('auth_redirect_after_login') : null;
+  const redirectTo = getSafeRedirectUrl(redirectFromUrl || redirectFromStorage);
 
   useEffect(() => {
     async function handleCallback() {
@@ -120,6 +123,13 @@ function OAuthCallbackContent() {
         // This helps the app-builder page detect authentication immediately
         await new Promise(resolve => setTimeout(resolve, 300));
         
+        // Clear stored redirect (was used as fallback when URL param was stripped by OAuth)
+        try {
+          sessionStorage.removeItem('auth_redirect_after_login');
+        } catch {
+          /* ignore */
+        }
+        
         // Use window.location for full page reload to ensure cookies are picked up
         window.location.href = redirectTo;
       } catch (error: any) {
@@ -146,6 +156,11 @@ function OAuthCallbackContent() {
       
       if (event === 'SIGNED_IN' && session) {
         console.log('✅ User signed in via auth state change');
+        try {
+          sessionStorage.removeItem('auth_redirect_after_login');
+        } catch {
+          /* ignore */
+        }
         router.replace(redirectTo);
       } else if (event === 'SIGNED_OUT') {
         console.log('👋 User signed out');

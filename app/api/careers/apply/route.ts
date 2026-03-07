@@ -19,6 +19,7 @@ export async function POST(req: NextRequest) {
     const github = (formData.get('github') as string)?.trim() || '';
     const coverNote = (formData.get('coverNote') as string)?.trim() || '';
     const jobTitle = (formData.get('jobTitle') as string)?.trim() || '';
+    const preferredArea = (formData.get('preferredArea') as string)?.trim() || '';
     const resume = formData.get('resume') as File | null;
 
     if (!email) {
@@ -61,6 +62,7 @@ export async function POST(req: NextRequest) {
       <p><strong>Email:</strong> ${email}</p>
       ${linkedin ? `<p><strong>LinkedIn:</strong> <a href="${linkedin}">${linkedin}</a></p>` : ''}
       ${github ? `<p><strong>GitHub:</strong> <a href="${github}">${github}</a></p>` : ''}
+      ${preferredArea ? `<p><strong>Preferred Area (Fellowship):</strong> ${preferredArea}</p>` : ''}
       ${coverNote ? `<p><strong>Cover Note:</strong></p><p>${coverNote.replace(/\n/g, '<br>')}</p>` : ''}
       ${attachments.length > 0 ? `<p><em>Resume attached: ${attachments[0].filename}</em></p>` : '<p><em>No resume attached</em></p>'}
     `;
@@ -72,6 +74,7 @@ Name: ${name || '—'}
 Email: ${email}
 ${linkedin ? `LinkedIn: ${linkedin}` : ''}
 ${github ? `GitHub: ${github}` : ''}
+${preferredArea ? `Preferred Area (Fellowship): ${preferredArea}` : ''}
 ${coverNote ? `\nCover Note:\n${coverNote}` : ''}
 ${attachments.length > 0 ? `\nResume attached: ${attachments[0].filename}` : '\nNo resume attached'}
     `.trim();

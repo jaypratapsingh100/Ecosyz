@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
 import { deployToVercel, getClaimableDeploymentUrl } from '@/lib/vercel';
 import { buildDeployableHtml } from '@/app/lib/app-builder/build-deployable-html';
+import { validateFileSet } from '@/lib/app-builder/validate-files';
 
 /**
  * POST /api/app-projects/[id]/deploy/vercel
@@ -46,6 +47,34 @@ export async function POST(
         { error: 'Project has no files to deploy' },
         { status: 400 }
       );
+    }
+
+    // Pre-deploy validation gate — catch syntax errors before deploying broken code
+    const forceDeployment = new URL(req.url).searchParams.get('force') === 'true';
+    if (!forceDeployment) {
+      try {
+        const jsFiles = project.files
+          .filter((f: { path: string; content: string }) => /\.(jsx?|tsx?)$/.test(f.path))
+          .map((f: { path: string; content: string }) => ({ path: f.path, content: f.content }));
+
+        if (jsFiles.length > 0) {
+          const validation = await validateFileSet(jsFiles);
+          if (!validation.valid) {
+            console.warn('⚠️ Pre-deploy validation failed:', validation.errors.slice(0, 5));
+            return NextResponse.json(
+              {
+                error: 'Project has validation errors. Fix them before deploying.',
+                validationErrors: validation.errors.slice(0, 10),
+                hint: 'Add ?force=true to deploy anyway.',
+              },
+              { status: 400 }
+            );
+          }
+        }
+      } catch (valErr) {
+        // Don't block deploy if validation itself fails (e.g., esbuild not available)
+        console.warn('Pre-deploy validation skipped:', valErr);
+      }
     }
 
     const slug =

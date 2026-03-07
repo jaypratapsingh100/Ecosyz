@@ -235,6 +235,8 @@ RULES:
 - DO NOT return only a single file like src/App.${ext}; always return the complete, self-contained file set needed for the app to run without missing imports.
 - MINIMUM FILE COUNT: You MUST return at least 4 files: src/App.${ext}, src/index.css, and at least 2 component files in src/components/. A single-file response will be rejected.
 - CRITICAL for preview: (1) For any .map() always guard: (items || []).map(...) or useState([]). Never .map() on undefined. (2) Valid JSX only; use ESM import/export syntax ONLY — NEVER use require(), module.exports, or any CommonJS syntax. (3) For navigation use <a href="..."> or Link (stub provided in preview).
+- DEPENDENCY WHITELIST: Only import from these packages: react, react-dom, react-router-dom, lucide-react. Use native fetch() instead of axios. Use Date instead of moment/dayjs. Use inline logic instead of lodash/underscore. Do NOT import any other npm packages — they are not available in the build.
+- SCAFFOLD PROTECTION: Do NOT generate or modify these files: package.json, vite.config.js, tsconfig.json, index.html, postcss.config.js, tailwind.config.js. These are managed by the platform. Only generate files under src/.
 
 CONSISTENCY (apply for every request): Always return the complete file set. Never return only src/App.${ext}. Include App + every component it imports (Header, Hero, Footer, etc.) as separate files. Same structure every time.`;
 }
@@ -371,6 +373,8 @@ RULES:
 - Return ALL files in ONE response. Minimum 4 files: App.${ext}, index.css, + 2 components.
 - Guard .map(): (items||[]).map(). ESM only, no require()/module.exports.
 - Components: Header, Hero, sections, Footer as separate files. App imports and renders them.
+- ONLY import from: react, react-dom, react-router-dom, lucide-react. No other npm packages.
+- Do NOT generate package.json, vite.config, tsconfig, index.html — only files under src/.
 - Current files: ${paths}`;
 }
 

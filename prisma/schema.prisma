@@ -1,8 +1,7 @@
 // Prisma schema for Basic Project Workspace
 
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["driverAdapters"]
+  provider = "prisma-client-js"
 }
 
 datasource db {
@@ -55,6 +54,7 @@ model User {
   appProjectUpvotes        AppProjectUpvote[]
   conversationParticipants ConversationParticipant[] @relation("UserConversationParticipants")
   conversationMessages     ConversationMessage[]     @relation("UserConversationMessages")
+  internFellow             InternFellow?
 }
 
 model Profile {
@@ -742,4 +742,98 @@ model OpenResourcesChat {
 
   @@unique([sessionId, searchQuery])
   @@index([sessionId, updatedAt])
+}
+
+// Intern Fellowship Program
+model InternFellow {
+  id            String       @id @default(cuid())
+  userId        String       @unique
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trackId       String
+  track         InternTrack   @relation(fields: [trackId], references: [id], onDelete: Restrict)
+  resumeUrl     String?
+  resumeParsed  Json?        // Parsed skills, experience from resume
+  status        String       @default("active") // active, completed, paused
+  xp            Int          @default(0)
+  milestonesCompleted Int    @default(0)
+  unlockedMilestoneIds Json? @default("[]")
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  tasks         InternTask[]
+
+  @@index([userId])
+  @@index([trackId])
+  @@index([status])
+}
+
+model InternTrack {
+  id           String            @id @default(cuid())
+  slug         String            @unique
+  name         String
+  description  String?           @db.Text
+  stipendRange String?
+  fellows      InternFellow[]
+  subTracks    InternSubTrack[]
+  milestones   InternMilestone[]
+  tasks        InternTask[]
+
+  @@index([slug])
+}
+
+model InternSubTrack {
+  id          String         @id @default(cuid())
+  trackId     String
+  track       InternTrack    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  slug        String
+  name        String
+  description String?        @db.Text
+  order       Int            @default(0)
+  milestones  InternMilestone[]
+
+  @@unique([trackId, slug])
+  @@index([trackId])
+}
+
+model InternMilestone {
+  id          String       @id @default(cuid())
+  subTrackId  String?
+  subTrack    InternSubTrack? @relation(fields: [subTrackId], references: [id], onDelete: Cascade)
+  trackId     String
+  track       InternTrack   @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  title       String
+  description String?       @db.Text
+  dueDate     DateTime?
+  stipend     Int?
+  order       Int           @default(0)
+  status      String        @default("pending")
+  highlighted Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  tasks       InternTask[]
+
+  @@index([trackId])
+  @@index([subTrackId])
+}
+
+model InternTask {
+  id          String       @id @default(cuid())
+  trackId     String
+  track       InternTrack   @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  milestoneId String?
+  milestone   InternMilestone? @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  fellowId    String?
+  fellow      InternFellow? @relation(fields: [fellowId], references: [id], onDelete: SetNull)
+  title       String
+  description String?       @db.Text
+  stipend     Int?
+  status      String        @default("pending")
+  progress    Int           @default(0)
+  dueDate     DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([trackId])
+  @@index([milestoneId])
+  @@index([fellowId])
+  @@index([status])
 }

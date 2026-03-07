@@ -181,7 +181,7 @@ export default function ChatQuestionnaire({
         colorScheme: colorScheme || undefined,
         brandName: brandName || undefined,
         tagline: tagline || undefined,
-        language: 'typescript',
+        language: 'javascript',
         frameworkPreference: 'React',
       };
       const res = await fetch(`/api/app-projects/${projectId}`, {
@@ -204,7 +204,7 @@ export default function ChatQuestionnaire({
     colorScheme: colorScheme || undefined,
     brandName: brandName || undefined,
     tagline: tagline || undefined,
-    language: 'typescript',
+    language: 'javascript',
     frameworkPreference: 'React',
   });
 

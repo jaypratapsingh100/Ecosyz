@@ -319,6 +319,14 @@ function AuthPageContent() {
 
   const handleOAuthSignIn = async (provider: 'github' | 'google') => {
     try {
+      // Persist redirect in sessionStorage so callback can restore it if OAuth strips query params
+      if (redirectTo && redirectTo !== '/studio') {
+        try {
+          sessionStorage.setItem('auth_redirect_after_login', redirectTo);
+        } catch {
+          /* ignore */
+        }
+      }
       const oauthUrl = redirectTo !== '/studio'
         ? `/api/auth/oauth/${provider}?redirect=${encodeURIComponent(redirectTo)}`
         : `/api/auth/oauth/${provider}`;

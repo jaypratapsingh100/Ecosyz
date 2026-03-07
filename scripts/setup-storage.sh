@@ -59,6 +59,18 @@ async function setupStorage() {
       console.log('✅ problem-idea-images bucket created or already exists');
     }
 
+    // Create intern-resumes bucket (for Fellowship resume uploads)
+    const { error: resumeBucketError } = await supabaseServer.storage.createBucket('intern-resumes', {
+      public: true,
+      allowedMimeTypes: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+      fileSizeLimit: 5242880, // 5MB
+    });
+    if (resumeBucketError && !resumeBucketError.message.includes('already exists')) {
+      console.error('❌ Error creating intern-resumes bucket:', resumeBucketError.message);
+    } else {
+      console.log('✅ intern-resumes bucket created or already exists');
+    }
+
     // Create bucket policy for public read access
     console.log('🔒 Setting up bucket policies...');
 

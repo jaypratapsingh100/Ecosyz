@@ -55,6 +55,7 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
 
   const [extractingMessageId, setExtractingMessageId] = useState<string | null>(null);
   const [extractingFileKey, setExtractingFileKey] = useState<string | null>(null);
+  const [streamingStatus, setStreamingStatus] = useState<string | null>(null);
 
   const hasNoFiles = projectFiles.length === 0;
   const canGenerate = projectId && message.trim() && !loading;
@@ -275,11 +276,21 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
                   architecting: 'Designing architecture...',
                   coding: 'Writing code...',
                   'creating-files': 'Saving files...',
+                  parsing: 'Parsing response...',
+                  filtering: 'Filtering files...',
+                  sanitizing: 'Sanitizing imports...',
+                  validating: 'Validating code...',
+                  fixing: 'Auto-fixing issues...',
+                  saving: 'Saving files...',
                 };
                 const label = statusLabels[event.data] || event.data;
-                setMessages((prev) => prev.map((m) =>
-                  m.id === assistantId ? { ...m, content: `_${label}_` } : m
-                ));
+                setStreamingStatus(label);
+                // Also update message if no content streamed yet
+                if (!streamedContent) {
+                  setMessages((prev) => prev.map((m) =>
+                    m.id === assistantId ? { ...m, content: `_${label}_` } : m
+                  ));
+                }
               } else if (event.type === 'token') {
                 streamedContent += event.data;
                 // Update message with streamed content (throttled)
@@ -293,6 +304,7 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
                   toast.success(`Created: ${event.data.path}`, { duration: 2000 });
                 }
               } else if (event.type === 'done') {
+                setStreamingStatus(null);
                 streamProvider = event.data?.summary?.provider || '';
                 streamModel = event.data?.summary?.model || '';
                 const finalContent = event.data?.response || streamedContent;
@@ -305,6 +317,7 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
                     : m
                 ));
               } else if (event.type === 'error') {
+                setStreamingStatus(null);
                 setError(event.data?.message || 'Generation failed');
                 toast.error('Generation Error', { description: event.data?.message, duration: 5000 });
               }
@@ -380,6 +393,7 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
       setMessages((prev) => prev.filter((msg) => msg.id !== userMessage.id));
     } finally {
       setLoading(false);
+      setStreamingStatus(null);
     }
   };
 
@@ -411,6 +425,12 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
         <div className={`flex-1 ${isUser ? 'text-right' : ''}`}>
           <div className={`text-sm font-semibold mb-1 flex items-center gap-2 ${isUser ? 'text-blue-400' : 'text-white'}`}>
             {isUser ? 'You' : 'Assistant'}
+            {!isUser && loading && streamingStatus && (
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2.5 py-0.5 animate-pulse">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                {streamingStatus}
+              </span>
+            )}
           </div>
           <div className={`rounded-2xl px-4 py-3 shadow-lg ${
             isUser
@@ -425,11 +445,7 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
                   </p>
                 )}
                 {projectId && (
-                  <div className="flex items-center justify-between gap-2 text-xs text-gray-400">
-                    <span>
-                      {structuredFiles.length} file{structuredFiles.length === 1 ? '' : 's'} ready to
-                      extract.
-                    </span>
+                  <div className="flex items-center gap-2 text-xs text-gray-400">
                     <button
                       type="button"
                       disabled={!!extractingMessageId || !projectId}
@@ -474,6 +490,10 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
                       )}
                       <span>Extract all</span>
                     </button>
+                    <span>
+                      {structuredFiles.length} file{structuredFiles.length === 1 ? '' : 's'} ready to
+                      extract.
+                    </span>
                   </div>
                 )}
                 <div className="space-y-3">
@@ -486,16 +506,6 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
                         className="rounded-xl border border-white/10 bg-black/40 overflow-hidden"
                       >
                         <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 bg-white/5">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-xs font-mono text-emerald-300 truncate">
-                              {file.path}
-                            </span>
-                            {file.language && (
-                              <span className="text-[10px] uppercase text-gray-400 flex-shrink-0">
-                                {file.language}
-                              </span>
-                            )}
-                          </div>
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
@@ -593,6 +603,16 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
                                 )}
                                 <span>Extract</span>
                               </button>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-xs font-mono text-emerald-300 truncate">
+                              {file.path}
+                            </span>
+                            {file.language && (
+                              <span className="text-[10px] uppercase text-gray-400 flex-shrink-0">
+                                {file.language}
+                              </span>
                             )}
                           </div>
                         </div>
@@ -740,34 +760,51 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
       </div>
 
       <div className="border-t border-white/10 p-4 flex-shrink-0 bg-[#0a0a0a] z-10">
-        {aiOptions && (aiOptions.groqAvailable || aiOptions.openRouterAvailable || aiOptions.openaiAvailable || aiOptions.anthropicAvailable) && (
-          <div className="flex flex-wrap items-center gap-2 mb-3">
-            <span className="text-xs text-gray-500">Model:</span>
-            <select
-              value={selectedProvider}
-              onChange={(e) => setSelectedProvider(e.target.value as 'groq' | 'openrouter' | 'openai' | 'anthropic')}
-              className="bg-[#1a1a1a] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
-              aria-label="AI Provider"
-            >
-              {aiOptions.anthropicAvailable && <option value="anthropic">Claude (Anthropic)</option>}
-              {aiOptions.openaiAvailable && <option value="openai">OpenAI</option>}
-              {aiOptions.groqAvailable && <option value="groq">Groq (Llama)</option>}
-              {aiOptions.openRouterAvailable && <option value="openrouter">OpenRouter (DeepSeek)</option>}
-            </select>
-            <select
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
-              className="bg-[#1a1a1a] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 min-w-[180px]"
-              aria-label="AI Model"
-            >
-              {(aiOptions.models[selectedProvider] || []).map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.label}
+        {aiOptions ? (
+          (aiOptions.groqAvailable || aiOptions.openRouterAvailable || aiOptions.openaiAvailable || aiOptions.anthropicAvailable) ? (
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <span className="text-xs text-gray-500">Model:</span>
+              <select
+                value={selectedProvider}
+                onChange={(e) => setSelectedProvider(e.target.value as 'groq' | 'openrouter' | 'openai' | 'anthropic')}
+                className="bg-[#1a1a1a] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
+                aria-label="AI Provider"
+              >
+                <option value="anthropic" disabled={!aiOptions.anthropicAvailable}>
+                  Claude (Anthropic){!aiOptions.anthropicAvailable ? ' — key not set' : ''}
                 </option>
-              ))}
-            </select>
-          </div>
-        )}
+                <option value="openai" disabled={!aiOptions.openaiAvailable}>
+                  OpenAI{!aiOptions.openaiAvailable ? ' — key not set' : ''}
+                </option>
+                <option value="groq" disabled={!aiOptions.groqAvailable}>
+                  Groq (Llama){!aiOptions.groqAvailable ? ' — key not set' : ''}
+                </option>
+                <option value="openrouter" disabled={!aiOptions.openRouterAvailable}>
+                  OpenRouter (DeepSeek){!aiOptions.openRouterAvailable ? ' — key not set' : ''}
+                </option>
+              </select>
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                className="bg-[#1a1a1a] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 min-w-[180px]"
+                aria-label="AI Model"
+              >
+                {(aiOptions.models[selectedProvider] || []).map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 mb-3 px-2 py-1.5 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+              <svg className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+              <span className="text-xs text-amber-300">No AI providers configured. Set GROQ_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, or OPENROUTER_API_KEY in your environment variables.</span>
+            </div>
+          )
+        ) : null}
         <form onSubmit={handleSubmit} className="relative">
           <div className="flex items-center gap-0 w-full">
             <div className="flex-1 flex items-center gap-3 bg-[#1a1a1a] rounded-l-full border border-gray-500/30 focus-within:border-gray-400/50 transition-all px-4 py-3.5">

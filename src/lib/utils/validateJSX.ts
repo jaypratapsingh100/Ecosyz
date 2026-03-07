@@ -41,8 +41,10 @@ export function validateJSXCode(code: string, filename: string): ValidationResul
     orphanedExports.forEach(exp => {
       const componentName = exp.match(/export\s+default\s+(\w+)/)?.[1];
       if (componentName) {
-        // Check if component is defined
-        const componentDefined = code.match(new RegExp(`(?:function|const|class)\\s+${componentName}\\s*[=(]`));
+        // Check if component is defined (function, const/let/var, class, or inline export default function)
+        const componentDefined =
+          code.match(new RegExp(`(?:function|const|let|var|class)\\s+${componentName}\\b`)) ||
+          code.match(new RegExp(`export\\s+default\\s+function\\s+${componentName}\\b`));
         if (!componentDefined) {
           errors.push({
             type: 'export',
@@ -55,25 +57,18 @@ export function validateJSXCode(code: string, filename: string): ValidationResul
   }
 
   // Check 3: Return statements outside functions
+  // Track brace depth — any return at depth > 0 is inside a function/arrow/class
   const lines = code.split('\n');
-  let insideFunction = false;
-  let braceCount = 0;
+  let braceDepth = 0;
+  // Pre-check: does the file have ANY function/arrow/class definition?
+  const hasAnyFunctionLike = /(?:function\s|=>\s*\{|=>\s*\(|class\s)/.test(code);
 
   lines.forEach((line, index) => {
-    // Track function boundaries
-    if (line.match(/(?:function|const|var|let)\s+\w+\s*[=(]/)) {
-      insideFunction = true;
-    }
-    
-    braceCount += (line.match(/\{/g) || []).length;
-    braceCount -= (line.match(/\}/g) || []).length;
-    
-    if (braceCount === 0 && insideFunction) {
-      insideFunction = false;
-    }
+    braceDepth += (line.match(/\{/g) || []).length;
+    braceDepth -= (line.match(/\}/g) || []).length;
 
-    // Check for return outside function
-    if (line.match(/^\s*return\s*\(/) && !insideFunction) {
+    // Only flag return at brace depth 0 (truly top-level) AND file has functions
+    if (line.match(/^\s*return\s*[\(;]/) && braceDepth <= 0 && hasAnyFunctionLike) {
       errors.push({
         type: 'structure',
         message: 'Return statement found outside of function',
@@ -100,15 +95,9 @@ export function validateJSXCode(code: string, filename: string): ValidationResul
     });
   }
 
-  // Check 6: JSX/component tags incorrectly inside style object strings (common AI corruption)
-  // e.g. background: 'linear-gradient(... 100%    <App />  - unterminated string with JSX mixed in
-  if (/'[^']*<[A-Za-z][a-zA-Z0-9]*\s*\/?\s*>?/.test(code) || /"[^"]*<[A-Za-z][a-zA-Z0-9]*\s*\/?\s*>?/.test(code)) {
-    errors.push({
-      type: 'syntax',
-      message: 'Unterminated string or JSX tags incorrectly placed inside a style/string value',
-      suggestion: 'Check that style object strings are properly closed. Child components like <TodoList /> should be JSX children, not inside style={{ }}.'
-    });
-  }
+  // Check 6: Removed — regex-based detection of "JSX inside strings" produced too many
+  // false positives on valid JSX code (e.g. className='text-lg' near <Header />).
+  // Babel/esbuild handles real syntax errors at compile time.
 
   // Check 7: Unclosed JSX tags (basic check)
   const openTags = (code.match(/<[A-Z][a-zA-Z0-9]*\s*>/g) || []).length;
