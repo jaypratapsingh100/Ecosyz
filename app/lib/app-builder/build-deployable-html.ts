@@ -7,6 +7,25 @@
 import { SCAFFOLD_STYLES, PREVIEW_BASE_CSS } from './scaffolds';
 import { stripForBrowser, sortComponentsByDependency } from './strip-for-browser';
 
+/**
+ * Extract PascalCase component names from source code so we can register them on window.
+ */
+function extractComponentNames(code: string): string[] {
+  const names: string[] = [];
+  const patterns = [
+    /(?:function)\s+([A-Z][a-zA-Z0-9]*)\s*\(/g,
+    /(?:const|let|var)\s+([A-Z][a-zA-Z0-9]*)\s*=/g,
+    /(?:class)\s+([A-Z][a-zA-Z0-9]*)\s+/g,
+  ];
+  for (const pat of patterns) {
+    let m;
+    while ((m = pat.exec(code)) !== null) {
+      names.push(m[1]);
+    }
+  }
+  return [...new Set(names)];
+}
+
 export interface ProjectFileLike {
   path: string;
   name?: string;
@@ -205,10 +224,16 @@ export function buildDeployableHtml(
       );
       const sortedComponents = sortComponentsByDependency(componentFiles);
       const componentScripts = sortedComponents
-        .map(
-          (f) =>
-            `<script type="text/babel">\n${stripForBrowser(f.content)}\n</script>`
-        )
+        .map((f) => {
+          const stripped = stripForBrowser(f.content);
+          // Extract component names and register on window so App.jsx can reference them
+          // (Babel adds "use strict" which prevents function declarations from leaking to global)
+          const names = extractComponentNames(f.content);
+          const registerLines = names
+            .map(n => `if (typeof ${n} !== "undefined") window["${n}"] = ${n};`)
+            .join('\n');
+          return `<script type="text/babel">\n${stripped}\n${registerLines}\n</script>`;
+        })
         .join('\n');
 
       const linkStubScript = `
@@ -253,6 +278,7 @@ export function buildDeployableHtml(
         .replace(/export\s+default\s+/g, '')
         .replace(/export\s+(?:const|let|var|function|class)\s+/g, (m) => m.replace(/^export\s+/, ''))
         .replace(/import\s+[\s\S]*?from\s+['"][^'"]*['"]\s*;?\s*/g, '')
+        .replace(/import\s+['"][^'"]*['"]\s*;?\s*/g, '') // Remove bare side-effect imports
         .replace(/(?:const|let|var)\s+\w+\s*=\s*require\s*\(\s*['"][^'"]*['"]\s*\)\s*;?\s*/g, '')
         .replace(/require\s*\(\s*['"][^'"]*['"]\s*\)\s*;?\s*/g, '');
       appContent = appContent.trim();

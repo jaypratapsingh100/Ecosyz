@@ -17,6 +17,7 @@ export function stripForBrowser(code: string): string {
     .replace(/export\s+default\s+/g, '')
     .replace(/export\s+(?:const|let|var|function|class)\s+/g, (m) => m.replace(/^export\s+/, ''))
     .replace(/import\s+[\s\S]*?from\s+['"][^'"]*['"]\s*;?\s*/g, '') // Remove ES6 imports
+    .replace(/import\s+['"][^'"]*['"]\s*;?\s*/g, '') // Remove bare side-effect imports (e.g. import './index.css')
     .replace(/(?:const|let|var)\s+\{[^}]*\}\s*=\s*require\s*\(\s*['"][^'"]*['"]\s*\)\s*;?\s*/g, '') // Remove destructured require
     .replace(/(?:const|let|var)\s+\w+\s*=\s*require\s*\(\s*['"][^'"]*['"]\s*\)\s*;?\s*/g, '') // Remove require() assignments
     .replace(/require\s*\(\s*['"][^'"]*['"]\s*\)\s*;?\s*/g, '') // Remove standalone require() calls
@@ -24,14 +25,13 @@ export function stripForBrowser(code: string): string {
     .replace(/exports\.\w+\s*=\s*[^;]+;?/g, '') // Remove exports.X assignments
     .replace(/<\/script>/gi, '<\\/script>');
 
-  // Strip TypeScript-only constructs that Babel with the TS preset handles,
-  // but doing it here too as a safety net for edge cases.
-  // Remove standalone interface/type declarations (whole blocks)
-  c = c.replace(/^(?:export\s+)?interface\s+\w+[^{]*\{[^}]*\}\s*;?\s*$/gm, '');
-  c = c.replace(/^(?:export\s+)?type\s+\w+\s*=\s*[^;]+;\s*$/gm, '');
-  // Remove `: TypeName` annotations from function params and return types
-  // e.g., (items: Product[]) → (items), (): JSX.Element → ()
-  c = c.replace(/:\s*(?:React\.)?(?:FC|FunctionComponent|JSX\.Element|ReactNode|ReactElement)(?:\s*[;{])/g, (m) => m.slice(-1));
+  // Light TypeScript safety-net — only remove simple, safe patterns.
+  // Babel with the TypeScript preset handles all TS syntax; these just help edge cases.
+  // NOTE: Do NOT strip interface/type blocks with regex — they can span multiple lines
+  // with nested braces and the simple regex breaks existing projects. Let Babel handle them.
+  // Remove `: FC`, `: ReactNode` etc. type annotations (safe, single-token)
+  // Matches `: React.FC = `, `: React.FC<Props> = `, `: ReactNode;`, `: JSX.Element {`
+  c = c.replace(/:\s*(?:React\.)?(?:FC|FunctionComponent|JSX\.Element|ReactNode|ReactElement)(?:<[^>]*>)?(?=\s*[;{=])/g, '');
   // Remove `as TypeName` assertions: `value as string` → `value`
   c = c.replace(/\s+as\s+(?:const|(?:[A-Z]\w*(?:\[\])?))\b/g, '');
 

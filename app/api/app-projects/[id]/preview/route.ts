@@ -11,6 +11,26 @@ import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
 import { DEFAULT_APP_CONTENT, SCAFFOLD_STYLES, PREVIEW_BASE_CSS } from '@/app/lib/app-builder/scaffolds';
 import { stripForBrowser, sortComponentsByDependency } from '@/app/lib/app-builder/strip-for-browser';
 
+/**
+ * Extract PascalCase component names (function Navbar, const Navbar =, class Navbar)
+ * from source code so we can register them on window for preview.
+ */
+function extractComponentNames(code: string): string[] {
+  const names: string[] = [];
+  const patterns = [
+    /(?:function)\s+([A-Z][a-zA-Z0-9]*)\s*\(/g,
+    /(?:const|let|var)\s+([A-Z][a-zA-Z0-9]*)\s*=/g,
+    /(?:class)\s+([A-Z][a-zA-Z0-9]*)\s+/g,
+  ];
+  for (const pat of patterns) {
+    let m;
+    while ((m = pat.exec(code)) !== null) {
+      names.push(m[1]);
+    }
+  }
+  return [...new Set(names)];
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -99,10 +119,23 @@ export async function POST(
     }
 
     if (!htmlFile) {
-      return NextResponse.json(
-        { error: 'No HTML file found in project' },
-        { status: 400 }
-      );
+      // Return a styled welcome page instead of a 400 error — prevents blank preview
+      const welcomeHtml = `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<title>${project.title || 'New Project'}</title></head><body>
+<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#0c2321 0%,#121f22 50%,#0a1016 100%);color:#fff;padding:2rem;text-align:center;font-family:Inter,system-ui,sans-serif">
+<div style="background:rgba(27,29,33,0.9);padding:2.5rem 3rem;border-radius:1.25rem;border:1px solid rgba(56,189,248,0.3);box-shadow:0 0 24px rgba(56,189,248,0.15);max-width:480px;width:100%">
+<h1 style="font-size:1.9rem;font-weight:700;margin-bottom:0.75rem;background:linear-gradient(90deg,#38bdf8,#0ff0fc);-webkit-background-clip:text;color:transparent">Welcome to your new app</h1>
+<p style="font-size:0.95rem;color:#e5e7eb;margin-bottom:2rem">Open the Chat tab and tell the AI what you want to build.</p>
+<div style="padding:0.75rem 1.5rem;background:rgba(56,189,248,0.1);border:1px solid rgba(56,189,248,0.4);border-radius:0.625rem;font-size:0.85rem;color:#38bdf8;display:inline-block">Ready to Build</div>
+</div></div></body></html>`;
+      return NextResponse.json({
+        ok: true,
+        status: 'success',
+        output: welcomeHtml,
+        preview: welcomeHtml,
+      });
     }
 
     // Build HTML starting from main HTML file
@@ -213,29 +246,56 @@ export async function POST(
         const reactScripts = `
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script crossorigin="anonymous" src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script>
-    // Global error catcher: catches Babel compilation errors and uncaught runtime errors
-    // so the preview NEVER shows a blank screen
+    // Global error catcher: never show blank screen or cryptic "Script error."
     window.__previewErrors = [];
+    window.__previewRendered = false;
     window.addEventListener('error', function(e) {
-      window.__previewErrors.push(e.message || String(e));
+      var msg = e.message || String(e);
+      // "Script error." = cross-origin error with no details — give a helpful message instead
+      if (msg === 'Script error.' || msg === 'Script error') {
+        msg = 'A component has a syntax or runtime error. Use the Chat tab to ask the AI to fix it.';
+      }
+      // Deduplicate
+      if (window.__previewErrors.indexOf(msg) === -1) {
+        window.__previewErrors.push(msg);
+      }
+      // Show error banner at top if root is empty
       var root = document.getElementById('root');
       if (root && (!root.innerHTML || root.innerHTML.trim() === '')) {
-        root.innerHTML = '<div style="padding:24px;font-family:system-ui,sans-serif;color:#1a1a1a">'
-          + '<h2 style="margin:0 0 12px;font-size:16px;color:#dc2626">Preview Error</h2>'
-          + '<pre style="margin:0;padding:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;white-space:pre-wrap;word-break:break-word;font-size:13px;max-height:300px;overflow:auto">'
-          + window.__previewErrors.map(function(m) { return m.replace(/</g, '&lt;'); }).join('\\n\\n')
+        root.innerHTML = '<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#0c2321 0%,#121f22 50%,#0a1016 100%);color:#fff;padding:2rem;text-align:center;font-family:Inter,system-ui,sans-serif">'
+          + '<div style="background:rgba(27,29,33,0.9);padding:2.5rem;border-radius:1.25rem;border:1px solid rgba(248,113,113,0.3);box-shadow:0 0 24px rgba(248,113,113,0.1);max-width:520px;width:100%">'
+          + '<h2 style="font-size:1.4rem;margin:0 0 1rem;color:#f87171">Preview Error</h2>'
+          + '<pre style="margin:0 0 1rem;padding:1rem;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);border-radius:0.75rem;white-space:pre-wrap;word-break:break-word;font-size:0.8rem;max-height:200px;overflow:auto;text-align:left;color:#e5e7eb">'
+          + window.__previewErrors.map(function(m) { return m.replace(/</g, '&lt;'); }).join('\\n')
           + '</pre>'
-          + '<p style="margin:12px 0 0;font-size:12px;color:#6b7280">Copy this error and ask the AI in Chat to fix it.</p>'
-          + '</div>';
+          + '<p style="margin:0;font-size:0.85rem;color:#9ca3af">Copy this error and ask the AI in Chat to fix it.</p>'
+          + '</div></div>';
       }
     });
-    // Also catch unhandled promise rejections
     window.addEventListener('unhandledrejection', function(e) {
       var msg = e.reason && e.reason.message ? e.reason.message : String(e.reason);
-      window.__previewErrors.push(msg);
+      if (window.__previewErrors.indexOf(msg) === -1) {
+        window.__previewErrors.push(msg);
+      }
     });
+    // Fallback: if nothing renders within 4 seconds, show a helpful message
+    setTimeout(function() {
+      if (window.__previewRendered) return;
+      var root = document.getElementById('root');
+      if (root && (!root.innerHTML || root.innerHTML.trim() === '')) {
+        var errMsg = window.__previewErrors.length > 0
+          ? window.__previewErrors.map(function(m) { return m.replace(/</g, '&lt;'); }).join('\\n')
+          : 'The app did not render. This may be a syntax error in the generated code.';
+        root.innerHTML = '<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#0c2321 0%,#121f22 50%,#0a1016 100%);color:#fff;padding:2rem;text-align:center;font-family:Inter,system-ui,sans-serif">'
+          + '<div style="background:rgba(27,29,33,0.9);padding:2.5rem;border-radius:1.25rem;border:1px solid rgba(56,189,248,0.3);box-shadow:0 0 24px rgba(56,189,248,0.15);max-width:520px;width:100%">'
+          + '<h2 style="font-size:1.5rem;margin:0 0 0.75rem;background:linear-gradient(90deg,#38bdf8,#0ff0fc);-webkit-background-clip:text;color:transparent">Preview Issue</h2>'
+          + '<pre style="margin:0 0 1rem;padding:1rem;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);border-radius:0.75rem;white-space:pre-wrap;word-break:break-word;font-size:0.8rem;max-height:200px;overflow:auto;text-align:left;color:#e5e7eb">' + errMsg + '</pre>'
+          + '<p style="margin:0;font-size:0.85rem;color:#9ca3af">Use the Chat tab to describe the issue and the AI will fix it.</p>'
+          + '</div></div>';
+      }
+    }, 4000);
   </script>`;
         if (!html.includes('react@18') && !html.includes('react.development.js')) {
           if (html.includes('</head>')) {
@@ -266,9 +326,36 @@ export async function POST(
         );
         // Sort: dependencies first (TodoItem before TodoList, etc.)
         const sortedComponents = sortComponentsByDependency(componentFiles);
-        const componentScripts = sortedComponents.map((f: { path: string; content: string }) => {
-          const c = stripForBrowser(f.content);
-          return `<script type="text/babel" data-presets="typescript,react">\n${c}\n</script>`;
+        // Use <script type="text/plain"> + manual Babel.transform() with try-catch
+        // so compilation errors are caught in our scope (not cross-origin "Script error.")
+        const componentScripts = sortedComponents.map((f: { path: string; content: string }, i: number) => {
+          const c = stripForBrowser(f.content).replace(/<\/script>/gi, '<\\/script>');
+          const safePath = (f.path || '').replace(/'/g, "\\'");
+          // Extract component name from filename (e.g., src/components/Navbar.jsx → Navbar)
+          const compName = (f.path || '').split('/').pop()?.replace(/\.[^.]+$/, '') || '';
+          // Also extract all PascalCase function/const component names from the source
+          // to handle files that export multiple components or have a different name than filename
+          const compNames = extractComponentNames(f.content);
+          // Build window registration lines (inside eval'd code so they share scope)
+          const registerLines = [...new Set([compName, ...compNames].filter(Boolean))]
+            .map(n => `if (typeof ${n} !== "undefined") window["${n}"] = ${n};`)
+            .join('\\n');
+          return `<script type="text/plain" id="__comp_${i}">\n${c}\n</script>
+<script>
+(function() {
+  try {
+    var __src = document.getElementById('__comp_${i}').textContent;
+    var __out = Babel.transform(__src, { presets: ['react', 'typescript'], filename: '${safePath}' }).code;
+    // Append window registration so components are globally available for App.jsx
+    // (Babel adds "use strict" which prevents function declarations from leaking to global)
+    __out += '\\n${registerLines}';
+    (0, eval)(__out);
+  } catch(__e) {
+    console.error('[Preview] Component ${safePath} error:', __e);
+    window.__previewErrors.push('${safePath}: ' + (__e.message || String(__e)));
+  }
+})();
+</script>`;
         }).join('\n');
 
         // Stub Link for preview: created code (e.g. Header) often uses Link; imports are stripped and Next/router aren't in iframe
@@ -321,6 +408,7 @@ export async function POST(
           .replace(/export\s+default\s+/g, '')
           .replace(/export\s+(?:const|let|var|function|class)\s+/g, (m) => m.replace(/^export\s+/, ''))
           .replace(/import\s+[\s\S]*?from\s+['"][^'"]*['"]\s*;?\s*/g, '') // Remove ES6 imports (components injected above)
+          .replace(/import\s+['"][^'"]*['"]\s*;?\s*/g, '') // Remove bare side-effect imports (e.g. import './index.css')
           .replace(/(?:const|let|var)\s+\w+\s*=\s*require\s*\(\s*['"][^'"]*['"]\s*\)\s*;?\s*/g, '') // Remove require() assignments
           .replace(/require\s*\(\s*['"][^'"]*['"]\s*\)\s*;?\s*/g, ''); // Remove standalone require() calls
         appContent = appContent.trim();
@@ -347,44 +435,61 @@ const Route = function Route(props) { return props.element ?? null; };
 
         // CRITICAL: Escape </script> so HTML parser doesn't close script tag early
         appContent = appContent.replace(/<\/script>/gi, '<\\/script>');
-        // NOTE: Do NOT escape template literals (${}). The code runs inside <script type="text/babel">
-        // where Babel handles template literals natively. Escaping them breaks dynamic content.
-        
-        // Wrap app in an error boundary so runtime errors (e.g. .map on undefined) show a message instead of blank preview
-        // When router stubs are active, render a small banner so the fix is visible; also highlight "Router is not defined" in errors
+
+        // Wrap app in an error boundary so runtime errors show a message instead of blank preview
         const renderAppWithOptionalBanner = usesReactRouter
-          ? 'React.createElement(React.Fragment, null, React.createElement("div", { style: { padding: "6px 12px", fontSize: 11, background: "#fef3c7", color: "#92400e", borderBottom: "1px solid #fcd34d", fontFamily: "system-ui,sans-serif" } }, "Preview: React Router stubs active — routing is simplified. Your app should render below."), React.createElement(App))'
+          ? 'React.createElement(React.Fragment, null, React.createElement("div", { style: { padding: "6px 12px", fontSize: 11, background: "#fef3c7", color: "#92400e", borderBottom: "1px solid #fcd34d", fontFamily: "system-ui,sans-serif" } }, "Preview: React Router stubs active \\u2014 routing is simplified."), React.createElement(App))'
           : 'React.createElement(App)';
-        const errorBoundaryScript = [
-          '  <script type="text/babel" data-presets="typescript,react">',
-          '    class PreviewErrorBoundary extends React.Component {',
-          '      constructor(props) { super(props); this.state = { hasError: false, error: null }; }',
-          '      static getDerivedStateFromError(error) { return { hasError: true, error }; }',
-          '      render() {',
-          '        if (this.state.hasError) {',
-          '          const msg = this.state.error && this.state.error.message ? this.state.error.message : String(this.state.error);',
-          '          const isMapError = /undefined.*\\.map|\\.map.*undefined/i.test(msg);',
-          '          const isRouterError = /Router is not defined|Routes is not defined|Route is not defined/i.test(msg);',
-          '          const tip = isMapError ? "\\n\\nTip: Use (items || []).map(...) or useState([]) so the list is never undefined." : "";',
-          '          return React.createElement("div", {',
-          '            style: { padding: 20, fontFamily: "system-ui,sans-serif", color: "#1a1a1a", fontSize: 14, maxWidth: "100%", overflow: "auto" }',
-          '          },',
-          '            React.createElement("h2", { style: { margin: "0 0 12px 0", fontSize: 16 } }, "Preview error"),',
-          '            React.createElement("pre", { style: { margin: 0, padding: 12, background: "#f5f5f5", borderRadius: 8, whiteSpace: "pre-wrap", wordBreak: "break-word" } }, msg + tip),',
-          '            isRouterError ? React.createElement("div", { style: { marginTop: 12, padding: 12, background: "#fef3c7", border: "1px solid #f59e0b", borderRadius: 8, fontSize: 13 } }, React.createElement("strong", null, "Router/Routes/Route not defined"), React.createElement("p", { style: { margin: "8px 0 0 0" } }, "The preview now injects stubs for these. Refresh the preview to apply the fix and render your app.")) : null,',
-          '            React.createElement("p", { style: { margin: "12px 0 0 0", fontSize: 12, color: "#6b7280" } }, "Copy this error and ask the AI in Chat to fix it.")',
-          '          );',
-          '        }',
-          '        return this.props.children;',
-          '      }',
+        // Build the full app source (ErrorBoundary + App + render) as a text/plain block
+        // then compile with manual Babel.transform() and try-catch for full error visibility
+        const fullAppSource = [
+          'class PreviewErrorBoundary extends React.Component {',
+          '  constructor(props) { super(props); this.state = { hasError: false, error: null }; }',
+          '  static getDerivedStateFromError(error) { return { hasError: true, error }; }',
+          '  render() {',
+          '    if (this.state.hasError) {',
+          '      const msg = this.state.error && this.state.error.message ? this.state.error.message : String(this.state.error);',
+          '      const isMapError = /undefined.*\\.map|\\.map.*undefined/i.test(msg);',
+          '      const tip = isMapError ? "\\nTip: Use (items || []).map(...) or useState([]) so the list is never undefined." : "";',
+          '      return React.createElement("div", {',
+          '        style: { padding: 24, fontFamily: "Inter,system-ui,sans-serif", color: "#1a1a1a", fontSize: 14, maxWidth: "100%", overflow: "auto" }',
+          '      },',
+          '        React.createElement("h2", { style: { margin: "0 0 12px 0", fontSize: 16, color: "#dc2626" } }, "Preview Error"),',
+          '        React.createElement("pre", { style: { margin: 0, padding: 12, background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 13 } }, msg + tip),',
+          '        React.createElement("p", { style: { margin: "12px 0 0 0", fontSize: 12, color: "#6b7280" } }, "Copy this error and ask the AI in Chat to fix it.")',
+          '      );',
           '    }',
-          '    const { createRoot } = ReactDOM;',
+          '    return this.props.children;',
+          '  }',
+          '}',
           appContent,
-          '    const root = createRoot(document.getElementById("root"));',
-          `    root.render(React.createElement(PreviewErrorBoundary, null, ${renderAppWithOptionalBanner}));`,
-          '  </script>',
+          'const __root = ReactDOM.createRoot(document.getElementById("root"));',
+          `__root.render(React.createElement(PreviewErrorBoundary, null, ${renderAppWithOptionalBanner}));`,
+          'window.__previewRendered = true;',
         ].join('\n');
-        const appComponentScript = errorBoundaryScript;
+        const appComponentScript = `<script type="text/plain" id="__app_code">\n${fullAppSource}\n</script>
+<script>
+(function() {
+  try {
+    var __src = document.getElementById('__app_code').textContent;
+    var __out = Babel.transform(__src, { presets: ['react', 'typescript'], filename: 'App.jsx' }).code;
+    (0, eval)(__out);
+  } catch(__e) {
+    console.error('[Preview] App compilation/render error:', __e);
+    window.__previewErrors.push(__e.message || String(__e));
+    var root = document.getElementById('root');
+    if (root && (!root.innerHTML || root.innerHTML.trim() === '')) {
+      root.innerHTML = '<div style="padding:24px;font-family:Inter,system-ui,sans-serif;color:#1a1a1a">'
+        + '<h2 style="margin:0 0 12px;font-size:16px;color:#dc2626">Preview Error</h2>'
+        + '<pre style="margin:0;padding:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;white-space:pre-wrap;word-break:break-word;font-size:13px;max-height:300px;overflow:auto">'
+        + (__e.message || String(__e)).replace(/</g, '&lt;')
+        + '</pre>'
+        + '<p style="margin:12px 0 0;font-size:12px;color:#6b7280">Copy this error and ask the AI in Chat to fix it.</p>'
+        + '</div>';
+    }
+  }
+})();
+</script>`;
         
         const scriptsToInject = componentScripts
           ? `${linkStubScript}\n${componentScripts}\n${appComponentScript}`
@@ -413,16 +518,29 @@ const Route = function Route(props) { return props.element ?? null; };
             f.path.endsWith('.ts')) &&
           !f.isMain
       );
-      for (const jsFile of jsFiles) {
+      // Use manual Babel.transform() with try-catch for non-React files too
+      jsFiles.forEach((jsFile: { path: string; content: string }, idx: number) => {
         const safeContent = (jsFile.content || '').replace(/<\/script>/gi, '<\\/script>');
-        const scriptTag = `<script type="text/babel" data-presets="typescript,react">${safeContent}</script>`;
-        // Insert before closing body tag
+        const safePath = (jsFile.path || '').replace(/'/g, "\\'");
+        const scriptTag = `<script type="text/plain" id="__nr_${idx}">\n${safeContent}\n</script>
+<script>
+(function() {
+  try {
+    var __src = document.getElementById('__nr_${idx}').textContent;
+    var __out = Babel.transform(__src, { presets: ['react', 'typescript'], filename: '${safePath}' }).code;
+    (0, eval)(__out);
+  } catch(__e) {
+    console.error('[Preview] ${safePath} error:', __e);
+    window.__previewErrors.push('${safePath}: ' + (__e.message || String(__e)));
+  }
+})();
+</script>`;
         if (html.includes('</body>')) {
           html = html.replace('</body>', `${scriptTag}\n</body>`);
         } else {
           html = html + scriptTag;
         }
-      }
+      });
 
       // Inject main JSX/TSX file if it exists and hasn't been injected yet
       const mainJsFile = project.files.find(
@@ -437,7 +555,20 @@ const Route = function Route(props) { return props.element ?? null; };
       );
       if (mainJsFile && !html.includes(mainJsFile.content)) {
         const safeContent = (mainJsFile.content || '').replace(/<\/script>/gi, '<\\/script>');
-        const scriptTag = `<script type="text/babel" data-presets="typescript,react">${safeContent}</script>`;
+        const safePath = (mainJsFile.path || '').replace(/'/g, "\\'");
+        const scriptTag = `<script type="text/plain" id="__nr_main">\n${safeContent}\n</script>
+<script>
+(function() {
+  try {
+    var __src = document.getElementById('__nr_main').textContent;
+    var __out = Babel.transform(__src, { presets: ['react', 'typescript'], filename: '${safePath}' }).code;
+    (0, eval)(__out);
+  } catch(__e) {
+    console.error('[Preview] ${safePath} error:', __e);
+    window.__previewErrors.push('${safePath}: ' + (__e.message || String(__e)));
+  }
+})();
+</script>`;
         if (html.includes('</body>')) {
           html = html.replace('</body>', `${scriptTag}\n</body>`);
         } else {
