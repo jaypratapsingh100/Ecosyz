@@ -33,7 +33,7 @@ export default function FellowshipRoadmapGraph({ areas }: FellowshipRoadmapGraph
   const bottomNodes = areas.filter((a) => ['developer-relations', 'marketing-growth'].includes(a.id));
 
   return (
-    <div className="relative rounded-xl border border-[#38bdf8]/20 bg-zinc-900/60 p-8 overflow-hidden">
+    <div className="relative rounded-xl border border-white/10 bg-white/5 backdrop-blur-xl p-8 overflow-hidden shadow-lg">
       {/* SVG edges */}
       <svg className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none">
         <defs>
@@ -97,7 +97,7 @@ export default function FellowshipRoadmapGraph({ areas }: FellowshipRoadmapGraph
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 10 }}
-            className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-lg rounded-lg border border-[#38bdf8]/30 bg-zinc-900/95 p-4 shadow-xl"
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-lg rounded-xl border border-white/20 bg-zinc-900/90 backdrop-blur-xl p-4 shadow-xl"
           >
             <div className="flex items-start gap-3">
               <span className="text-2xl">{selected.icon}</span>
@@ -107,7 +107,7 @@ export default function FellowshipRoadmapGraph({ areas }: FellowshipRoadmapGraph
                 <p className="text-xs text-[#0ff0fc] mt-2">Stipend: {selected.stipendPerMilestone} per milestone</p>
                 <div className="flex flex-wrap gap-1 mt-2">
                   {selected.skills.slice(0, 4).map((s) => (
-                    <span key={s} className="px-2 py-0.5 text-xs bg-zinc-800/80 text-teal-100 rounded border border-[#38bdf8]/20">
+                    <span key={s} className="px-2 py-0.5 text-xs bg-white/10 text-teal-100 rounded border border-white/20 backdrop-blur-sm">
                       {s}
                     </span>
                   ))}
@@ -146,7 +146,7 @@ function NodeButton({
       className={`flex flex-col items-center gap-2 px-6 py-4 rounded-xl border-2 transition-all ${
         isSelected
           ? 'border-[#38bdf8] bg-[#38bdf8]/20 shadow-lg shadow-[#38bdf8]/20'
-          : 'border-[#38bdf8]/30 bg-zinc-800/60 hover:border-[#38bdf8]/50 hover:bg-[#38bdf8]/10'
+          : 'border-white/20 bg-white/5 backdrop-blur-sm hover:border-[#38bdf8]/50 hover:bg-[#38bdf8]/10'
       }`}
     >
       <span className="text-3xl">{area.icon}</span>

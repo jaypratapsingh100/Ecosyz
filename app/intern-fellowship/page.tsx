@@ -166,7 +166,7 @@ export default function InternFellowshipPage() {
               className="mb-16"
             >
               <div className="text-center mb-8">
-                <span className="inline-block px-2 py-1 text-xs bg-[#38bdf8]/20 text-[#38bdf8] rounded-full mb-4">
+                <span className="inline-block px-3 py-1 text-xs font-medium bg-white/10 text-[#38bdf8] rounded-full border border-white/20 backdrop-blur-sm mb-4">
                   Intern Fellowship Program
                 </span>
                 <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight text-transparent bg-gradient-to-r from-[#38bdf8] via-[#0ff0fc] to-[#a78bfa] bg-clip-text mb-4">
@@ -192,17 +192,17 @@ export default function InternFellowshipPage() {
             >
               <h2 className="text-2xl font-bold text-[#38bdf8] mb-6">How it works</h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="rounded-xl border border-[#38bdf8]/20 bg-zinc-900/40 p-6">
+                <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-xl p-6 shadow-lg hover:border-[#38bdf8]/30 hover:bg-white/[0.07] transition-all">
                   <span className="text-3xl mb-3 block">📄</span>
                   <h3 className="font-semibold text-[#38bdf8] mb-2">1. Resume</h3>
                   <p className="text-sm text-teal-100/80">Upload your resume. We analyze skills and experience to map you to the right contribution areas.</p>
                 </div>
-                <div className="rounded-xl border border-[#38bdf8]/20 bg-zinc-900/40 p-6">
+                <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-xl p-6 shadow-lg hover:border-[#38bdf8]/30 hover:bg-white/[0.07] transition-all">
                   <span className="text-3xl mb-3 block">🗺️</span>
                   <h3 className="font-semibold text-[#38bdf8] mb-2">2. Roadmap graph</h3>
                   <p className="text-sm text-teal-100/80">Our roadmap is a graph—nodes are areas you can help in. Pick your path, unlock milestones.</p>
                 </div>
-                <div className="rounded-xl border border-[#38bdf8]/20 bg-zinc-900/40 p-6">
+                <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-xl p-6 shadow-lg hover:border-[#38bdf8]/30 hover:bg-white/[0.07] transition-all">
                   <span className="text-3xl mb-3 block">💰</span>
                   <h3 className="font-semibold text-[#38bdf8] mb-2">3. Stipend per milestone</h3>
                   <p className="text-sm text-teal-100/80">Complete a milestone → earn stipend. Build a gamified portfolio of achievements as you go.</p>
@@ -239,7 +239,7 @@ export default function InternFellowshipPage() {
                 {CONTRIBUTION_AREAS.map((area) => (
                   <div
                     key={area.id}
-                    className="rounded-xl border border-[#38bdf8]/20 bg-zinc-900/40 p-5 hover:border-[#38bdf8]/50 transition-all group"
+                    className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-xl p-5 shadow-lg hover:border-[#38bdf8]/40 hover:bg-white/[0.07] hover:shadow-xl hover:shadow-[#38bdf8]/5 transition-all group"
                   >
                     <div className="flex items-start gap-3">
                       <span className="text-2xl group-hover:scale-110 transition-transform">{area.icon}</span>
@@ -248,7 +248,7 @@ export default function InternFellowshipPage() {
                         <p className="text-sm text-teal-100/80 mt-1">{area.description}</p>
                         <div className="flex flex-wrap gap-2 mt-3">
                           {area.skills.slice(0, 3).map((s) => (
-                            <span key={s} className="px-2 py-0.5 text-xs bg-zinc-800/80 text-teal-100 rounded-full border border-[#38bdf8]/20">
+                            <span key={s} className="px-2 py-0.5 text-xs bg-white/10 text-teal-100 rounded-full border border-white/20 backdrop-blur-sm">
                               {s}
                             </span>
                           ))}
@@ -293,7 +293,7 @@ export default function InternFellowshipPage() {
                 {MILESTONE_EXAMPLES.map((m) => (
                   <div
                     key={m.phase}
-                    className="rounded-xl border border-[#38bdf8]/20 bg-zinc-900/40 p-5 min-w-[200px]"
+                    className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-xl p-5 min-w-[200px] shadow-lg hover:border-[#38bdf8]/30 hover:bg-white/[0.07] transition-all"
                   >
                     <h4 className="font-semibold text-[#38bdf8] text-sm mb-2">{m.phase}</h4>
                     <ul className="text-xs text-teal-100/80 space-y-1 mb-3">
@@ -312,7 +312,7 @@ export default function InternFellowshipPage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.6, duration: 0.5 }}
-              className="text-center pt-12 border-t border-[#38bdf8]/10"
+              className="text-center pt-12 border-t border-white/10"
             >
               <h3 className="text-xl font-semibold text-[#38bdf8] mb-4">Ready to apply?</h3>
               <p className="text-teal-100/70 text-sm mb-6 max-w-xl mx-auto">
@@ -328,13 +328,13 @@ export default function InternFellowshipPage() {
                 </button>
                 <button
                   onClick={() => setShowApplyModal(true)}
-                  className="inline-flex items-center justify-center gap-2 px-6 py-3 border border-[#38bdf8]/40 text-[#38bdf8] font-medium rounded-lg hover:bg-[#38bdf8]/10 transition text-sm"
+                  className="inline-flex items-center justify-center gap-2 px-6 py-3 border border-white/20 text-[#38bdf8] font-medium rounded-lg hover:bg-white/10 hover:border-[#38bdf8]/40 transition text-sm backdrop-blur-sm"
                 >
                   Apply to Fellowship
                 </button>
                 <Link
                   href="/careers"
-                  className="inline-flex items-center justify-center px-6 py-3 border border-[#38bdf8]/20 text-teal-100/80 font-medium rounded-lg hover:bg-[#38bdf8]/10 transition text-sm"
+                  className="inline-flex items-center justify-center px-6 py-3 border border-white/20 text-teal-100/80 font-medium rounded-lg hover:bg-white/10 hover:border-[#38bdf8]/30 transition text-sm backdrop-blur-sm"
                 >
                   View all roles
                 </Link>
@@ -353,13 +353,13 @@ export default function InternFellowshipPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xl"
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="relative rounded-xl p-6 max-w-md w-full shadow-2xl border border-[#38bdf8]/30 bg-zinc-900/95 backdrop-blur-sm max-h-[90vh] overflow-y-auto"
+              className="relative rounded-2xl p-6 max-w-md w-full shadow-2xl border border-white/20 bg-zinc-900/90 backdrop-blur-xl max-h-[90vh] overflow-y-auto"
             >
               <h3 className="text-lg font-semibold text-[#38bdf8] mb-1">Intern Fellowship Program</h3>
               <p className="text-sm text-teal-100/70 mb-5">
@@ -373,7 +373,7 @@ export default function InternFellowshipPage() {
                     value={formData.name}
                     onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))}
                     placeholder="Your name"
-                    className="w-full px-4 py-2.5 rounded-lg bg-zinc-800/80 border border-[#38bdf8]/20 text-white text-sm placeholder-teal-100/40 focus:outline-none focus:border-[#38bdf8] focus:ring-1 focus:ring-[#38bdf8]/30"
+                    className="w-full px-4 py-2.5 rounded-lg bg-white/5 border border-white/20 text-white text-sm placeholder-teal-100/40 focus:outline-none focus:border-[#38bdf8] focus:ring-1 focus:ring-[#38bdf8]/30 backdrop-blur-sm"
                   />
                 </div>
                 <div>
@@ -384,7 +384,7 @@ export default function InternFellowshipPage() {
                     onChange={(e) => setFormData((p) => ({ ...p, email: e.target.value }))}
                     placeholder="you@email.com"
                     required
-                    className="w-full px-4 py-2.5 rounded-lg bg-zinc-800/80 border border-[#38bdf8]/20 text-white text-sm placeholder-teal-100/40 focus:outline-none focus:border-[#38bdf8] focus:ring-1 focus:ring-[#38bdf8]/30"
+                    className="w-full px-4 py-2.5 rounded-lg bg-white/5 border border-white/20 text-white text-sm placeholder-teal-100/40 focus:outline-none focus:border-[#38bdf8] focus:ring-1 focus:ring-[#38bdf8]/30 backdrop-blur-sm"
                   />
                 </div>
                 <div>
@@ -394,7 +394,7 @@ export default function InternFellowshipPage() {
                     value={formData.linkedin}
                     onChange={(e) => setFormData((p) => ({ ...p, linkedin: e.target.value }))}
                     placeholder="https://linkedin.com/in/..."
-                    className="w-full px-4 py-2.5 rounded-lg bg-zinc-800/80 border border-[#38bdf8]/20 text-white text-sm placeholder-teal-100/40 focus:outline-none focus:border-[#38bdf8] focus:ring-1 focus:ring-[#38bdf8]/30"
+                    className="w-full px-4 py-2.5 rounded-lg bg-white/5 border border-white/20 text-white text-sm placeholder-teal-100/40 focus:outline-none focus:border-[#38bdf8] focus:ring-1 focus:ring-[#38bdf8]/30 backdrop-blur-sm"
                   />
                 </div>
                 <div>
@@ -404,7 +404,7 @@ export default function InternFellowshipPage() {
                     value={formData.github}
                     onChange={(e) => setFormData((p) => ({ ...p, github: e.target.value }))}
                     placeholder="https://github.com/username"
-                    className="w-full px-4 py-2.5 rounded-lg bg-zinc-800/80 border border-[#38bdf8]/20 text-white text-sm placeholder-teal-100/40 focus:outline-none focus:border-[#38bdf8] focus:ring-1 focus:ring-[#38bdf8]/30"
+                    className="w-full px-4 py-2.5 rounded-lg bg-white/5 border border-white/20 text-white text-sm placeholder-teal-100/40 focus:outline-none focus:border-[#38bdf8] focus:ring-1 focus:ring-[#38bdf8]/30 backdrop-blur-sm"
                   />
                 </div>
                 <div>
@@ -412,7 +412,7 @@ export default function InternFellowshipPage() {
                   <select
                     value={formData.preferredArea}
                     onChange={(e) => setFormData((p) => ({ ...p, preferredArea: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-lg bg-zinc-800/80 border border-[#38bdf8]/20 text-white text-sm focus:outline-none focus:border-[#38bdf8] focus:ring-1 focus:ring-[#38bdf8]/30"
+                    className="w-full px-4 py-2.5 rounded-lg bg-white/5 border border-white/20 text-white text-sm focus:outline-none focus:border-[#38bdf8] focus:ring-1 focus:ring-[#38bdf8]/30 backdrop-blur-sm"
                   >
                     <option value="">Select area</option>
                     {CONTRIBUTION_AREAS.map((a) => (
@@ -426,7 +426,7 @@ export default function InternFellowshipPage() {
                     type="file"
                     accept=".pdf,.doc,.docx"
                     onChange={(e) => setResumeFile(e.target.files?.[0] || null)}
-                    className="w-full px-4 py-2.5 rounded-lg bg-zinc-800/80 border border-[#38bdf8]/20 text-white text-sm file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-sm file:bg-[#38bdf8]/20 file:text-[#38bdf8] file:cursor-pointer focus:outline-none focus:border-[#38bdf8] focus:ring-1 focus:ring-[#38bdf8]/30"
+                    className="w-full px-4 py-2.5 rounded-lg bg-white/5 border border-white/20 text-white text-sm file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-sm file:bg-[#38bdf8]/20 file:text-[#38bdf8] file:cursor-pointer focus:outline-none focus:border-[#38bdf8] focus:ring-1 focus:ring-[#38bdf8]/30 backdrop-blur-sm"
                   />
                   <p className="mt-1 text-xs text-teal-100/50">PDF or DOC, max 5MB</p>
                 </div>
@@ -437,7 +437,7 @@ export default function InternFellowshipPage() {
                     onChange={(e) => setFormData((p) => ({ ...p, coverNote: e.target.value }))}
                     placeholder="Brief note about your experience and interest in the fellowship..."
                     rows={4}
-                    className="w-full px-4 py-2.5 rounded-lg bg-zinc-800/80 border border-[#38bdf8]/20 text-white text-sm placeholder-teal-100/40 focus:outline-none focus:border-[#38bdf8] focus:ring-1 focus:ring-[#38bdf8]/30 resize-none"
+                    className="w-full px-4 py-2.5 rounded-lg bg-white/5 border border-white/20 text-white text-sm placeholder-teal-100/40 focus:outline-none focus:border-[#38bdf8] focus:ring-1 focus:ring-[#38bdf8]/30 resize-none backdrop-blur-sm"
                   />
                 </div>
                 <div className="flex gap-3 pt-2">
