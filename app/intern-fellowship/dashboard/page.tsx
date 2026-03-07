@@ -29,11 +29,11 @@ import {
 } from 'lucide-react';
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string }> = {
-  pending:     { label: 'Pending',     bg: 'bg-[#38bdf8]/20', text: 'text-[#38bdf8]' },
-  in_progress: { label: 'In Progress', bg: 'bg-amber-400/20',  text: 'text-amber-300' },
-  submitted:   { label: 'Submitted',   bg: 'bg-purple-400/20', text: 'text-purple-300' },
-  completed:   { label: 'Completed',   bg: 'bg-emerald-400/20', text: 'text-emerald-300' },
-  approved:    { label: 'Approved',    bg: 'bg-emerald-400/20', text: 'text-emerald-300' },
+  pending:     { label: 'Pending',     bg: 'bg-[#38bdf8]/30', text: 'text-[#38bdf8]' },
+  in_progress: { label: 'In Progress', bg: 'bg-amber-400/30',  text: 'text-amber-300' },
+  submitted:   { label: 'Submitted',   bg: 'bg-purple-400/30', text: 'text-purple-300' },
+  completed:   { label: 'Completed',   bg: 'bg-emerald-400/30', text: 'text-emerald-300' },
+  approved:    { label: 'Approved',    bg: 'bg-emerald-400/30', text: 'text-emerald-300' },
 };
 
 function TaskItem({ task, onUpdate, onProgress }: {
@@ -62,7 +62,7 @@ function TaskItem({ task, onUpdate, onProgress }: {
   };
 
   return (
-    <div className="p-3 rounded-lg border border-[#38bdf8]/10 bg-zinc-800/40">
+    <div className="p-4 rounded-xl border border-zinc-600/50 bg-zinc-800/90 backdrop-blur-md shadow-sm">
       <div className="flex items-start gap-3">
         {isDone ? (
           <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
@@ -74,9 +74,9 @@ function TaskItem({ task, onUpdate, onProgress }: {
           <Circle className="w-4 h-4 text-[#38bdf8]/50 shrink-0 mt-0.5" />
         )}
         <div className="flex-1 min-w-0">
-          <p className="font-medium text-teal-100 text-sm">{task.title}</p>
+          <p className="font-semibold text-zinc-100 text-sm">{task.title}</p>
           {task.description && (
-            <div className="text-xs text-teal-100/70 mt-1 space-y-1">
+            <div className="text-xs text-zinc-300 mt-1 space-y-1">
               {task.description.split('\n').filter(Boolean).map((line, i) => (
                 <p key={i} className={line.startsWith('[') ? 'text-teal-100/50 border-l-2 border-[#38bdf8]/20 pl-2' : ''}>
                   {line}
@@ -84,7 +84,7 @@ function TaskItem({ task, onUpdate, onProgress }: {
               ))}
             </div>
           )}
-          <div className="flex items-center gap-3 mt-1 text-xs text-teal-100/60">
+          <div className="flex items-center gap-3 mt-1 text-xs text-zinc-400">
             {task.dueDate && (
               <span className="flex items-center gap-1">
                 <Clock className="w-3 h-3" />
@@ -101,7 +101,7 @@ function TaskItem({ task, onUpdate, onProgress }: {
       {(task.status === 'in_progress' || task.status === 'submitted' || isDone) && (
         <div className="mt-2 ml-7">
           <div className="flex items-center gap-2">
-            <div className="flex-1 h-2 rounded-full bg-zinc-700/60 overflow-hidden">
+            <div className="flex-1 h-2 rounded-full bg-zinc-700/80 overflow-hidden">
               <div
                 className={`h-full rounded-full transition-all duration-300 ${
                   isDone ? 'bg-emerald-400' : isSubmitted ? 'bg-purple-400' : 'bg-amber-400'
@@ -109,7 +109,7 @@ function TaskItem({ task, onUpdate, onProgress }: {
                 style={{ width: `${isDone ? 100 : localProgress}%` }}
               />
             </div>
-            <span className="text-xs text-teal-100/60 w-10 text-right font-medium">{isDone ? 100 : localProgress}%</span>
+            <span className="text-xs text-zinc-400 w-10 text-right font-medium">{isDone ? 100 : localProgress}%</span>
           </div>
           {task.status === 'in_progress' && (
             <div className="flex items-center gap-2 mt-1">
@@ -126,7 +126,7 @@ function TaskItem({ task, onUpdate, onProgress }: {
                 type="button"
                 onClick={() => { onProgress(task.id, localProgress); toast.success(`Progress saved: ${localProgress}%`); }}
                 disabled={localProgress === (task.progress || 0)}
-                className="px-2.5 py-1 text-xs bg-amber-500/20 text-amber-400 rounded hover:bg-amber-500/30 transition-colors disabled:opacity-30 disabled:cursor-default font-medium shrink-0"
+                className="px-3 py-1.5 text-xs font-medium bg-amber-500/40 text-amber-200 rounded-lg hover:bg-amber-500/50 transition-colors disabled:opacity-30 disabled:cursor-default shrink-0"
               >
                 Save
               </button>
@@ -144,7 +144,7 @@ function TaskItem({ task, onUpdate, onProgress }: {
                 <button
                   onClick={() => handleAction('in_progress')}
                   disabled={updating}
-                  className="flex items-center gap-1 px-2.5 py-1 text-xs bg-amber-500/20 text-amber-400 rounded hover:bg-amber-500/30 transition-colors disabled:opacity-50"
+                  className="flex items-center gap-1 px-2.5 py-1 text-xs bg-amber-500/40 text-amber-200 rounded-lg hover:bg-amber-500/50 transition-colors disabled:opacity-50"
                 >
                   <Play className="w-3 h-3" /> Start
                 </button>
@@ -152,7 +152,7 @@ function TaskItem({ task, onUpdate, onProgress }: {
               {(task.status === 'pending' || task.status === 'in_progress') && (
                 <button
                   onClick={() => setShowNote(!showNote)}
-                  className="flex items-center gap-1 px-2.5 py-1 text-xs bg-purple-500/20 text-purple-400 rounded hover:bg-purple-500/30 transition-colors"
+                  className="flex items-center gap-1 px-2.5 py-1 text-xs bg-purple-500/40 text-purple-200 rounded-lg hover:bg-purple-500/50 transition-colors"
                 >
                   <Send className="w-3 h-3" /> Submit for review
                 </button>
@@ -160,7 +160,7 @@ function TaskItem({ task, onUpdate, onProgress }: {
               {task.status === 'in_progress' && !showNote && (
                 <button
                   onClick={() => setShowNote(!showNote)}
-                  className="flex items-center gap-1 px-2.5 py-1 text-xs bg-[#38bdf8]/20 text-[#38bdf8] rounded hover:bg-[#38bdf8]/30 transition-colors"
+                  className="flex items-center gap-1 px-2.5 py-1 text-xs bg-[#38bdf8]/30 text-[#38bdf8] rounded-lg hover:bg-[#38bdf8]/40 transition-colors"
                 >
                   Add update
                 </button>
@@ -176,13 +176,13 @@ function TaskItem({ task, onUpdate, onProgress }: {
                 onChange={(e) => setNote(e.target.value)}
                 placeholder="Add a note or update (e.g. link to work, progress details)..."
                 rows={2}
-                className="w-full px-3 py-2 text-sm rounded-lg bg-zinc-900/80 border border-[#38bdf8]/20 text-teal-100 placeholder:text-teal-100/40 resize-none focus:outline-none focus:border-[#38bdf8]/50"
+                className="w-full px-3 py-2 text-sm rounded-lg bg-zinc-800/80 border border-zinc-600/50 text-zinc-100 placeholder:text-zinc-500 resize-none focus:outline-none focus:border-[#38bdf8]/50"
               />
               <div className="flex gap-2">
                 <button
                   onClick={() => handleAction('submitted')}
                   disabled={updating}
-                  className="flex items-center gap-1 px-3 py-1.5 text-xs bg-purple-500/20 text-purple-400 rounded hover:bg-purple-500/30 transition-colors disabled:opacity-50 font-medium"
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs bg-purple-500/40 text-purple-200 rounded-lg hover:bg-purple-500/50 transition-colors disabled:opacity-50 font-medium"
                 >
                   <Send className="w-3 h-3" /> {updating ? 'Submitting...' : 'Submit for review'}
                 </button>
@@ -190,7 +190,7 @@ function TaskItem({ task, onUpdate, onProgress }: {
                   <button
                     onClick={() => { onUpdate(task.id, 'in_progress', note.trim() || undefined); setNote(''); setShowNote(false); }}
                     disabled={!note.trim() || updating}
-                    className="flex items-center gap-1 px-3 py-1.5 text-xs bg-[#38bdf8]/20 text-[#38bdf8] rounded hover:bg-[#38bdf8]/30 transition-colors disabled:opacity-50 font-medium"
+                    className="flex items-center gap-1 px-3 py-1.5 text-xs bg-[#38bdf8]/30 text-[#38bdf8] rounded-lg hover:bg-[#38bdf8]/40 transition-colors disabled:opacity-50 font-medium"
                   >
                     Save update only
                   </button>
@@ -385,10 +385,17 @@ export default function InternDashboardPage() {
     }
   };
 
-  const filteredMilestones = fellow?.milestones?.filter((m) => {
+  const rawMilestones = fellow?.milestones?.filter((m) => {
     if (!activeSubTrack) return true;
     return m.subTrack?.id === activeSubTrack;
   }) ?? [];
+  const filteredMilestones = rawMilestones.slice().sort((a, b) => {
+    // Unlocked priority milestones first
+    const aPriority = a.highlighted && !a.isLocked ? 1 : 0;
+    const bPriority = b.highlighted && !b.isLocked ? 1 : 0;
+    if (bPriority !== aPriority) return bPriority - aPriority;
+    return 0;
+  });
 
   if (isLoading || (!isAuthenticated && !fellow)) {
     return (
@@ -432,7 +439,7 @@ export default function InternDashboardPage() {
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="rounded-xl border border-[#38bdf8]/20 bg-zinc-900/60 p-8"
+                className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-xl p-8"
               >
                 <h2 className="text-xl font-bold text-[#38bdf8] mb-4">Choose your track</h2>
                 <p className="text-teal-100/80 text-sm mb-2">
@@ -452,7 +459,7 @@ export default function InternDashboardPage() {
                       key={t.slug}
                       onClick={() => handleJoinTrack(t.slug)}
                       disabled={!!selectedTrack}
-                      className="flex items-center gap-3 p-4 rounded-xl border border-[#38bdf8]/30 bg-zinc-800/60 hover:bg-[#38bdf8]/10 transition-colors text-left disabled:opacity-70"
+                      className="flex items-center gap-3 p-4 rounded-xl border border-white/20 bg-white/5 backdrop-blur-xl hover:bg-white/10 transition-colors text-left disabled:opacity-70"
                     >
                       <span className="text-2xl">{t.icon}</span>
                       <span className="font-semibold text-[#38bdf8]">{t.name}</span>
@@ -466,7 +473,7 @@ export default function InternDashboardPage() {
                   <motion.div
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 mb-6"
+                    className="rounded-xl border border-white/20 bg-white/10 backdrop-blur-xl p-4 mb-6"
                   >
                     <p className="text-amber-400 font-medium">Enrollment pending approval</p>
                     <p className="text-teal-100/70 text-sm mt-1">We&apos;ve notified the admin team. You&apos;ll get access to milestones once approved.</p>
@@ -476,7 +483,7 @@ export default function InternDashboardPage() {
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-5 mb-6"
+                  className="rounded-xl border border-white/20 bg-white/10 backdrop-blur-xl p-5 mb-6"
                 >
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-emerald-500/20">
@@ -502,17 +509,17 @@ export default function InternDashboardPage() {
                   transition={{ delay: 0.05 }}
                   className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6"
                 >
-                  <div className="rounded-xl border border-[#38bdf8]/20 bg-zinc-900/60 p-4 text-center">
+                  <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-xl p-4 text-center">
                     <Trophy className="w-5 h-5 text-[#0ff0fc] mx-auto mb-1" />
                     <p className="text-xl font-bold text-[#0ff0fc]">{fellow.xp}</p>
                     <p className="text-xs text-teal-100/60">XP earned</p>
                   </div>
-                  <div className="rounded-xl border border-[#38bdf8]/20 bg-zinc-900/60 p-4 text-center">
-                    <Target className="w-5 h-5 text-[#a78bfa] mx-auto mb-1" />
-                    <p className="text-xl font-bold text-[#a78bfa]">{fellow.milestonesCompleted}</p>
+                  <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-xl p-4 text-center">
+                    <Target className="w-5 h-5 text-[#38bdf8] mx-auto mb-1" />
+                    <p className="text-xl font-bold text-[#38bdf8]">{fellow.milestonesCompleted}</p>
                     <p className="text-xs text-teal-100/60">Milestones</p>
                   </div>
-                  <div className="rounded-xl border border-[#38bdf8]/20 bg-zinc-900/60 p-4 text-center">
+                  <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-xl p-4 text-center">
                     <CheckCircle2 className="w-5 h-5 text-emerald-400 mx-auto mb-1" />
                     <p className="text-xl font-bold text-emerald-400">
                       {(() => {
@@ -522,7 +529,7 @@ export default function InternDashboardPage() {
                     </p>
                     <p className="text-xs text-teal-100/60">Tasks done</p>
                   </div>
-                  <div className="rounded-xl border border-[#38bdf8]/20 bg-zinc-900/60 p-4 text-center">
+                  <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-xl p-4 text-center">
                     <FileUp className="w-5 h-5 text-amber-400 mx-auto mb-1" />
                     <p className="text-xl font-bold text-amber-400">{fellow.resumeUrl ? 'Yes' : 'No'}</p>
                     <p className="text-xs text-teal-100/60">Resume</p>
@@ -535,7 +542,7 @@ export default function InternDashboardPage() {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.1 }}
-                    className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-6 mb-6"
+                    className="rounded-xl border border-white/20 bg-white/10 backdrop-blur-xl p-6 mb-6"
                   >
                     <h3 className="font-semibold text-amber-400 flex items-center gap-2 mb-3">
                       <FileUp className="w-5 h-5" />
@@ -577,7 +584,7 @@ export default function InternDashboardPage() {
                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                           !activeSubTrack
                             ? 'bg-[#38bdf8] text-gray-900'
-                            : 'border border-[#38bdf8]/30 bg-[#38bdf8]/10 text-[#38bdf8] hover:bg-[#38bdf8]/20'
+                            : 'border border-white/20 bg-white/10 backdrop-blur-sm text-[#38bdf8] hover:bg-white/15'
                         }`}
                       >
                         All
@@ -589,7 +596,7 @@ export default function InternDashboardPage() {
                           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                             activeSubTrack === st.id
                               ? 'bg-[#38bdf8] text-gray-900'
-                              : 'border border-[#38bdf8]/30 bg-[#38bdf8]/10 text-[#38bdf8] hover:bg-[#38bdf8]/20'
+                              : 'border border-white/20 bg-white/10 backdrop-blur-sm text-[#38bdf8] hover:bg-white/15'
                           }`}
                         >
                           {st.name}
@@ -604,12 +611,17 @@ export default function InternDashboardPage() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.2 }}
-                  className="rounded-xl border border-[#38bdf8]/20 bg-zinc-900/60 p-6 mb-6"
+                  className="rounded-xl border border-zinc-600/40 bg-zinc-800/60 backdrop-blur-xl p-6 mb-6"
                 >
                   <h3 className="font-semibold text-[#38bdf8] mb-4">Milestones & tasks</h3>
                   <p className="text-teal-100/70 text-sm mb-4">
-                    Complete the current milestone to unlock the next. Use <strong>Start</strong> to begin a task, then <strong>Submit for review</strong> when done.
+                    <strong>Priority</strong> tasks are always unlocked — start anytime. Other milestones unlock when you complete the previous one. Use <strong>Start</strong> to begin a task, then <strong>Submit for review</strong> when done.
                   </p>
+                  {filteredMilestones.some((m) => m.highlighted && !m.isLocked) && (
+                    <div className="mb-4 px-4 py-2.5 rounded-lg border border-[#38bdf8]/30 bg-zinc-800/80 text-zinc-200 text-sm">
+                      <span className="font-semibold">Priority tasks</span> — Jump in without approval. These are highlighted below.
+                    </div>
+                  )}
                   {filteredMilestones.length > 0 ? (
                     <div className="space-y-4">
                       {filteredMilestones.map((m) => {
@@ -617,12 +629,12 @@ export default function InternDashboardPage() {
                         return (
                         <div
                           key={m.id}
-                          className={`rounded-lg border overflow-hidden ${
+                          className={`rounded-xl border overflow-hidden ${
                             m.isLocked
-                              ? 'border-zinc-600/50 bg-zinc-800/30 opacity-75'
+                              ? 'border-zinc-600/40 bg-zinc-800/50 opacity-80'
                               : m.highlighted
-                                ? 'border-violet-400/40 bg-violet-500/15 ring-1 ring-violet-400/30'
-                                : 'border-amber-500/20 bg-amber-500/5'
+                                ? 'border-[#38bdf8]/40 bg-zinc-800/80 backdrop-blur-md shadow-lg'
+                                : 'border-zinc-600/50 bg-zinc-800/70 backdrop-blur-sm'
                           }`}
                         >
                           <div
@@ -630,7 +642,7 @@ export default function InternDashboardPage() {
                             tabIndex={0}
                             onClick={() => toggleMilestone(m.id)}
                             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleMilestone(m.id); }}
-                            className="flex items-center gap-2 p-4 cursor-pointer hover:bg-white/5 transition-colors"
+                            className="flex items-center gap-2 p-4 cursor-pointer hover:bg-zinc-700/30 transition-colors"
                           >
                             {isCollapsed ? (
                               <ChevronRight className="w-4 h-4 text-teal-100/60 shrink-0" />
@@ -642,14 +654,14 @@ export default function InternDashboardPage() {
                             ) : m.isCompleted ? (
                               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                             ) : (
-                              <Target className={`w-4 h-4 ${m.highlighted ? 'text-violet-400' : 'text-amber-400'}`} />
+                              <Target className={`w-4 h-4 ${m.highlighted ? 'text-[#38bdf8]' : 'text-amber-400'}`} />
                             )}
                             {m.highlighted && !m.isLocked && (
-                              <span className="px-1.5 py-0.5 text-[10px] uppercase tracking-wider font-bold bg-violet-500/40 text-violet-200 rounded">Priority</span>
+                              <span className="px-2 py-0.5 text-[10px] uppercase tracking-wider font-bold bg-[#38bdf8]/30 text-[#38bdf8] border border-[#38bdf8]/40 rounded">Priority</span>
                             )}
                             <p
                               className={`font-medium flex-1 min-w-0 ${
-                                m.isLocked ? 'text-zinc-500' : m.isCompleted ? 'text-emerald-400' : m.highlighted ? 'text-violet-300' : 'text-amber-400'
+                                m.isLocked ? 'text-zinc-500' : m.isCompleted ? 'text-emerald-400' : m.highlighted ? 'text-[#38bdf8]' : 'text-amber-400'
                               }`}
                             >
                               {m.title}
@@ -665,7 +677,7 @@ export default function InternDashboardPage() {
                           </div>
                           {!isCollapsed && (
                             <div className="px-4 pb-4 pt-0">
-                              <div className="flex gap-4 text-xs text-teal-100/60 mb-3 ml-6">
+                              <div className="flex gap-4 text-xs text-zinc-400 mb-3 ml-6">
                                 {m.dueDate && (
                                   <span className="flex items-center gap-1">
                                     <Clock className="w-3 h-3" />
@@ -680,17 +692,17 @@ export default function InternDashboardPage() {
                                 )}
                               </div>
                               {m.isLocked ? (
-                                <p className="text-teal-100/50 text-sm ml-6 italic">
+                                <p className="text-zinc-500 text-sm ml-6 italic">
                                   Locked — complete the previous milestone to see tasks
                                 </p>
                               ) : m.tasks?.length > 0 ? (
-                                <div className="space-y-2 ml-6">
+                                <div className="space-y-3 ml-6">
                                   {m.tasks.map((task) => (
                                     <TaskItem key={task.id} task={task} onUpdate={handleTaskUpdate} onProgress={handleProgressUpdate} />
                                   ))}
                                 </div>
                               ) : (
-                                <p className="text-teal-100/50 text-sm ml-6">No tasks in this milestone</p>
+                                <p className="text-zinc-500 text-sm ml-6">No tasks in this milestone</p>
                               )}
                             </div>
                           )}
@@ -724,7 +736,7 @@ export default function InternDashboardPage() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.25 }}
-                  className="rounded-xl border border-[#38bdf8]/20 bg-zinc-900/60 p-6"
+                  className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-xl p-6"
                 >
                   <h3 className="font-semibold text-[#38bdf8] mb-4 flex items-center gap-2">
                     <Activity className="w-5 h-5" />
@@ -765,12 +777,12 @@ export default function InternDashboardPage() {
 
                     {/* Completed milestones */}
                     {fellow.milestones?.filter(m => m.isCompleted).map((m) => (
-                      <div key={`ms-${m.id}`} className={`flex items-start gap-3 ${m.highlighted ? 'rounded-lg border border-violet-400/30 bg-violet-500/10 p-2 -mx-2' : ''}`}>
+                      <div key={`ms-${m.id}`} className={`flex items-start gap-3 ${m.highlighted ? 'rounded-lg border border-white/20 bg-white/10 backdrop-blur-sm p-2 -mx-2' : ''}`}>
                         <div className="mt-0.5 p-1 rounded-full bg-emerald-500/20">
                           <Target className="w-3.5 h-3.5 text-emerald-400" />
                         </div>
                         <div>
-                          <p className="text-sm text-teal-100">Completed milestone: <strong className="text-emerald-400">{m.title}</strong>{m.highlighted && <span className="ml-1.5 px-1 py-0.5 text-[10px] uppercase font-bold bg-violet-500/30 text-violet-200 rounded">Priority</span>}</p>
+                          <p className="text-sm text-teal-100">Completed milestone: <strong className="text-emerald-400">{m.title}</strong>{m.highlighted && <span className="ml-1.5 px-1 py-0.5 text-[10px] uppercase font-bold bg-white/20 backdrop-blur-sm text-teal-100 border border-white/20 rounded">Priority</span>}</p>
                           {m.stipend != null && <p className="text-xs text-[#0ff0fc]">₹{m.stipend} stipend earned</p>}
                         </div>
                         <CheckCircle2 className="w-4 h-4 text-emerald-400 ml-auto shrink-0 mt-0.5" />

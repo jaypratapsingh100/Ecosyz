@@ -55,12 +55,15 @@ export async function GET() {
       m.tasks.length > 0 && m.tasks.every((t) => t.status === 'completed' || t.status === 'approved');
 
     // First milestone always unlocked. Others unlock when all previous are complete,
-    // OR when admin has manually unlocked them.
+    // OR when admin has manually unlocked them, OR when it's a priority (highlighted) milestone.
     const milestones = allMilestones.map((m, idx) => {
       const progressUnlocked =
         idx === 0 ||
         allMilestones.slice(0, idx).every(isMilestoneComplete);
-      const unlocked = progressUnlocked || adminUnlocked.includes(m.id);
+      const unlocked =
+        progressUnlocked ||
+        adminUnlocked.includes(m.id) ||
+        (m.highlighted === true);
 
       return {
         id: m.id,
