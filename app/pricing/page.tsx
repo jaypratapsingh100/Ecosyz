@@ -1,10 +1,14 @@
 
 'use client'
 
+import { useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
+import { useSearchParams } from 'next/navigation'
 import Header from '../components/Header'
 import Footer from '../components/Footer'
+
+const AFFILIATE_STORAGE_KEY = 'ecosyz_affiliate_code'
 
 
 
@@ -91,7 +95,32 @@ function Tier({ title, price, description, features, ctaHref, isPopular }: {
 }
 
 
-export default function PricingPage() {
+function PricingContent() {
+  const searchParams = useSearchParams()
+  const [affiliateCode, setAffiliateCode] = useState('')
+
+  // Pre-fill from ?ref= URL param
+  useEffect(() => {
+    const ref = searchParams.get('ref')
+    if (ref) {
+      const code = ref.trim().toUpperCase()
+      setAffiliateCode(code)
+      if (typeof window !== 'undefined') window.sessionStorage.setItem(AFFILIATE_STORAGE_KEY, code)
+    } else if (typeof window !== 'undefined') {
+      const stored = window.sessionStorage.getItem(AFFILIATE_STORAGE_KEY)
+      if (stored) setAffiliateCode(stored)
+    }
+  }, [searchParams])
+
+  const handleAffiliateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value.trim().toUpperCase()
+    setAffiliateCode(v)
+    if (typeof window !== 'undefined') {
+      if (v) window.sessionStorage.setItem(AFFILIATE_STORAGE_KEY, v)
+      else window.sessionStorage.removeItem(AFFILIATE_STORAGE_KEY)
+    }
+  }
+
   const tiers = [
     {
       title: "Free",
@@ -173,6 +202,25 @@ export default function PricingPage() {
             </p>
           </div>
 
+          <div className="max-w-md mx-auto mb-8">
+            <label htmlFor="affiliate-code" className="block text-sm text-gray-400 mb-2 text-center">
+              Have a referral or affiliate code?
+            </label>
+            <input
+              id="affiliate-code"
+              type="text"
+              value={affiliateCode}
+              onChange={handleAffiliateChange}
+              placeholder="Enter code (e.g. EC123456)"
+              className="w-full px-4 py-2.5 rounded-lg bg-black/40 border border-emerald-500/30 text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500/60 text-center font-mono uppercase"
+            />
+            {affiliateCode && (
+              <p className="text-xs text-emerald-400/80 mt-1 text-center">
+                Your partner will earn 5% when you subscribe
+              </p>
+            )}
+          </div>
+
           <div className="grid lg:grid-cols-3 gap-8 max-w-6xl mx-auto relative">
             {tiers.map((tier) => (
               <Tier key={tier.title} {...tier} />
@@ -190,5 +238,21 @@ export default function PricingPage() {
 
       <Footer />
     </div>
-  );
+  )
+}
+
+export default function PricingPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex flex-col">
+        <Header />
+        <main className="flex-grow flex items-center justify-center">
+          <div className="animate-pulse text-gray-400">Loading...</div>
+        </main>
+        <Footer />
+      </div>
+    }>
+      <PricingContent />
+    </Suspense>
+  )
 }

@@ -21,6 +21,8 @@ function PaymentSuccessContent() {
     
     // If payment was successful (Razorpay redirects with payment_id)
     if (paymentId || paymentLinkId) {
+      const affiliateCode = typeof window !== 'undefined' ? window.sessionStorage.getItem('ecosyz_affiliate_code') : null;
+      if (affiliateCode) window.sessionStorage.removeItem('ecosyz_affiliate_code'); // Use once
       // Activate subscription
       fetch('/api/payments/activate-subscription', {
         method: 'POST',
@@ -29,6 +31,7 @@ function PaymentSuccessContent() {
           plan: planParam || 'plus',
           paymentId: paymentId,
           paymentLinkId: paymentLinkId,
+          affiliateCode: affiliateCode || undefined,
         }),
       })
         .then((res) => res.json())

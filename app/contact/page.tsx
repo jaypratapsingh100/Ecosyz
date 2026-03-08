@@ -24,6 +24,8 @@ function ContactForm() {
         return 'Enterprise Inquiry - Open Idea';
       case 'sales':
         return 'Sales Inquiry - Open Idea';
+      case 'partnership':
+        return 'Partnership / Affiliate Inquiry - Open Idea';
       default:
         return 'Contact Form Submission - Open Idea';
     }

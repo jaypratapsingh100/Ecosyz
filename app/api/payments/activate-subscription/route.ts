@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    const { plan, paymentId, paymentLinkId } = await req.json();
+    const { plan, paymentId, paymentLinkId, affiliateCode } = await req.json();
 
     if (!plan) {
       return NextResponse.json({ error: 'Plan is required' }, { status: 400 });
@@ -21,7 +21,19 @@ export async function POST(req: NextRequest) {
       enterprise: 0, // Custom pricing
     };
 
-    // Update user subscription
+    // Validate affiliate code if provided (must be approved partner)
+    let validAffiliateCode: string | null = null;
+    if (affiliateCode && typeof affiliateCode === 'string') {
+      const code = affiliateCode.trim().toUpperCase();
+      if (code.length >= 4) {
+        const partner = await prisma.partnershipApplication.findFirst({
+          where: { affiliateCode: code, status: 'approved' },
+        });
+        if (partner) validAffiliateCode = code;
+      }
+    }
+
+    // Update user subscription (partner gets 5% commission when valid code used)
     await prisma.user.update({
       where: { id: user.id },
       data: {
@@ -31,6 +43,7 @@ export async function POST(req: NextRequest) {
         lastPaymentDate: new Date(),
         lastPaymentAmount: planAmounts[plan.toLowerCase()] || 0,
         lastPaymentId: paymentId || paymentLinkId || null,
+        referredByAffiliateCode: validAffiliateCode,
       },
     });
 

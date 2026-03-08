@@ -26,6 +26,7 @@ model User {
   lastPaymentAmount        Float?
   lastPaymentId            String?
   lastPaymentDate          DateTime?
+  referredByAffiliateCode  String?   // Affiliate code used at subscription
   appProjects              AppProject[]
   // Community relations
   groupMembers             GroupMember[]
@@ -836,4 +837,24 @@ model InternTask {
   @@index([milestoneId])
   @@index([fellowId])
   @@index([status])
+}
+
+// Affiliate Partnership applications
+model PartnershipApplication {
+  id           String    @id @default(cuid())
+  name         String
+  email        String
+  linkedin     String?
+  coverNote    String?   @db.Text
+  status       String    @default("pending") // pending, approved, rejected
+  affiliateCode String?  @unique // Generated when approved; partners share this for 5% commission
+  reviewedAt   DateTime?
+  reviewedBy   String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([status])
+  @@index([email])
+  @@index([affiliateCode])
+  @@index([createdAt])
 }

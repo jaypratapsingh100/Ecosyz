@@ -95,6 +95,12 @@ export default function Footer() {
                 >
                   Fellowship
                 </Link>
+                <Link
+                  href="/partnership"
+                  className="text-sm text-emerald-400/90 hover:text-emerald-400 transition-colors"
+                >
+                  Partnership
+                </Link>
               </div>
             </div>
           </div>
