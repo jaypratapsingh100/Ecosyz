@@ -320,17 +320,11 @@ export default function InternFellowshipPage() {
               </p>
               <div className="flex flex-wrap justify-center gap-4">
                 <button
-                  onClick={() => handleEnroll()}
-                  disabled={enrolling || isLoading}
+                  onClick={() => setShowApplyModal(true)}
+                  disabled={submitting}
                   className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-[#38bdf8] to-[#0ff0fc] text-gray-900 font-semibold rounded-lg hover:scale-[1.02] hover:shadow-lg hover:shadow-[#38bdf8]/25 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {enrolling ? 'Sending...' : 'Enroll in Fellowship'}
-                </button>
-                <button
-                  onClick={() => setShowApplyModal(true)}
-                  className="inline-flex items-center justify-center gap-2 px-6 py-3 border border-white/20 text-[#38bdf8] font-medium rounded-lg hover:bg-white/10 hover:border-[#38bdf8]/40 transition text-sm backdrop-blur-sm"
-                >
-                  Apply to Fellowship
+                  {submitting ? 'Sending...' : 'Apply to Fellowship'}
                 </button>
                 <Link
                   href="/careers"
