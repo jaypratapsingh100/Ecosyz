@@ -116,12 +116,19 @@ export async function ensureUserInDb(
       }
       prismaUserId = existing.id;
     } else {
+      // New user — start 14-day free trial
+      const trialStart = new Date();
+      const trialEnd = new Date(trialStart);
+      trialEnd.setDate(trialEnd.getDate() + 14);
+
       const newUser = await prisma.user.create({
         data: {
           supabaseId: user.id,
           email: user.email,
           name: updateData.name,
           avatarUrl: updateData.avatarUrl,
+          trialStartDate: trialStart,
+          trialEndDate: trialEnd,
         },
       });
       prismaUserId = newUser.id;

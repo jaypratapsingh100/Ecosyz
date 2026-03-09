@@ -26,7 +26,13 @@ export async function GET() {
 
     const usage = await checkGenerationQuota(
       prismaUser.id,
-      (prismaUser as any).subscriptionPlan ?? null
+      {
+        subscriptionPlan: (prismaUser as any).subscriptionPlan ?? null,
+        subscriptionStatus: (prismaUser as any).subscriptionStatus ?? null,
+        subscriptionEndDate: (prismaUser as any).subscriptionEndDate ?? null,
+        trialStartDate: (prismaUser as any).trialStartDate ?? null,
+        trialEndDate: (prismaUser as any).trialEndDate ?? null,
+      }
     );
 
     return NextResponse.json(usage);

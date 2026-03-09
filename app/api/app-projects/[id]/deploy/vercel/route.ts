@@ -53,8 +53,13 @@ export async function POST(
     const forceDeployment = new URL(req.url).searchParams.get('force') === 'true';
     if (!forceDeployment) {
       try {
+        // Exclude Vite/CRA entry files (main.jsx, index.js) — they contain imports
+        // like './index.css' and ReactDOM.createRoot that aren't used in the deployed HTML bundle
+        const ENTRY_FILE_PATTERN = /(?:^|\/)(?:main|index)\.(jsx?|tsx?)$/;
         const jsFiles = project.files
-          .filter((f: { path: string; content: string }) => /\.(jsx?|tsx?)$/.test(f.path))
+          .filter((f: { path: string; content: string }) =>
+            /\.(jsx?|tsx?)$/.test(f.path) && !ENTRY_FILE_PATTERN.test(f.path)
+          )
           .map((f: { path: string; content: string }) => ({ path: f.path, content: f.content }));
 
         if (jsFiles.length > 0) {

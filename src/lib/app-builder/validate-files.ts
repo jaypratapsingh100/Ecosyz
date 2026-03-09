@@ -83,6 +83,9 @@ export function validateImportResolution(
     }
 
     for (const importPath of allImports) {
+      // Skip CSS/asset imports — they're valid side-effect imports stripped at build time
+      if (/\.(css|scss|sass|less|svg|png|jpe?g|gif|webp|ico|woff2?|ttf|eot)$/.test(importPath)) continue;
+
       // Resolve relative path
       const resolved = resolveRelativePath(fileDir, importPath);
 

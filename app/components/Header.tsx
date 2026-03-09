@@ -12,7 +12,6 @@ const ALL_NAV_LINKS = [
   { href: "/about", label: "About" },
   { href: "/features", label: "Features" },
   { href: "/pricing", label: "Pricing" },
-  { href: "/intern-fellowship", label: "Fellowship" },
 ];
 
 export default function Header() {

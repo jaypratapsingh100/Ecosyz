@@ -5,6 +5,7 @@ import Header from '../components/Header';
 import Footer from '../components/Footer';
 import { Container } from '../components/ui/Container';
 import ProfileForm from '../components/profile/ProfileForm';
+import SubscriptionSection from '../components/profile/SubscriptionSection';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,6 +32,7 @@ async function getProfileData() {
       return {
         user,
         communityUserId: null as string | null,
+        subscription: { plan: null, status: null, startDate: null, endDate: null, trialStartDate: null, trialEndDate: null },
         profile: {
           displayName: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
           bio: '',
@@ -97,9 +99,19 @@ async function getProfileData() {
       },
     };
 
+    const subscriptionData = {
+      plan: (prismaUser as any).subscriptionPlan ?? null,
+      status: (prismaUser as any).subscriptionStatus ?? null,
+      startDate: (prismaUser as any).subscriptionStartDate?.toISOString() ?? null,
+      endDate: (prismaUser as any).subscriptionEndDate?.toISOString() ?? null,
+      trialStartDate: (prismaUser as any).trialStartDate?.toISOString() ?? null,
+      trialEndDate: (prismaUser as any).trialEndDate?.toISOString() ?? null,
+    };
+
     return {
       user,
       communityUserId: prismaUser.id,
+      subscription: subscriptionData,
       profile: profileData,
     };
   } catch (error: any) {
@@ -117,6 +129,7 @@ async function getProfileData() {
     return {
       user,
       communityUserId: null as string | null,
+      subscription: { plan: null, status: null, startDate: null, endDate: null, trialStartDate: null, trialEndDate: null },
       profile: {
         displayName: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
         bio: '',
@@ -143,7 +156,7 @@ async function getProfileData() {
 }
 
 export default async function ProfilePage() {
-  const { user, profile, communityUserId } = await getProfileData();
+  const { user, profile, communityUserId, subscription } = await getProfileData();
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -192,6 +205,8 @@ export default async function ProfilePage() {
                     </div>
                   )}
                 </div>
+
+                <SubscriptionSection subscription={subscription} />
               </div>
             </div>
           </Container>

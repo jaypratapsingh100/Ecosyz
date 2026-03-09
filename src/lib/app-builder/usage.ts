@@ -4,14 +4,17 @@
  * Counts AI generations per user per calendar month using existing
  * AppChat messages as the source of truth (each assistant message = 1 generation).
  *
- * Tiers are aligned with the subscription plans set via Razorpay payment:
+ * Tiers are aligned with the subscription plans:
  *   FREE  → 5 generations/month, all providers, max 10 files/generation
  *   PLUS  → 200 generations/month, all providers, max 25 files/generation
  *   ENTERPRISE → unlimited, all providers, unlimited files
+ *
+ * Plan resolution is trial- and expiry-aware via getEffectivePlan().
  */
 
 import { prisma } from '@/lib/db';
 import { isAdminEmail } from '@/lib/admin';
+import { getEffectivePlan } from '@/lib/payments/subscription';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -70,8 +73,7 @@ const PLAN_CONFIG: Record<PlanTier, PlanLimits> = {
 
 /**
  * Resolve the user's subscriptionPlan string to a PlanTier.
- * The subscriptionPlan field is set by the Razorpay payment flow and stored
- * as a free-form string ("plus", "enterprise", etc.). Null / empty = free.
+ * Kept for backward compatibility — new code should use resolvePlanTierForUser().
  */
 export function resolvePlanTier(subscriptionPlan: string | null | undefined): PlanTier {
   if (!subscriptionPlan) return 'free';
@@ -79,6 +81,19 @@ export function resolvePlanTier(subscriptionPlan: string | null | undefined): Pl
   if (normalised === 'plus' || normalised === 'pro') return 'plus';
   if (normalised === 'enterprise') return 'enterprise';
   return 'free';
+}
+
+/**
+ * Resolve PlanTier using the full user record — trial- and expiry-aware.
+ */
+export function resolvePlanTierForUser(user: {
+  subscriptionPlan: string | null;
+  subscriptionStatus: string | null;
+  subscriptionEndDate: Date | null;
+  trialStartDate: Date | null;
+  trialEndDate: Date | null;
+}): PlanTier {
+  return getEffectivePlan(user);
 }
 
 export function getPlanLimits(tier: PlanTier): PlanLimits {
@@ -131,10 +146,26 @@ export async function countMonthlyGenerations(userId: string): Promise<number> {
 
 /**
  * Check the user's generation quota. Returns full usage status.
- * Throws nothing — returns an object the caller can inspect.
+ * Accepts either a raw subscriptionPlan string (legacy) or full user data (preferred).
  */
-export async function checkGenerationQuota(userId: string, subscriptionPlan: string | null | undefined): Promise<UsageStatus> {
-  const tier = resolvePlanTier(subscriptionPlan);
+export async function checkGenerationQuota(
+  userId: string,
+  subscriptionPlanOrUser: string | null | undefined | {
+    subscriptionPlan: string | null;
+    subscriptionStatus: string | null;
+    subscriptionEndDate: Date | null;
+    trialStartDate: Date | null;
+    trialEndDate: Date | null;
+  }
+): Promise<UsageStatus> {
+  let tier: PlanTier;
+
+  if (typeof subscriptionPlanOrUser === 'object' && subscriptionPlanOrUser !== null && subscriptionPlanOrUser !== undefined) {
+    tier = resolvePlanTierForUser(subscriptionPlanOrUser);
+  } else {
+    tier = resolvePlanTier(subscriptionPlanOrUser);
+  }
+
   const limits = getPlanLimits(tier);
   const used = await countMonthlyGenerations(userId);
 
@@ -157,10 +188,18 @@ export async function checkGenerationQuota(userId: string, subscriptionPlan: str
 /**
  * Quick guard — returns `null` when the user is within quota, or an error
  * object suitable for returning as a 429 JSON response body.
+ *
+ * Now accepts full user data to be trial- and expiry-aware.
  */
 export async function enforceGenerationLimit(
   userId: string,
-  subscriptionPlan: string | null | undefined,
+  subscriptionPlanOrUser: string | null | undefined | {
+    subscriptionPlan: string | null;
+    subscriptionStatus: string | null;
+    subscriptionEndDate: Date | null;
+    trialStartDate: Date | null;
+    trialEndDate: Date | null;
+  },
   requestedProvider?: string,
   userEmail?: string | null
 ): Promise<{ status: 429 | 403; body: Record<string, unknown> } | null> {
@@ -170,7 +209,7 @@ export async function enforceGenerationLimit(
     return null;
   }
 
-  const usage = await checkGenerationQuota(userId, subscriptionPlan);
+  const usage = await checkGenerationQuota(userId, subscriptionPlanOrUser);
 
   // Provider restriction
   if (requestedProvider && !usage.allowedProviders.includes(requestedProvider)) {

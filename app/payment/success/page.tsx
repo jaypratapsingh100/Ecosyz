@@ -14,23 +14,43 @@ function PaymentSuccessContent() {
 
   useEffect(() => {
     const planParam = searchParams.get('plan');
+    const provider = searchParams.get('provider');
+    const verified = searchParams.get('verified');
+
+    setPlan(planParam || 'plus');
+
+    // Razorpay: already verified via /api/payments/verify before redirect
+    if (verified === 'true') {
+      setSuccess(true);
+      setLoading(false);
+      return;
+    }
+
+    // Stripe: activation happens via webhook — just show confirmation
+    if (provider === 'stripe') {
+      const sessionId = searchParams.get('session_id');
+      if (sessionId) {
+        setSuccess(true);
+        setLoading(false);
+        return;
+      }
+    }
+
+    // Legacy flow: Razorpay Payment Link redirect (backward compat)
     const paymentId = searchParams.get('razorpay_payment_id');
     const paymentLinkId = searchParams.get('razorpay_payment_link_id');
-    
-    setPlan(planParam || 'plus');
-    
-    // If payment was successful (Razorpay redirects with payment_id)
+
     if (paymentId || paymentLinkId) {
       const affiliateCode = typeof window !== 'undefined' ? window.sessionStorage.getItem('ecosyz_affiliate_code') : null;
-      if (affiliateCode) window.sessionStorage.removeItem('ecosyz_affiliate_code'); // Use once
-      // Activate subscription
+      if (affiliateCode) window.sessionStorage.removeItem('ecosyz_affiliate_code');
+
       fetch('/api/payments/activate-subscription', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           plan: planParam || 'plus',
-          paymentId: paymentId,
-          paymentLinkId: paymentLinkId,
+          paymentId,
+          paymentLinkId,
           affiliateCode: affiliateCode || undefined,
         }),
       })
@@ -38,21 +58,18 @@ function PaymentSuccessContent() {
         .then((data) => {
           if (data.success) {
             setSuccess(true);
-            setLoading(false);
           } else {
             setError(data.error || 'Failed to activate subscription');
-            setLoading(false);
           }
+          setLoading(false);
         })
-        .catch((error) => {
-          console.error('Error activating subscription:', error);
+        .catch(() => {
           setError('Failed to activate subscription. Please contact support.');
           setLoading(false);
         });
     } else {
-      // No payment ID - might be direct visit or payment pending
       setLoading(false);
-      setError('Payment verification failed. If you completed payment, please contact support.');
+      setError('Payment verification pending. If you completed payment, your subscription will be activated shortly.');
     }
   }, [searchParams]);
 
@@ -72,10 +89,10 @@ function PaymentSuccessContent() {
       <div className="min-h-screen bg-[#0a0a0a]">
         <Header />
         <main className="max-w-2xl mx-auto px-4 py-16">
-          <div className="bg-[#121212] border border-red-500/30 rounded-xl p-8 text-center">
+          <div className="bg-[#121212] border border-yellow-500/30 rounded-xl p-8 text-center">
             <div className="mb-6">
               <svg
-                className="w-16 h-16 text-red-500 mx-auto"
+                className="w-16 h-16 text-yellow-500 mx-auto"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -88,7 +105,7 @@ function PaymentSuccessContent() {
                 />
               </svg>
             </div>
-            <h1 className="text-3xl font-bold text-white mb-4">Payment Verification Issue</h1>
+            <h1 className="text-3xl font-bold text-white mb-4">Payment Processing</h1>
             <p className="text-gray-400 mb-8">{error}</p>
             <div className="flex gap-4 justify-center flex-wrap">
               <Link
@@ -130,7 +147,7 @@ function PaymentSuccessContent() {
               />
             </svg>
           </div>
-          <h1 className="text-3xl font-bold text-white mb-4">Payment Successful! 🎉</h1>
+          <h1 className="text-3xl font-bold text-white mb-4">Payment Successful!</h1>
           <p className="text-gray-400 mb-2">
             Your <strong className="text-emerald-400 capitalize">{plan || 'Plus'}</strong> plan subscription has been activated.
           </p>

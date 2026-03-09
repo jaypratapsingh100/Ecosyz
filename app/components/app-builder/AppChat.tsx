@@ -22,12 +22,18 @@ interface AIOption {
   label: string;
 }
 
+interface ProviderEntry {
+  provider: string;
+  label: string;
+  models: AIOption[];
+  available: boolean;
+  backend: string; // actual backend: 'groq' | 'openrouter' | 'openai' | 'anthropic'
+  free?: boolean;
+}
+
 interface AIOptionsState {
-  groqAvailable: boolean;
-  openRouterAvailable: boolean;
-  openaiAvailable: boolean;
-  anthropicAvailable: boolean;
-  models: { groq: AIOption[]; openrouter: AIOption[]; openai: AIOption[]; anthropic: AIOption[] };
+  providers: ProviderEntry[];
+  anyAvailable: boolean;
 }
 
 interface AppChatProps {
@@ -50,7 +56,7 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const [aiOptions, setAiOptions] = useState<AIOptionsState | null>(null);
-  const [selectedProvider, setSelectedProvider] = useState<'groq' | 'openrouter' | 'openai' | 'anthropic'>('groq');
+  const [selectedProvider, setSelectedProvider] = useState<string>('groq');
   const [selectedModel, setSelectedModel] = useState<string>('');
 
   const [extractingMessageId, setExtractingMessageId] = useState<string | null>(null);
@@ -60,9 +66,18 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
   const hasNoFiles = projectFiles.length === 0;
   const canGenerate = projectId && message.trim() && !loading;
 
+  // Track whether we already auto-sent a fix for the current preview cycle
+  const autoFixSentRef = useRef(false);
+  // Reset auto-fix flag when files are updated (new generation)
+  useEffect(() => {
+    const reset = () => { autoFixSentRef.current = false; };
+    window.addEventListener('files-updated', reset);
+    return () => window.removeEventListener('files-updated', reset);
+  }, []);
+
   const { handleExtractFiles } = useFileExtraction({ projectId, onFilesCreated });
 
-  // Load available AI providers/models (Groq, OpenRouter DeepSeek Coder, etc.)
+  // Load available AI providers/models
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -71,30 +86,13 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
         if (!res.ok || cancelled) return;
         const data = await res.json();
         if (cancelled) return;
-        setAiOptions({
-          groqAvailable: !!data.groqAvailable,
-          openRouterAvailable: !!data.openRouterAvailable,
-          openaiAvailable: !!data.openaiAvailable,
-          anthropicAvailable: !!data.anthropicAvailable,
-          models: data.models ?? { groq: [], openrouter: [], openai: [], anthropic: [] },
-        });
-        const groq = data.models?.groq ?? [];
-        const openrouter = data.models?.openrouter ?? [];
-        const openai = data.models?.openai ?? [];
-        const anthropic = data.models?.anthropic ?? [];
-        // Default to best available provider (Claude > OpenAI > Groq > OpenRouter)
-        if (data.anthropicAvailable && anthropic.length > 0) {
-          setSelectedProvider('anthropic');
-          setSelectedModel((m) => m || anthropic[0].id);
-        } else if (data.openaiAvailable && openai.length > 0) {
-          setSelectedProvider('openai');
-          setSelectedModel((m) => m || openai[0].id);
-        } else if (data.groqAvailable && groq.length > 0) {
-          setSelectedProvider('groq');
-          setSelectedModel((m) => m || groq[0].id);
-        } else if (data.openRouterAvailable && openrouter.length > 0) {
-          setSelectedProvider('openrouter');
-          setSelectedModel((m) => m || openrouter[0].id);
+        const providers: ProviderEntry[] = data.providers ?? [];
+        setAiOptions({ providers, anyAvailable: !!data.anyAvailable });
+        // Default to first available provider (Groq free is first)
+        const firstAvailable = providers.find((p) => p.available);
+        if (firstAvailable) {
+          setSelectedProvider(firstAvailable.provider);
+          setSelectedModel((m) => m || firstAvailable.models[0]?.id || '');
         }
       } catch {
         // ignore
@@ -104,13 +102,21 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
     return () => { cancelled = true; };
   }, []);
 
+  // Sync model when provider changes
   useEffect(() => {
     if (!aiOptions) return;
-    const providerModels = aiOptions.models[selectedProvider];
-    if (providerModels?.length && !providerModels.some((m) => m.id === selectedModel)) {
-      setSelectedModel(providerModels[0].id);
+    const entry = aiOptions.providers.find((p) => p.provider === selectedProvider);
+    if (entry?.models?.length && !entry.models.some((m) => m.id === selectedModel)) {
+      setSelectedModel(entry.models[0].id);
     }
   }, [aiOptions, selectedProvider, selectedModel]);
+
+  // Resolve the backend provider for the selected UI provider
+  const getBackendProvider = (): string => {
+    if (!aiOptions) return 'groq';
+    const entry = aiOptions.providers.find((p) => p.provider === selectedProvider);
+    return entry?.backend || 'groq';
+  };
 
   // Load chat history when projectId changes
   useEffect(() => {
@@ -167,10 +173,45 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
     }
   }, [messages.length]);
 
+  // Auto-fix: when preview iframe reports a runtime error, automatically ask the AI to fix it
+  // We use a ref to queue the message so it can be picked up by handleSubmit
+  const pendingAutoFixRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const handlePreviewError = (e: Event) => {
+      const detail = (e as CustomEvent<{ projectId?: string; errors: string[] }>).detail;
+      // Only handle errors for our project, and only once per generation cycle
+      if (!projectId || detail.projectId !== projectId) return;
+      if (autoFixSentRef.current || loading) return;
+      const errors = detail.errors;
+      if (!errors || errors.length === 0) return;
+
+      autoFixSentRef.current = true;
+      const errorText = errors.join('\n');
+      const fixMessage = `The preview has a runtime error:\n\`\`\`\n${errorText}\n\`\`\`\nPlease fix this error in the code.`;
+
+      // Store in ref and set in state, then trigger submit
+      pendingAutoFixRef.current = fixMessage;
+      setMessage(fixMessage);
+      // Small delay so React flushes the state, then trigger submit
+      setTimeout(() => {
+        const form = document.querySelector('[data-chat-form]') as HTMLFormElement | null;
+        if (form) form.requestSubmit();
+      }, 150);
+    };
+
+    window.addEventListener('preview-runtime-error', handlePreviewError);
+    return () => window.removeEventListener('preview-runtime-error', handlePreviewError);
+  }, [projectId, loading]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canGenerate) return;
-    const description = message.trim();
+    // For auto-fix: use pending ref if message state hasn't flushed yet
+    const autoFixMsg = pendingAutoFixRef.current;
+    pendingAutoFixRef.current = null;
+    const effectiveMessage = message.trim() || (autoFixMsg || '').trim();
+    if (!projectId || !effectiveMessage || loading) return;
+    const description = effectiveMessage;
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
       role: 'user',
@@ -191,7 +232,7 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
         credentials: 'include',
         body: JSON.stringify({
           message: description,
-          userProvider: selectedProvider,
+          userProvider: getBackendProvider(),
           userModel: selectedModel || undefined,
           stream: true,
         }),
@@ -761,27 +802,20 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
 
       <div className="border-t border-white/10 p-4 flex-shrink-0 bg-[#0a0a0a] z-10">
         {aiOptions ? (
-          (aiOptions.groqAvailable || aiOptions.openRouterAvailable || aiOptions.openaiAvailable || aiOptions.anthropicAvailable) ? (
+          aiOptions.anyAvailable ? (
             <div className="flex flex-wrap items-center gap-2 mb-3">
               <span className="text-xs text-gray-500">Model:</span>
               <select
                 value={selectedProvider}
-                onChange={(e) => setSelectedProvider(e.target.value as 'groq' | 'openrouter' | 'openai' | 'anthropic')}
+                onChange={(e) => setSelectedProvider(e.target.value)}
                 className="bg-[#1a1a1a] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
                 aria-label="AI Provider"
               >
-                <option value="anthropic" disabled={!aiOptions.anthropicAvailable}>
-                  Claude (Anthropic){!aiOptions.anthropicAvailable ? ' — key not set' : ''}
-                </option>
-                <option value="openai" disabled={!aiOptions.openaiAvailable}>
-                  OpenAI{!aiOptions.openaiAvailable ? ' — key not set' : ''}
-                </option>
-                <option value="groq" disabled={!aiOptions.groqAvailable}>
-                  Groq (Llama){!aiOptions.groqAvailable ? ' — key not set' : ''}
-                </option>
-                <option value="openrouter" disabled={!aiOptions.openRouterAvailable}>
-                  OpenRouter (DeepSeek){!aiOptions.openRouterAvailable ? ' — key not set' : ''}
-                </option>
+                {aiOptions.providers.filter((p) => p.available).map((p) => (
+                  <option key={p.provider} value={p.provider}>
+                    {p.label}
+                  </option>
+                ))}
               </select>
               <select
                 value={selectedModel}
@@ -789,7 +823,7 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
                 className="bg-[#1a1a1a] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 min-w-[180px]"
                 aria-label="AI Model"
               >
-                {(aiOptions.models[selectedProvider] || []).map((m) => (
+                {(aiOptions.providers.find((p) => p.provider === selectedProvider)?.models || []).map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.label}
                   </option>
@@ -801,11 +835,11 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
               <svg className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
               </svg>
-              <span className="text-xs text-amber-300">No AI providers configured. Set GROQ_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, or OPENROUTER_API_KEY in your environment variables.</span>
+              <span className="text-xs text-amber-300">No AI providers configured. Set GROQ_API_KEY or OPENROUTER_API_KEY in your environment variables.</span>
             </div>
           )
         ) : null}
-        <form onSubmit={handleSubmit} className="relative">
+        <form onSubmit={handleSubmit} data-chat-form className="relative">
           <div className="flex items-center gap-0 w-full">
             <div className="flex-1 flex items-center gap-3 bg-[#1a1a1a] rounded-l-full border border-gray-500/30 focus-within:border-gray-400/50 transition-all px-4 py-3.5">
               <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

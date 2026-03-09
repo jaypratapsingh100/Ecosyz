@@ -132,6 +132,21 @@ export default function PreviewPanel({
     }
   }, [refreshKey, projectId, generatePreview]);
 
+  // Listen for preview errors from iframe via postMessage and forward as custom event
+  useEffect(() => {
+    const handleMessage = (e: MessageEvent) => {
+      if (e.data?.type === 'preview-error' && Array.isArray(e.data.errors) && e.data.errors.length > 0) {
+        window.dispatchEvent(
+          new CustomEvent('preview-runtime-error', {
+            detail: { projectId, errors: e.data.errors },
+          })
+        );
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [projectId]);
+
   // Debounced refresh events – only refresh when our project was updated
   useEffect(() => {
     let timeoutId: NodeJS.Timeout | null = null;

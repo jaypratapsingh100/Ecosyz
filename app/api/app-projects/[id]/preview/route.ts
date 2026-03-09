@@ -261,6 +261,8 @@ export async function POST(
       if (window.__previewErrors.indexOf(msg) === -1) {
         window.__previewErrors.push(msg);
       }
+      // Notify parent so it can auto-send fix request to chat
+      try { parent.postMessage({ type: 'preview-error', errors: window.__previewErrors.slice() }, '*'); } catch(_) {}
       // Show error banner at top if root is empty
       var root = document.getElementById('root');
       if (root && (!root.innerHTML || root.innerHTML.trim() === '')) {
@@ -270,7 +272,7 @@ export async function POST(
           + '<pre style="margin:0 0 1rem;padding:1rem;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);border-radius:0.75rem;white-space:pre-wrap;word-break:break-word;font-size:0.8rem;max-height:200px;overflow:auto;text-align:left;color:#e5e7eb">'
           + window.__previewErrors.map(function(m) { return m.replace(/</g, '&lt;'); }).join('\\n')
           + '</pre>'
-          + '<p style="margin:0;font-size:0.85rem;color:#9ca3af">Copy this error and ask the AI in Chat to fix it.</p>'
+          + '<p style="margin:0;font-size:0.85rem;color:#9ca3af">Auto-sending this error to Chat for a fix...</p>'
           + '</div></div>';
       }
     });
@@ -279,6 +281,7 @@ export async function POST(
       if (window.__previewErrors.indexOf(msg) === -1) {
         window.__previewErrors.push(msg);
       }
+      try { parent.postMessage({ type: 'preview-error', errors: window.__previewErrors.slice() }, '*'); } catch(_) {}
     });
     // Fallback: if nothing renders within 4 seconds, show a helpful message
     setTimeout(function() {
@@ -295,7 +298,40 @@ export async function POST(
           + '<p style="margin:0;font-size:0.85rem;color:#9ca3af">Use the Chat tab to describe the issue and the AI will fix it.</p>'
           + '</div></div>';
       }
+      // Notify parent of errors (timeout fallback)
+      if (window.__previewErrors.length > 0) {
+        try { parent.postMessage({ type: 'preview-error', errors: window.__previewErrors.slice() }, '*'); } catch(_) {}
+      }
     }, 4000);
+
+    // Intercept all navigation so preview never leaves srcdoc
+    document.addEventListener('click', function(e) {
+      var el = e.target;
+      // Walk up to find the nearest <a> or <button type=submit>
+      while (el && el !== document.body) {
+        if (el.tagName === 'A') {
+          var href = el.getAttribute('href') || '';
+          // Allow anchor links (#section) and javascript: void
+          if (href && href !== '#' && !href.startsWith('#') && !href.startsWith('javascript:')) {
+            e.preventDefault();
+            e.stopPropagation();
+            // Smooth-scroll to section if href looks like #id
+            // Otherwise just swallow the click
+          }
+          return;
+        }
+        el = el.parentElement;
+      }
+    }, true);
+    // Intercept form submissions
+    document.addEventListener('submit', function(e) {
+      e.preventDefault();
+    }, true);
+    // Block programmatic navigation
+    window.addEventListener('beforeunload', function(e) {
+      e.preventDefault();
+      e.returnValue = '';
+    });
   </script>`;
         if (!html.includes('react@18') && !html.includes('react.development.js')) {
           if (html.includes('</head>')) {
@@ -353,6 +389,7 @@ export async function POST(
   } catch(__e) {
     console.error('[Preview] Component ${safePath} error:', __e);
     window.__previewErrors.push('${safePath}: ' + (__e.message || String(__e)));
+    try { parent.postMessage({ type: 'preview-error', errors: window.__previewErrors.slice() }, '*'); } catch(_) {}
   }
 })();
 </script>`;
@@ -456,7 +493,7 @@ const Route = function Route(props) { return props.element ?? null; };
           '      },',
           '        React.createElement("h2", { style: { margin: "0 0 12px 0", fontSize: 16, color: "#dc2626" } }, "Preview Error"),',
           '        React.createElement("pre", { style: { margin: 0, padding: 12, background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 13 } }, msg + tip),',
-          '        React.createElement("p", { style: { margin: "12px 0 0 0", fontSize: 12, color: "#6b7280" } }, "Copy this error and ask the AI in Chat to fix it.")',
+          '        React.createElement("p", { style: { margin: "12px 0 0 0", fontSize: 12, color: "#6b7280" } }, "Auto-sending this error to Chat for a fix...")',
           '      );',
           '    }',
           '    return this.props.children;',
@@ -477,6 +514,7 @@ const Route = function Route(props) { return props.element ?? null; };
   } catch(__e) {
     console.error('[Preview] App compilation/render error:', __e);
     window.__previewErrors.push(__e.message || String(__e));
+    try { parent.postMessage({ type: 'preview-error', errors: window.__previewErrors.slice() }, '*'); } catch(_) {}
     var root = document.getElementById('root');
     if (root && (!root.innerHTML || root.innerHTML.trim() === '')) {
       root.innerHTML = '<div style="padding:24px;font-family:Inter,system-ui,sans-serif;color:#1a1a1a">'
@@ -484,7 +522,7 @@ const Route = function Route(props) { return props.element ?? null; };
         + '<pre style="margin:0;padding:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;white-space:pre-wrap;word-break:break-word;font-size:13px;max-height:300px;overflow:auto">'
         + (__e.message || String(__e)).replace(/</g, '&lt;')
         + '</pre>'
-        + '<p style="margin:12px 0 0;font-size:12px;color:#6b7280">Copy this error and ask the AI in Chat to fix it.</p>'
+        + '<p style="margin:12px 0 0;font-size:12px;color:#6b7280">Auto-sending this error to Chat for a fix...</p>'
         + '</div>';
     }
   }

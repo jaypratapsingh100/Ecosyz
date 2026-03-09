@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { BarChart3, Mail, LayoutDashboard, Activity, Search, Users, Handshake } from 'lucide-react';
+import { BarChart3, Mail, LayoutDashboard, Activity, Search, Users, Handshake, CreditCard, FolderKanban } from 'lucide-react';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 
@@ -62,6 +62,20 @@ export default function AdminLayout({
             >
               <Users className="w-5 h-5" />
               <span>Interns</span>
+            </Link>
+            <Link
+              href="/admin/payments"
+              className="flex items-center gap-2 text-slate-400 hover:text-cyan-400 transition-colors"
+            >
+              <CreditCard className="w-5 h-5" />
+              <span>Payments</span>
+            </Link>
+            <Link
+              href="/admin/projects"
+              className="flex items-center gap-2 text-slate-400 hover:text-cyan-400 transition-colors"
+            >
+              <FolderKanban className="w-5 h-5" />
+              <span>Projects</span>
             </Link>
             <Link
               href="/admin/partnership"

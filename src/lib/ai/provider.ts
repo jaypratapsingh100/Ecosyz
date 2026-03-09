@@ -38,41 +38,104 @@ const OPENAI_MODEL = 'gpt-4o';
 const ANTHROPIC_MODEL = 'claude-sonnet-4-20250514';
 
 /**
- * Allowed OpenRouter model IDs for app builder (user can select).
- * Ordered by recommendation: fastest + best output first.
+ * OpenRouter model list (internal — used by createAIClient for validation).
+ * All non-Groq, non-direct-OpenAI, non-direct-Anthropic models route through OpenRouter.
  */
 export const OPENROUTER_APP_BUILDER_MODELS = [
-  // Fast & high output — recommended
-  { id: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash (Recommended)' },
+  // Google
+  { id: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
   { id: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
-  // DeepSeek — capable but slower via proxy
+  // DeepSeek
   { id: 'deepseek/deepseek-chat', label: 'DeepSeek V3' },
   { id: 'deepseek/deepseek-coder', label: 'DeepSeek Coder' },
-  // Code-specialist
+  // Qwen
   { id: 'qwen/qwen-2.5-coder-32b-instruct', label: 'Qwen 2.5 Coder 32B' },
-  // General-purpose
+  // Meta
   { id: 'meta-llama/llama-3.3-70b-instruct', label: 'Llama 3.3 70B' },
+  { id: 'meta-llama/llama-4-maverick', label: 'Llama 4 Maverick' },
+  // Mistral
   { id: 'mistralai/mistral-large', label: 'Mistral Large' },
-  // Claude & GPT via OpenRouter (if user has no direct keys)
-  { id: 'anthropic/claude-sonnet-4', label: 'Claude Sonnet 4 (via OR)' },
-  { id: 'openai/gpt-4o', label: 'GPT-4o (via OR)' },
+  { id: 'mistralai/codestral-latest', label: 'Codestral' },
+  // Claude & GPT via OpenRouter
+  { id: 'anthropic/claude-sonnet-4', label: 'Claude Sonnet 4' },
+  { id: 'openai/gpt-4o', label: 'GPT-4o' },
 ] as const;
 
-/** Allowed Groq model IDs (for display; server uses env or default). */
+/** Allowed Groq model IDs — free tier. */
 export const GROQ_APP_BUILDER_MODELS = [
   { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B' },
 ] as const;
 
-/** Allowed OpenAI model IDs for app builder. */
+/** Allowed OpenAI model IDs (direct key). */
 export const OPENAI_APP_BUILDER_MODELS = [
   { id: 'gpt-4o', label: 'GPT-4o' },
   { id: 'gpt-4o-mini', label: 'GPT-4o Mini' },
 ] as const;
 
-/** Allowed Anthropic (Claude) model IDs for app builder. */
+/** Allowed Anthropic (Claude) model IDs (direct key). */
 export const ANTHROPIC_APP_BUILDER_MODELS = [
   { id: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4' },
   { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
+] as const;
+
+/**
+ * Provider groups for the UI — maps user-facing provider names to models.
+ * These all route through OpenRouter on the backend.
+ */
+export const PROVIDER_GROUPS = [
+  {
+    provider: 'google',
+    label: 'Google',
+    models: [
+      { id: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash (Recommended)' },
+      { id: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+    ],
+  },
+  {
+    provider: 'deepseek',
+    label: 'DeepSeek',
+    models: [
+      { id: 'deepseek/deepseek-chat', label: 'DeepSeek V3' },
+      { id: 'deepseek/deepseek-coder', label: 'DeepSeek Coder' },
+    ],
+  },
+  {
+    provider: 'meta',
+    label: 'Meta',
+    models: [
+      { id: 'meta-llama/llama-3.3-70b-instruct', label: 'Llama 3.3 70B' },
+      { id: 'meta-llama/llama-4-maverick', label: 'Llama 4 Maverick' },
+    ],
+  },
+  {
+    provider: 'mistral',
+    label: 'Mistral',
+    models: [
+      { id: 'mistralai/mistral-large', label: 'Mistral Large' },
+      { id: 'mistralai/codestral-latest', label: 'Codestral' },
+    ],
+  },
+  {
+    provider: 'qwen',
+    label: 'Qwen',
+    models: [
+      { id: 'qwen/qwen-2.5-coder-32b-instruct', label: 'Qwen 2.5 Coder 32B' },
+    ],
+  },
+  {
+    provider: 'anthropic-or',
+    label: 'Anthropic',
+    models: [
+      { id: 'anthropic/claude-sonnet-4', label: 'Claude Sonnet 4' },
+    ],
+  },
+  {
+    provider: 'openai-or',
+    label: 'OpenAI',
+    models: [
+      { id: 'openai/gpt-4o', label: 'GPT-4o' },
+    ],
+  },
 ] as const;
 
 /**

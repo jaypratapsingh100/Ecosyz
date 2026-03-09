@@ -133,17 +133,6 @@ export default function WelcomeScreen({
                 </svg>
                 PDF → Animated Website
               </Link>
-              <Link
-                href="/pdf-website-3d"
-                className="px-6 py-2.5 rounded-lg border border-fuchsia-400/40 bg-fuchsia-500/10 hover:bg-fuchsia-500/20 text-fuchsia-100 text-sm font-medium flex items-center justify-center gap-2 transition-all"
-                title="Upload a PDF, get an immersive 3D portfolio website"
-              >
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
-                  <path d="M2 17l10 5 10-5" />
-                </svg>
-                PDF → 3D Portfolio
-              </Link>
             </div>
           </div>
       </div>

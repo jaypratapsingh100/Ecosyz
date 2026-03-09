@@ -188,6 +188,11 @@ export default function DeploymentPanel({ projectId, projectName, onAuthRequired
           handleAuthError();
           return;
         }
+        // Show validation errors in detail if present
+        const validationErrors = (data as { validationErrors?: string[] })?.validationErrors;
+        if (validationErrors?.length) {
+          throw new Error(`${errMsg}\n${validationErrors.join('\n')}`);
+        }
         throw new Error(errMsg);
       }
       const url = (data as { url?: string }).url;

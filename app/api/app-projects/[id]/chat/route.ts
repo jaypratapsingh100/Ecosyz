@@ -16,7 +16,7 @@ import {
 import { buildRetryPrompt } from '@/lib/app-builder/promptBuilder';
 import { buildPlannerPrompt, parsePlannerResponse } from '@/lib/app-builder/agents/planner';
 import { buildArchitectPrompt, parseArchitectResponse } from '@/lib/app-builder/agents/architect';
-import { buildAppBuilderPrompts, buildFastPathPrompts } from '@/lib/app-builder/contextBuilder';
+import { buildAppBuilderPrompts } from '@/lib/app-builder/contextBuilder';
 import { validateProjectFiles, checkComponentStructureAndStyling } from '../../../../../src/lib/utils/validateJSX';
 import { createSSEStream, sseResponse } from '@/lib/app-builder/sse';
 import { enforceGenerationLimit } from '@/lib/app-builder/usage';
@@ -306,7 +306,13 @@ export async function POST(
     // ============================================
     const limitViolation = await enforceGenerationLimit(
       prismaUser.id,
-      (prismaUser as any).subscriptionPlan ?? null,
+      {
+        subscriptionPlan: (prismaUser as any).subscriptionPlan ?? null,
+        subscriptionStatus: (prismaUser as any).subscriptionStatus ?? null,
+        subscriptionEndDate: (prismaUser as any).subscriptionEndDate ?? null,
+        trialStartDate: (prismaUser as any).trialStartDate ?? null,
+        trialEndDate: (prismaUser as any).trialEndDate ?? null,
+      },
       userProvider ?? undefined,
       prismaUser.email
     );
@@ -555,92 +561,82 @@ export async function POST(
         let activeModel = model;
         let activeProvider = provider;
         let usedFallback = false;
+        let streamUsage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null = null;
+        let streamGenerationId: string | undefined;
+        let streamTtfbMs: number | undefined;
 
         try {
           let promptRes;
           let streamPlan: PlannerPlan | null = null;
 
-          if (slowProvider) {
-            // ── FAST PATH (OpenRouter/DeepSeek) ──
-            console.log('⚡ [FAST PATH] Skipping Planner/Architect for slow provider:', activeProvider);
-            emit({ type: 'status', data: 'coding' });
+          // ── FULL PATH for ALL providers: Plan → Architect → Code ──
+          const SCAFFOLD_PATHS_S = new Set([
+            'index.html', 'src/App.jsx', 'src/App.tsx', 'src/main.jsx', 'src/main.tsx',
+            'src/index.css', 'src/index.js', 'src/index.ts',
+          ]);
+          const hasUserFiles = existingFilePaths.some((p: string) => !SCAFFOLD_PATHS_S.has(p));
 
-            promptRes = buildFastPathPrompts({
-              message,
-              questionnaireData,
-              frameworkForScaffold,
-              useTypeScript,
-              existingFilePaths,
-              hasScaffoldFiles,
-              fileExtension,
-              currentFilePath,
-              projectFiles: project.files as unknown as { path: string; name: string; content: string }[],
-            });
-          } else {
-            // ── FULL PATH (Groq, OpenAI, Claude) ──
-            const SCAFFOLD_PATHS_S = new Set([
-              'index.html', 'src/App.jsx', 'src/App.tsx', 'src/main.jsx', 'src/main.tsx',
-              'src/index.css', 'src/index.js', 'src/index.ts',
-            ]);
-            const hasUserFiles = existingFilePaths.some((p: string) => !SCAFFOLD_PATHS_S.has(p));
+          if (!hasUserFiles) {
+            emit({ type: 'status', data: 'planning' });
+            try {
+              const plannerPrompt = buildPlannerPrompt(message, questionnaireData);
+              const planRes = await activeClient.chat.completions.create({
+                model: activeModel,
+                messages: [
+                  { role: 'system', content: 'You are a product planner. Output valid JSON only: {"name":"","description":"","techstack":"","features":[],"files":[{"path":"","purpose":""}]}' },
+                  { role: 'user', content: plannerPrompt },
+                ],
+                temperature: 0.4,
+                max_tokens: 1024,
+                stream: false,
+              });
+              streamPlan = parsePlannerResponse(planRes.choices[0]?.message?.content || '');
 
-            if (!hasUserFiles) {
-              emit({ type: 'status', data: 'planning' });
-              try {
-                const plannerPrompt = buildPlannerPrompt(message, questionnaireData);
-                const planRes = await activeClient.chat.completions.create({
+              if (streamPlan?.files?.length) {
+                emit({ type: 'status', data: 'architecting' });
+                const archPrompt = buildArchitectPrompt(streamPlan, existingFilePaths);
+                const archRes = await activeClient.chat.completions.create({
                   model: activeModel,
                   messages: [
-                    { role: 'system', content: 'You are a product planner. Output valid JSON only: {"name":"","description":"","techstack":"","features":[],"files":[{"path":"","purpose":""}]}' },
-                    { role: 'user', content: plannerPrompt },
+                    { role: 'system', content: 'You are a software architect. Output valid JSON only: {"implementationSteps":[{"filepath":"","taskDescription":"","priority":"high|medium|low"}]}' },
+                    { role: 'user', content: archPrompt },
                   ],
                   temperature: 0.4,
                   max_tokens: 1024,
                   stream: false,
                 });
-                streamPlan = parsePlannerResponse(planRes.choices[0]?.message?.content || '');
-
-                if (streamPlan?.files?.length) {
-                  emit({ type: 'status', data: 'architecting' });
-                  const archPrompt = buildArchitectPrompt(streamPlan, existingFilePaths);
-                  const archRes = await activeClient.chat.completions.create({
-                    model: activeModel,
-                    messages: [
-                      { role: 'system', content: 'You are a software architect. Output valid JSON only: {"implementationSteps":[{"filepath":"","taskDescription":"","priority":"high|medium|low"}]}' },
-                      { role: 'user', content: archPrompt },
-                    ],
-                    temperature: 0.4,
-                    max_tokens: 1024,
-                    stream: false,
-                  });
-                  parseArchitectResponse(archRes.choices[0]?.message?.content || '');
-                }
-              } catch (err) {
-                console.warn('Planner/Architect failed in stream mode:', err);
+                parseArchitectResponse(archRes.choices[0]?.message?.content || '');
               }
+            } catch (err) {
+              console.warn('Planner/Architect failed in stream mode:', err);
             }
-
-            emit({ type: 'status', data: 'coding' });
-            promptRes = buildAppBuilderPrompts({
-              message,
-              questionnaireData,
-              frameworkForScaffold,
-              useTypeScript,
-              existingFilePaths,
-              hasScaffoldFiles,
-              fileExtension,
-              plan: streamPlan,
-              taskPlan: null,
-              currentFilePath,
-              projectFiles: project.files as unknown as { path: string; name: string; content: string }[],
-            });
           }
+
+          emit({ type: 'status', data: 'coding' });
+          promptRes = buildAppBuilderPrompts({
+            message,
+            questionnaireData,
+            frameworkForScaffold,
+            useTypeScript,
+            existingFilePaths,
+            hasScaffoldFiles,
+            fileExtension,
+            plan: streamPlan,
+            taskPlan: null,
+            currentFilePath,
+            projectFiles: project.files as unknown as { path: string; name: string; content: string }[],
+          });
 
           // ── Stream AI coder response (with fallback on failure) ──
           const coderParams = getStageParams('coder');
           let fullResponse = '';
 
           const streamWithProvider = async (aiClient: typeof client, aiModel: string, aiMaxTokens: number) => {
+            const streamStartMs = Date.now();
+            let firstTokenMs: number | null = null;
+            streamUsage = null;
+            streamGenerationId = undefined;
+
             const completion = await aiClient.chat.completions.create({
               model: aiModel,
               messages: [
@@ -651,14 +647,25 @@ export async function POST(
               top_p: coderParams.top_p,
               max_tokens: aiMaxTokens,
               stream: true,
+              stream_options: { include_usage: true },
             });
             for await (const chunk of completion) {
+              if (!streamGenerationId && chunk.id) {
+                streamGenerationId = chunk.id;
+              }
               const delta = chunk.choices[0]?.delta?.content || '';
               if (delta) {
+                if (firstTokenMs === null) firstTokenMs = Date.now();
                 fullResponse += delta;
                 emit({ type: 'token', data: delta });
               }
+              // Final chunk may include usage data
+              if ((chunk as any).usage) {
+                streamUsage = (chunk as any).usage;
+              }
             }
+            streamTtfbMs = firstTokenMs ? firstTokenMs - streamStartMs : undefined;
+            console.log(`[STREAM] Generation ID: ${streamGenerationId ?? 'none'}, Usage: ${streamUsage ? JSON.stringify(streamUsage) : 'none'}, TTFB: ${streamTtfbMs ?? 'n/a'}ms`);
           };
 
           try {
@@ -692,6 +699,7 @@ export async function POST(
                   userId: prismaUser.id,
                   provider,
                   model,
+                  stage: 'coder',
                   durationMs: timer.elapsed(),
                   status: 'fallback',
                   filesCreated: 0,
@@ -699,6 +707,7 @@ export async function POST(
                   usedFallback: true,
                   fallbackProvider: fallback.provider,
                   fallbackModel: fallback.model,
+                  generationId: activeProvider === 'openrouter' ? streamGenerationId : undefined,
                 });
 
                 await streamWithProvider(activeClient, activeModel, fallback.maxTokens);
@@ -824,11 +833,17 @@ export async function POST(
             userId: prismaUser.id,
             provider: activeProvider,
             model: activeModel,
+            stage: 'coder',
             durationMs: timer.elapsed(),
             status: 'completed',
             filesCreated: createdPaths.length,
             themePreset: (questionnaireData?.themePreset as string) || (questionnaireData?.designStyle as string) || undefined,
             usedFallback,
+            inputTokens: (streamUsage as any)?.prompt_tokens,
+            outputTokens: (streamUsage as any)?.completion_tokens,
+            totalTokens: (streamUsage as any)?.total_tokens,
+            generationId: activeProvider === 'openrouter' ? streamGenerationId : undefined,
+            ttfbMs: streamTtfbMs,
           });
 
           emit({
@@ -845,10 +860,12 @@ export async function POST(
             userId: prismaUser.id,
             provider: activeProvider,
             model: activeModel,
+            stage: 'coder',
             durationMs: timer.elapsed(),
             status: 'failed',
             filesCreated: 0,
             errorMessage: err instanceof Error ? err.message : 'Unknown',
+            generationId: activeProvider === 'openrouter' ? streamGenerationId : undefined,
           });
           emit({ type: 'error', data: { message: err instanceof Error ? err.message : 'Generation failed' } });
         } finally {
@@ -863,81 +880,64 @@ export async function POST(
     // NON-STREAMING MODE (existing behavior)
     // ============================================
 
-    const slowProviderNS = isSlowProvider(provider as AIProvider, model);
     let promptResult;
 
-    if (slowProviderNS) {
-      // ── FAST PATH (OpenRouter/DeepSeek) — skip Planner + Architect ──
-      console.log('⚡ [FAST PATH] Non-streaming: skipping Planner/Architect for slow provider:', provider);
-      promptResult = buildFastPathPrompts({
-        message,
-        questionnaireData,
-        frameworkForScaffold,
-        useTypeScript,
-        existingFilePaths,
-        hasScaffoldFiles,
-        fileExtension,
-        currentFilePath,
-        projectFiles: project.files as unknown as { path: string; name: string; content: string }[],
-      });
-    } else {
-      // ── FULL PATH (Groq, OpenAI, Claude) ──
-      const SCAFFOLD_PATHS = new Set([
-        'index.html', 'src/App.jsx', 'src/App.tsx', 'src/main.jsx', 'src/main.tsx',
-        'src/index.css', 'src/index.js', 'src/index.ts',
-      ]);
-      const hasUserGeneratedFiles = existingFilePaths.some((p: string) => !SCAFFOLD_PATHS.has(p));
-      if (!hasUserGeneratedFiles) {
-        try {
-          const plannerUserPrompt = buildPlannerPrompt(message, questionnaireData);
-          const plannerRes = await client.chat.completions.create({
+    // ── FULL PATH for ALL providers: Plan → Architect → Code ──
+    const SCAFFOLD_PATHS = new Set([
+      'index.html', 'src/App.jsx', 'src/App.tsx', 'src/main.jsx', 'src/main.tsx',
+      'src/index.css', 'src/index.js', 'src/index.ts',
+    ]);
+    const hasUserGeneratedFiles = existingFilePaths.some((p: string) => !SCAFFOLD_PATHS.has(p));
+    if (!hasUserGeneratedFiles) {
+      try {
+        const plannerUserPrompt = buildPlannerPrompt(message, questionnaireData);
+        const plannerRes = await client.chat.completions.create({
+          model,
+          messages: [
+            { role: 'system', content: 'You are a product planner. Output valid JSON only: {"name":"","description":"","techstack":"","features":[],"files":[{"path":"","purpose":""}]}' },
+            { role: 'user', content: plannerUserPrompt },
+          ],
+          temperature: 0.4,
+          max_tokens: 1024,
+          stream: false,
+        });
+        const plannerText = plannerRes.choices[0]?.message?.content || '';
+        plan = parsePlannerResponse(plannerText);
+        if (plan && plan.files?.length) {
+          const architectUserPrompt = buildArchitectPrompt(plan, existingFilePaths);
+          const architectRes = await client.chat.completions.create({
             model,
             messages: [
-              { role: 'system', content: 'You are a product planner. Output valid JSON only: {"name":"","description":"","techstack":"","features":[],"files":[{"path":"","purpose":""}]}' },
-              { role: 'user', content: plannerUserPrompt },
+              { role: 'system', content: 'You are a software architect. Output valid JSON only: {"implementationSteps":[{"filepath":"","taskDescription":"","priority":"high|medium|low"}]}' },
+              { role: 'user', content: architectUserPrompt },
             ],
             temperature: 0.4,
             max_tokens: 1024,
             stream: false,
           });
-          const plannerText = plannerRes.choices[0]?.message?.content || '';
-          plan = parsePlannerResponse(plannerText);
-          if (plan && plan.files?.length) {
-            const architectUserPrompt = buildArchitectPrompt(plan, existingFilePaths);
-            const architectRes = await client.chat.completions.create({
-              model,
-              messages: [
-                { role: 'system', content: 'You are a software architect. Output valid JSON only: {"implementationSteps":[{"filepath":"","taskDescription":"","priority":"high|medium|low"}]}' },
-                { role: 'user', content: architectUserPrompt },
-              ],
-              temperature: 0.4,
-              max_tokens: 1024,
-              stream: false,
-            });
-            const architectText = architectRes.choices[0]?.message?.content || '';
-            taskPlan = parseArchitectResponse(architectText);
-          }
-        } catch (agentErr) {
-          if (process.env.NODE_ENV === 'development') {
-            console.warn('Planner/Architect step failed (continuing with direct coder):', agentErr);
-          }
+          const architectText = architectRes.choices[0]?.message?.content || '';
+          taskPlan = parseArchitectResponse(architectText);
+        }
+      } catch (agentErr) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('Planner/Architect step failed (continuing with direct coder):', agentErr);
         }
       }
-
-      promptResult = buildAppBuilderPrompts({
-        message,
-        questionnaireData,
-        frameworkForScaffold,
-        useTypeScript,
-        existingFilePaths,
-        hasScaffoldFiles,
-        fileExtension,
-        plan,
-        taskPlan,
-        currentFilePath,
-        projectFiles: project.files as unknown as { path: string; name: string; content: string }[],
-      });
     }
+
+    promptResult = buildAppBuilderPrompts({
+      message,
+      questionnaireData,
+      frameworkForScaffold,
+      useTypeScript,
+      existingFilePaths,
+      hasScaffoldFiles,
+      fileExtension,
+      plan,
+      taskPlan,
+      currentFilePath,
+      projectFiles: project.files as unknown as { path: string; name: string; content: string }[],
+    });
 
     const systemPrompt = promptResult.systemPrompt;
     message = promptResult.userMessage;
@@ -1838,9 +1838,12 @@ root.render(
       return createdFiles;
     };
 
-    // Call Groq API
+    // Call AI API
     let response: string = '';
     let requestSuccess = false;
+    const nsTimer = createGenerationTimer();
+    let nsUsage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined;
+    let nsGenerationId: string | undefined;
     
     // Calculate token usage (rough estimate: 1 token ≈ 4 characters)
     const systemTokens = Math.ceil(systemPrompt.length / 4);
@@ -1886,8 +1889,9 @@ root.render(
       }
 
       response = completion.choices[0]?.message?.content || '';
-      
-      
+      nsUsage = completion.usage ?? undefined;
+      nsGenerationId = provider === 'openrouter' ? completion.id : undefined;
+
       // Validate response quality
       if (!response || response.trim().length < 50) {
         console.warn('⚠️ Response too short, might be incomplete');
@@ -1925,6 +1929,20 @@ root.render(
       
       requestSuccess = true;
       void trackApiRequest(provider, 'llm');
+      trackGeneration({
+        projectId: id,
+        userId: prismaUser.id,
+        provider,
+        model,
+        stage: 'coder',
+        durationMs: nsTimer.elapsed(),
+        status: 'completed',
+        filesCreated: 0, // Updated later after file parsing
+        inputTokens: nsUsage?.prompt_tokens,
+        outputTokens: nsUsage?.completion_tokens,
+        totalTokens: nsUsage?.total_tokens,
+        generationId: nsGenerationId,
+      });
     } catch (error: unknown) {
       if (timeoutId) {
         clearTimeout(timeoutId);

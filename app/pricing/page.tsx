@@ -1,29 +1,38 @@
-
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { useSearchParams } from 'next/navigation'
+import Script from 'next/script'
+import { useSearchParams, useRouter } from 'next/navigation'
 import Header from '../components/Header'
 import Footer from '../components/Footer'
 
 const AFFILIATE_STORAGE_KEY = 'ecosyz_affiliate_code'
 
+type PaymentProvider = 'razorpay' | 'stripe'
 
-
-function Tier({ title, price, description, features, ctaHref, isPopular }: {
+function Tier({ title, price, description, features, ctaHref, isPopular, isPaid, onSubscribe, subscribing }: {
   title: string;
   price: string;
   description: string;
   features: string[];
   ctaHref?: string;
   isPopular?: boolean;
+  isPaid?: boolean;
+  onSubscribe?: () => void;
+  subscribing?: boolean;
 }) {
+  const btnClass = `w-full text-center px-4 py-3 rounded-lg font-semibold transition-all duration-300 ${
+    isPopular
+      ? 'bg-transparent border-2 border-emerald-400/50 text-emerald-400 hover:bg-emerald-400/10 hover:border-emerald-400'
+      : 'bg-transparent border-2 border-cyan-400/50 text-cyan-400 hover:bg-cyan-400/10 hover:border-cyan-400'
+  } disabled:opacity-50 disabled:cursor-not-allowed`
+
   return (
     <div className={`relative p-8 rounded-xl flex flex-col border backdrop-blur-sm ${
-      isPopular 
-        ? 'border-emerald-500 bg-black/60' 
+      isPopular
+        ? 'border-emerald-500 bg-black/60'
         : 'border-emerald-400/30 bg-black/50 hover:border-emerald-400/50 hover:bg-black/60'
     } transition-all duration-300`}>
       {isPopular && (
@@ -53,51 +62,40 @@ function Tier({ title, price, description, features, ctaHref, isPopular }: {
           </li>
         ))}
       </ul>
-      {price === 'Free' ? (
-        <Link 
-          href={ctaHref || '/auth?plan=free'}
-          className={`w-full text-center px-4 py-3 rounded-lg font-semibold transition-all duration-300 ${
-            isPopular
-              ? 'bg-transparent border-2 border-emerald-400/50 text-emerald-400 hover:bg-emerald-400/10 hover:border-emerald-400'
-              : 'bg-transparent border-2 border-cyan-400/50 text-cyan-400 hover:bg-cyan-400/10 hover:border-cyan-400'
-          }`}
+      {isPaid && onSubscribe ? (
+        <button
+          onClick={onSubscribe}
+          disabled={subscribing}
+          className={btnClass}
         >
-          Get Started
+          {subscribing ? 'Processing...' : `Subscribe for ${price}/month`}
+        </button>
+      ) : ctaHref?.includes('contact') ? (
+        <Link href={ctaHref || '/contact'} className={btnClass}>
+          Contact Sales
         </Link>
-      ) : ctaHref?.startsWith('http') ? (
-        // External payment link (Razorpay)
-        <a
-          href={ctaHref}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={`w-full text-center px-4 py-3 rounded-lg font-semibold transition-all duration-300 ${
-            isPopular
-              ? 'bg-transparent border-2 border-emerald-400/50 text-emerald-400 hover:bg-emerald-400/10 hover:border-emerald-400'
-              : 'bg-transparent border-2 border-cyan-400/50 text-cyan-400 hover:bg-cyan-400/10 hover:border-cyan-400'
-          }`}
-        >
-          Subscribe for {price}/month
-        </a>
       ) : (
-        <Link 
-          href={ctaHref || '/auth'}
-          className={`w-full text-center px-4 py-3 rounded-lg font-semibold transition-all duration-300 ${
-            isPopular
-              ? 'bg-transparent border-2 border-emerald-400/50 text-emerald-400 hover:bg-emerald-400/10 hover:border-emerald-400'
-              : 'bg-transparent border-2 border-cyan-400/50 text-cyan-400 hover:bg-cyan-400/10 hover:border-cyan-400'
-          }`}
-        >
-          {ctaHref?.includes('contact') ? 'Contact Sales' : 'Get Started'}
+        <Link href={ctaHref || '/auth?plan=free'} className={btnClass}>
+          Get Started
         </Link>
       )}
     </div>
   );
 }
 
+declare global {
+  interface Window {
+    Razorpay: any;
+  }
+}
 
 function PricingContent() {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const [affiliateCode, setAffiliateCode] = useState('')
+  const [paymentProvider, setPaymentProvider] = useState<PaymentProvider>('razorpay')
+  const [subscribing, setSubscribing] = useState(false)
+  const [razorpayLoaded, setRazorpayLoaded] = useState(false)
 
   // Pre-fill from ?ref= URL param
   useEffect(() => {
@@ -121,6 +119,97 @@ function PricingContent() {
     }
   }
 
+  const handleSubscribe = useCallback(async (plan: string) => {
+    setSubscribing(true)
+    try {
+      const res = await fetch('/api/payments/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan, provider: paymentProvider }),
+      })
+
+      if (!res.ok) {
+        if (res.status === 401) {
+          router.push(`/auth?redirect=${encodeURIComponent('/pricing')}&plan=${plan}`)
+          return
+        }
+        const text = await res.text()
+        let errorMsg = 'Failed to create order'
+        try {
+          const data = JSON.parse(text)
+          errorMsg = data.error || errorMsg
+        } catch {
+          // Server returned HTML error page
+        }
+        alert(errorMsg)
+        return
+      }
+
+      const data = await res.json()
+
+      if (paymentProvider === 'stripe') {
+        // Redirect to Stripe Checkout
+        if (data.sessionUrl) {
+          window.location.href = data.sessionUrl
+        }
+        return
+      }
+
+      // Razorpay Checkout
+      if (!window.Razorpay) {
+        alert('Payment system is loading. Please try again.')
+        return
+      }
+
+      const affiliate = typeof window !== 'undefined'
+        ? window.sessionStorage.getItem(AFFILIATE_STORAGE_KEY)
+        : null
+
+      const options = {
+        key: data.key,
+        amount: data.amount,
+        currency: data.currency || 'INR',
+        name: 'Open Idea',
+        description: `${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan - Monthly`,
+        order_id: data.orderId,
+        handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
+          try {
+            const verifyRes = await fetch('/api/payments/verify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                plan,
+                affiliateCode: affiliate || undefined,
+              }),
+            })
+
+            const verifyData = await verifyRes.json()
+            if (verifyData.success) {
+              if (affiliate) window.sessionStorage.removeItem(AFFILIATE_STORAGE_KEY)
+              router.push(`/payment/success?plan=${plan}&provider=razorpay&verified=true`)
+            } else {
+              alert(verifyData.error || 'Payment verification failed. Please contact support.')
+            }
+          } catch {
+            alert('Payment verification failed. Please contact support.')
+          }
+        },
+        theme: { color: '#10b981' },
+      }
+
+      const rzp = new window.Razorpay(options)
+      rzp.open()
+    } catch (error) {
+      console.error('Subscribe error:', error)
+      alert('Something went wrong. Please try again.')
+    } finally {
+      setSubscribing(false)
+    }
+  }, [paymentProvider, router])
+
   const tiers = [
     {
       title: "Free",
@@ -134,7 +223,6 @@ function PricingContent() {
         "Community features",
         "1GB storage per workspace"
       ],
-      cta: "Get started",
       ctaHref: "/auth?plan=free"
     },
     {
@@ -150,8 +238,7 @@ function PricingContent() {
         "5GB storage per workspace",
         "API access (100K requests/month)"
       ],
-      cta: "Upgrade to Plus",
-      ctaHref: "https://rzp.io/rzp/openidea", // Razorpay Payment Link
+      isPaid: true,
       isPopular: true
     },
     {
@@ -168,15 +255,18 @@ function PricingContent() {
         "Custom API limits",
         "SSO & team management"
       ],
-      cta: "Contact sales",
       ctaHref: "/contact?enquiry=enterprise"
     }
   ];
 
   return (
     <div className="min-h-screen flex flex-col">
+      <Script
+        src="https://checkout.razorpay.com/v1/checkout.js"
+        onLoad={() => setRazorpayLoaded(true)}
+      />
       <Header />
-      
+
       <main className="flex-grow">
         <section className="relative overflow-hidden bg-gradient-to-br from-[#0c2321] via-[#121f22] to-[#0a1016] min-h-screen">
           {/* Globe background image */}
@@ -202,6 +292,32 @@ function PricingContent() {
             </p>
           </div>
 
+          {/* Payment method toggle */}
+          <div className="flex justify-center mb-6">
+            <div className="inline-flex rounded-lg border border-emerald-500/30 bg-black/40 p-1">
+              <button
+                onClick={() => setPaymentProvider('razorpay')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                  paymentProvider === 'razorpay'
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                Razorpay (UPI/Cards)
+              </button>
+              <button
+                onClick={() => setPaymentProvider('stripe')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                  paymentProvider === 'stripe'
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                Stripe (International)
+              </button>
+            </div>
+          </div>
+
           <div className="max-w-md mx-auto mb-8">
             <label htmlFor="affiliate-code" className="block text-sm text-gray-400 mb-2 text-center">
               Have a referral or affiliate code?
@@ -223,7 +339,12 @@ function PricingContent() {
 
           <div className="grid lg:grid-cols-3 gap-8 max-w-6xl mx-auto relative">
             {tiers.map((tier) => (
-              <Tier key={tier.title} {...tier} />
+              <Tier
+                key={tier.title}
+                {...tier}
+                onSubscribe={tier.isPaid ? () => handleSubscribe('plus') : undefined}
+                subscribing={subscribing}
+              />
             ))}
           </div>
 

@@ -23,10 +23,15 @@ model User {
   subscriptionPlan         String?
   subscriptionStatus       String?
   subscriptionStartDate    DateTime?
+  subscriptionEndDate      DateTime?
   lastPaymentAmount        Float?
   lastPaymentId            String?
   lastPaymentDate          DateTime?
   referredByAffiliateCode  String?   // Affiliate code used at subscription
+  trialStartDate           DateTime?
+  trialEndDate             DateTime?
+  stripeCustomerId         String?   @unique
+  payments                 Payment[]
   appProjects              AppProject[]
   // Community relations
   groupMembers             GroupMember[]
@@ -214,6 +219,7 @@ model AppProject {
   chats              AppChat[]
   executions         AppExecution[]
   appProjectUpvotes  AppProjectUpvote[]
+  generationLogs     GenerationLog[]
 }
 
 model AppProjectUpvote {
@@ -857,4 +863,55 @@ model PartnershipApplication {
   @@index([email])
   @@index([affiliateCode])
   @@index([createdAt])
+}
+
+// Payment history for subscription tracking
+model Payment {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount            Float
+  currency          String   @default("INR")
+  provider          String   // "razorpay" | "stripe"
+  providerPaymentId String   @unique
+  providerOrderId   String?
+  status            String   @default("pending") // pending, captured, refunded, failed
+  plan              String   // "plus" | "enterprise"
+  affiliateCode     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId])
+  @@index([providerPaymentId])
+  @@index([status])
+}
+
+// Per-generation cost, token usage, and latency tracking
+model GenerationLog {
+  id               String     @id @default(cuid())
+  projectId        String
+  project          AppProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId           String
+  provider         String     // "openrouter", "groq", "openai", "anthropic"
+  model            String     // "google/gemini-2.5-flash", etc.
+  stage            String     @default("coder") // "planner", "architect", "coder", "retry"
+  status           String     // "completed", "failed", "timeout", "fallback"
+  inputTokens      Int?
+  outputTokens     Int?
+  totalTokens      Int?
+  costUsd          Float?
+  costSource       String?    // "openrouter-api", "estimated"
+  durationMs       Int
+  ttfbMs           Int?       // time-to-first-byte (streaming only)
+  filesCreated     Int        @default(0)
+  usedFallback     Boolean    @default(false)
+  fallbackProvider String?
+  fallbackModel    String?
+  errorMessage     String?    @db.Text
+  generationId     String?    // OpenRouter generation ID for cost lookup
+  createdAt        DateTime   @default(now())
+
+  @@index([projectId, createdAt])
+  @@index([userId, createdAt])
+  @@index([provider, createdAt])
 }
