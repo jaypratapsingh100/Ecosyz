@@ -11,7 +11,8 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Search,
-  RefreshCw
+  RefreshCw,
+  Undo2
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -154,6 +155,7 @@ export default function AdminPaymentsPage() {
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'overview' | 'subscribers' | 'payments'>('overview');
+  const [refundingId, setRefundingId] = useState<string | null>(null);
 
   useEffect(() => {
     const check = async () => {
@@ -186,6 +188,31 @@ export default function AdminPaymentsPage() {
       setError(err.message || 'Failed to load data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRefund = async (paymentId: string, userEmail: string, amount: number, currency: string) => {
+    const formatted = currency === 'INR'
+      ? `₹${amount.toLocaleString('en-IN')}`
+      : new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount);
+
+    if (!window.confirm(`Refund ${formatted} to ${userEmail}? This cannot be undone.`)) return;
+
+    setRefundingId(paymentId);
+    try {
+      const res = await fetch('/api/admin/refunds', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Refund failed');
+      alert(json.message || 'Refund initiated successfully');
+      fetchData();
+    } catch (err: any) {
+      alert(`Refund error: ${err.message}`);
+    } finally {
+      setRefundingId(null);
     }
   };
 
@@ -519,6 +546,7 @@ export default function AdminPaymentsPage() {
                   <th className="text-left text-slate-400 font-medium px-4 py-3">Status</th>
                   <th className="text-left text-slate-400 font-medium px-4 py-3">Payment ID</th>
                   <th className="text-left text-slate-400 font-medium px-4 py-3">Affiliate</th>
+                  <th className="text-left text-slate-400 font-medium px-4 py-3">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -547,11 +575,27 @@ export default function AdminPaymentsPage() {
                         <span className="text-slate-500">—</span>
                       )}
                     </td>
+                    <td className="px-4 py-3">
+                      {pmt.status === 'captured' && (
+                        <button
+                          onClick={() => handleRefund(pmt.id, pmt.user.email, pmt.amount, pmt.currency)}
+                          disabled={refundingId === pmt.id}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {refundingId === pmt.id ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <Undo2 className="w-3 h-3" />
+                          )}
+                          {refundingId === pmt.id ? 'Refunding...' : 'Refund'}
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
                 {filteredPayments.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="text-center py-8 text-slate-500">
+                    <td colSpan={9} className="text-center py-8 text-slate-500">
                       {searchQuery ? 'No payments match your search' : 'No payments yet'}
                     </td>
                   </tr>

@@ -17,7 +17,8 @@ export function getRazorpay(): Razorpay {
 }
 
 const PLAN_AMOUNTS: Record<string, number> = {
-  plus: 99900, // ₹999 in paise
+  basic: 20000, // ₹200 in paise
+  plus: 100, // ₹1 in paise (test)
   enterprise: 0,
 };
 

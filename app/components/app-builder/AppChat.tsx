@@ -763,9 +763,17 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
                   <div className="w-4 h-4 border-2 border-gray-900 border-t-transparent rounded-full animate-spin"></div>
                 </div>
                 <div className="flex-1">
-                  <div className="text-white font-semibold text-sm mb-1">Assistant</div>
+                  <div className="text-white font-semibold text-sm mb-1 flex items-center gap-2">
+                    Assistant
+                    {streamingStatus && (
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2.5 py-0.5 animate-pulse">
+                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        {streamingStatus}
+                      </span>
+                    )}
+                  </div>
                   <div className="bg-[#1a1a1a] border border-white/10 rounded-2xl px-4 py-3 shadow-lg">
-                    <p className="text-sm text-gray-400">Thinking...</p>
+                    <p className="text-sm text-gray-400">{streamingStatus || 'Thinking...'}</p>
                   </div>
                 </div>
               </div>

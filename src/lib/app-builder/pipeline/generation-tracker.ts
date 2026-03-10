@@ -5,6 +5,7 @@
 
 import { prisma } from '@/lib/db';
 import { fetchOpenRouterCost, estimateCost } from './openrouter-cost';
+import { deductCredits } from '@/lib/app-builder/credits';
 
 export interface GenerationMetrics {
   projectId: string;
@@ -100,8 +101,19 @@ export function trackGeneration(metrics: GenerationMetrics): void {
         generationId: metrics.generationId ?? null,
       },
     })
-    .then(() => {
+    .then((log) => {
       console.log(`[generation-tracker] ✅ Saved generation log for ${provider}/${model}`);
+
+      // Deduct credits based on estimated cost (fire-and-forget)
+      if (metrics.status === 'completed' && costUsd != null && costUsd > 0) {
+        void deductCredits(metrics.userId, costUsd, metrics.provider, log.id).then((deducted) => {
+          if (deducted > 0) {
+            console.log(`[generation-tracker] 💳 Deducted ${deducted.toFixed(2)} credits from user ${metrics.userId.slice(0, 8)}...`);
+          }
+        }).catch((err) => {
+          console.error('[generation-tracker] ❌ Credit deduction failed:', err instanceof Error ? err.message : err);
+        });
+      }
     })
     .catch((err) => {
       // Always log DB errors — critical for diagnosing missing cost data

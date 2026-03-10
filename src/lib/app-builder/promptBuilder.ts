@@ -137,6 +137,17 @@ ICON SYSTEM (inline SVG — icons are available via CDN):
 - Example arrow: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" /></svg>
 - Example check: <svg className="w-5 h-5 text-emerald-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
 
+IMAGE SYSTEM (use these reliable sources — NEVER use broken or fake URLs):
+- Hero/banner images: use https://picsum.photos/{width}/{height} (e.g. https://picsum.photos/1200/600)
+- For specific seeded images (consistent across reloads): https://picsum.photos/seed/{keyword}/{width}/{height} (e.g. https://picsum.photos/seed/office/800/400)
+- Avatar/profile images: use https://i.pravatar.cc/{size}?img={1-70} (e.g. https://i.pravatar.cc/150?img=3)
+- Product/placeholder images: use https://picsum.photos/seed/{product-name}/{width}/{height}
+- NEVER use unsplash.com URLs (they require API keys and often 404)
+- NEVER use via.placeholder.com (it's unreliable and slow)
+- NEVER use broken or made-up image URLs
+- For decorative backgrounds, prefer CSS gradients or Tailwind bg-gradient-to-* over images
+- Always add alt text to images for accessibility
+
 CONTENT QUALITY:
 - NEVER use "Lorem ipsum" or placeholder text. Write realistic, specific copy.
 - Use concrete numbers: "10,000+ teams", "99.9% uptime", "50ms response time"
@@ -365,6 +376,7 @@ DESIGN (production-grade quality):
 - Micro-interactions: hover:shadow-lg, group-hover effects, transition-all duration-300.
 - Responsive: mobile-first. grid-cols-1→md:2→lg:3. Hamburger nav on mobile.
 - Icons: inline SVG (w-5 h-5 stroke-2).
+- Images: use https://picsum.photos/{w}/{h} for photos, https://picsum.photos/seed/{keyword}/{w}/{h} for seeded, https://i.pravatar.cc/{size}?img={1-70} for avatars. NEVER use unsplash.com or via.placeholder.com. Prefer CSS gradients for decorative backgrounds.
 - Content: NEVER Lorem ipsum. Realistic copy with concrete numbers.
 - NEVER: bright red primary, missing hover states, inconsistent spacing, fewer than 4 files.
 ${compactTheme ? `\n${compactTheme}` : ''}

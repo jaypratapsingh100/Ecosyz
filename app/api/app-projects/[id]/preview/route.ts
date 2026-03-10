@@ -327,11 +327,6 @@ export async function POST(
     document.addEventListener('submit', function(e) {
       e.preventDefault();
     }, true);
-    // Block programmatic navigation
-    window.addEventListener('beforeunload', function(e) {
-      e.preventDefault();
-      e.returnValue = '';
-    });
   </script>`;
         if (!html.includes('react@18') && !html.includes('react.development.js')) {
           if (html.includes('</head>')) {

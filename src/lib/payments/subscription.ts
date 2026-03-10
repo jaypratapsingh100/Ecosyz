@@ -1,5 +1,7 @@
 import { prisma } from '@/lib/db';
 import { getAdminEmails } from '@/lib/admin';
+import { allocateSubscriptionCredits } from '@/lib/app-builder/credits';
+import { notifyAffiliateCommissionEarned, notifyAdminCommissionCreated } from '@/lib/payments/affiliate-emails';
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://ecosyz.com';
@@ -75,18 +77,23 @@ export async function activateSubscription(
 
   // Validate affiliate code
   let validAffiliateCode: string | null = null;
+  let validPartner: { id: string; name: string; email: string } | null = null;
   if (affiliateCode) {
     const code = affiliateCode.trim().toUpperCase();
     if (code.length >= 4) {
       const partner = await prisma.partnershipApplication.findFirst({
         where: { affiliateCode: code, status: 'approved' },
+        select: { id: true, name: true, email: true },
       });
-      if (partner) validAffiliateCode = code;
+      if (partner) {
+        validAffiliateCode = code;
+        validPartner = partner;
+      }
     }
   }
 
   // Create payment record
-  await prisma.payment.create({
+  const paymentRecord = await prisma.payment.create({
     data: {
       userId,
       amount,
@@ -115,6 +122,13 @@ export async function activateSubscription(
     },
   });
 
+  // Allocate credits for Plus subscription (non-blocking)
+  if (plan.toLowerCase() === 'plus') {
+    allocateSubscriptionCredits(userId).catch((err) =>
+      console.error('[credits] Failed to allocate subscription credits:', err)
+    );
+  }
+
   // Send confirmation email to user (non-blocking)
   sendSubscriptionEmail(updatedUser.email, updatedUser.name, plan, amount, currency, endDate).catch((err) =>
     console.error('Failed to send subscription email:', err)
@@ -124,6 +138,34 @@ export async function activateSubscription(
   sendAdminNotification(updatedUser.email, updatedUser.name, plan, amount, currency, provider, providerPaymentId, validAffiliateCode).catch((err) =>
     console.error('Failed to send admin notification:', err)
   );
+
+  // Create affiliate commission record (5%, eligible after 30 days)
+  if (validAffiliateCode && validPartner && amount > 0) {
+    const commissionRate = 0.05;
+    const commissionAmount = parseFloat((amount * commissionRate).toFixed(2));
+    const eligibleAt = new Date(now);
+    eligibleAt.setDate(eligibleAt.getDate() + 30);
+
+    await prisma.affiliateCommission.create({
+      data: {
+        paymentId: paymentRecord.id,
+        affiliateCode: validAffiliateCode,
+        partnershipId: validPartner.id,
+        amount: commissionAmount,
+        currency,
+        status: 'pending',
+        eligibleAt,
+      },
+    });
+
+    // Notify partner and admin about commission (non-blocking)
+    notifyAffiliateCommissionEarned(validPartner.email, validPartner.name, commissionAmount, validAffiliateCode).catch(
+      (err) => console.error('Failed to send affiliate commission email:', err)
+    );
+    notifyAdminCommissionCreated(validPartner.name, validAffiliateCode, commissionAmount, updatedUser.email).catch(
+      (err) => console.error('Failed to send admin commission notification:', err)
+    );
+  }
 }
 
 /**

@@ -81,6 +81,17 @@ export async function POST(req: NextRequest) {
             subscriptionPlan: null,
           },
         });
+
+        // Reverse affiliate commission if pending/eligible
+        const commission = await prisma.affiliateCommission.findUnique({
+          where: { paymentId: paymentRecord.id },
+        });
+        if (commission && (commission.status === 'pending' || commission.status === 'eligible')) {
+          await prisma.affiliateCommission.update({
+            where: { id: commission.id },
+            data: { status: 'reversed', reversedAt: new Date() },
+          });
+        }
       }
     }
 

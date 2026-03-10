@@ -31,6 +31,10 @@ model User {
   trialStartDate           DateTime?
   trialEndDate             DateTime?
   stripeCustomerId         String?   @unique
+  // Credits system
+  creditBalance            Float                     @default(0)
+  creditsAllocated         Float                     @default(0)
+  creditsUsed              Float                     @default(0)
   payments                 Payment[]
   appProjects              AppProject[]
   // Community relations
@@ -767,6 +771,8 @@ model InternFellow {
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
   tasks         InternTask[]
+  payouts       StipendPayout[]
+  paymentDetails InternPaymentDetails?
 
   @@index([userId])
   @@index([trackId])
@@ -817,6 +823,7 @@ model InternMilestone {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
   tasks       InternTask[]
+  payouts     StipendPayout[]
 
   @@index([trackId])
   @@index([subTrackId])
@@ -836,8 +843,12 @@ model InternTask {
   status      String        @default("pending")
   progress    Int           @default(0)
   dueDate     DateTime?
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  reviewNote  String?       @db.Text
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
+  payouts     StipendPayout[]
 
   @@index([trackId])
   @@index([milestoneId])
@@ -856,8 +867,18 @@ model PartnershipApplication {
   affiliateCode String?  @unique // Generated when approved; partners share this for 5% commission
   reviewedAt   DateTime?
   reviewedBy   String?
+  // Payout details
+  payoutVpa             String?          // UPI ID e.g. user@upi
+  payoutAccountNumber   String?          // Encrypted at application level
+  payoutIfsc            String?
+  payoutBeneficiaryName String?
+  payoutBankName        String?
+  razorpayContactId     String?          // Cached Razorpay X Contact ID
+  razorpayFundAccountId String?          // Cached Razorpay X Fund Account ID
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+  commissions  AffiliateCommission[]
+  payouts      AffiliatePayout[]
 
   @@index([status])
   @@index([email])
@@ -867,23 +888,74 @@ model PartnershipApplication {
 
 // Payment history for subscription tracking
 model Payment {
-  id                String   @id @default(cuid())
+  id                String               @id @default(cuid())
   userId            String
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   amount            Float
-  currency          String   @default("INR")
-  provider          String   // "razorpay" | "stripe"
-  providerPaymentId String   @unique
+  currency          String               @default("INR")
+  provider          String               // "razorpay" | "stripe"
+  providerPaymentId String               @unique
   providerOrderId   String?
-  status            String   @default("pending") // pending, captured, refunded, failed
-  plan              String   // "plus" | "enterprise"
+  status            String               @default("pending") // pending, captured, refunded, failed
+  plan              String               // "plus" | "enterprise"
   affiliateCode     String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  commission        AffiliateCommission?
 
   @@index([userId])
   @@index([providerPaymentId])
   @@index([status])
+}
+
+// Affiliate commission tracking (one per referred payment)
+model AffiliateCommission {
+  id            String                 @id @default(cuid())
+  paymentId     String                 @unique
+  payment       Payment                @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  affiliateCode String
+  partnershipId String
+  partnership   PartnershipApplication @relation(fields: [partnershipId], references: [id], onDelete: Cascade)
+  amount        Float                  // 5% of payment amount
+  currency      String                 @default("INR")
+  status        String                 @default("pending") // pending, eligible, paid, reversed
+  eligibleAt    DateTime               // createdAt + 30 days; payout only allowed after this
+  reversedAt    DateTime?
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  @@index([affiliateCode])
+  @@index([partnershipId])
+  @@index([status])
+  @@index([eligibleAt])
+  @@index([createdAt])
+}
+
+// Affiliate payout records via Razorpay X
+model AffiliatePayout {
+  id                    String                 @id @default(cuid())
+  partnershipId         String
+  partnership           PartnershipApplication @relation(fields: [partnershipId], references: [id], onDelete: Cascade)
+  amount                Float
+  currency              String                 @default("INR")
+  status                String                 @default("pending") // pending, processing, paid, failed
+  payoutMethod          String?                // "upi" | "bank_transfer"
+  razorpayPayoutId      String?                @unique
+  razorpayContactId     String?
+  razorpayFundAccountId String?
+  transactionRef        String?                // UTR from Razorpay
+  initiatedBy           String?                // admin email
+  initiatedAt           DateTime?
+  paidAt                DateTime?
+  failedAt              DateTime?
+  failureReason         String?
+  notes                 String?                @db.Text
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  @@index([partnershipId])
+  @@index([status])
+  @@index([createdAt])
 }
 
 // Per-generation cost, token usage, and latency tracking
@@ -909,9 +981,59 @@ model GenerationLog {
   fallbackModel    String?
   errorMessage     String?    @db.Text
   generationId     String?    // OpenRouter generation ID for cost lookup
+  creditsDeducted  Float?     // credits deducted from user for this generation
   createdAt        DateTime   @default(now())
 
   @@index([projectId, createdAt])
   @@index([userId, createdAt])
   @@index([provider, createdAt])
+}
+
+// Intern Stipend Payout tracking
+model StipendPayout {
+  id              String            @id @default(cuid())
+  fellowId        String
+  fellow          InternFellow      @relation(fields: [fellowId], references: [id], onDelete: Cascade)
+  taskId          String?
+  task            InternTask?       @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  milestoneId     String?
+  milestone       InternMilestone?  @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  amount          Int               // Amount in rupees
+  currency        String            @default("INR")
+  status          String            @default("pending") // pending, processing, paid, failed, cancelled
+  paymentMethod   String?           // bank_transfer, upi, razorpay_x
+  transactionRef  String?           // UTR or external transaction ID
+  approvedBy      String?           // Admin email
+  approvedAt      DateTime?
+  paidAt          DateTime?
+  failedAt        DateTime?
+  failureReason   String?
+  razorpayPayoutId String?          @unique
+  notes           String?           @db.Text
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@unique([taskId, fellowId])
+  @@unique([milestoneId, fellowId])
+  @@index([fellowId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// Intern bank/UPI details for receiving stipend payouts
+model InternPaymentDetails {
+  id                String       @id @default(cuid())
+  fellowId          String       @unique
+  fellow            InternFellow @relation(fields: [fellowId], references: [id], onDelete: Cascade)
+  upiId             String?
+  bankName          String?
+  accountNumber     String?      // Encrypted at application level
+  ifscCode          String?
+  accountHolderName String?
+  razorpayContactId  String?     // Cached Razorpay X Contact ID
+  razorpayFundAcctId String?     // Cached Razorpay X Fund Account ID
+  isVerified        Boolean      @default(false)
+  verifiedAt        DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
 }

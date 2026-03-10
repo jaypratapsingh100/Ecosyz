@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing payment details' }, { status: 400 });
     }
 
-    if (!plan || !['plus', 'enterprise'].includes(plan.toLowerCase())) {
+    if (!plan || !['basic', 'plus', 'enterprise'].includes(plan.toLowerCase())) {
       return NextResponse.json({ error: 'Invalid plan' }, { status: 400 });
     }
 
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, message: 'Payment already processed', plan });
     }
 
-    const amount = plan.toLowerCase() === 'plus' ? 999 : 0;
+    const amount = plan.toLowerCase() === 'plus' ? 999 : plan.toLowerCase() === 'basic' ? 200 : 0;
 
     await activateSubscription(
       prismaUser.id,

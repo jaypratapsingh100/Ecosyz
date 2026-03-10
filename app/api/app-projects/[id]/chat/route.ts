@@ -20,6 +20,7 @@ import { buildAppBuilderPrompts } from '@/lib/app-builder/contextBuilder';
 import { validateProjectFiles, checkComponentStructureAndStyling } from '../../../../../src/lib/utils/validateJSX';
 import { createSSEStream, sseResponse } from '@/lib/app-builder/sse';
 import { enforceGenerationLimit } from '@/lib/app-builder/usage';
+import { checkCreditBalance } from '@/lib/app-builder/credits';
 import { getFallbackRoute, isRetryableError } from '@/lib/app-builder/model-router';
 import { trackGeneration, createGenerationTimer } from '@/lib/app-builder/pipeline/generation-tracker';
 import { runGenerationPipeline } from '@/lib/app-builder/pipeline/generation-pipeline';
@@ -318,6 +319,21 @@ export async function POST(
     );
     if (limitViolation) {
       return NextResponse.json(limitViolation.body, { status: limitViolation.status });
+    }
+
+    // Check credit balance
+    const creditViolation = await checkCreditBalance(
+      prismaUser.id,
+      {
+        subscriptionPlan: (prismaUser as any).subscriptionPlan ?? null,
+        subscriptionStatus: (prismaUser as any).subscriptionStatus ?? null,
+        subscriptionEndDate: (prismaUser as any).subscriptionEndDate ?? null,
+        trialStartDate: (prismaUser as any).trialStartDate ?? null,
+        trialEndDate: (prismaUser as any).trialEndDate ?? null,
+      }
+    );
+    if (creditViolation) {
+      return NextResponse.json(creditViolation.body, { status: creditViolation.status });
     }
 
     // ============================================

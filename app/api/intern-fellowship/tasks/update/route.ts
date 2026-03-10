@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'taskId is required' }, { status: 400 });
     }
 
-    const allowedStatuses = ['in_progress', 'submitted', 'completed'];
+    const allowedStatuses = ['in_progress', 'submitted']; // 'approved'/'completed' are admin-only via /api/admin/interns/tasks/review
     if (status && !allowedStatuses.includes(status)) {
       return NextResponse.json(
         { error: `Invalid status. Allowed: ${allowedStatuses.join(', ')}` },

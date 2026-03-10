@@ -12,9 +12,10 @@ const AFFILIATE_STORAGE_KEY = 'ecosyz_affiliate_code'
 
 type PaymentProvider = 'razorpay' | 'stripe'
 
-function Tier({ title, price, description, features, ctaHref, isPopular, isPaid, onSubscribe, subscribing }: {
+function Tier({ title, price, priceUsd, description, features, ctaHref, isPopular, isPaid, onSubscribe, subscribing }: {
   title: string;
   price: string;
+  priceUsd?: string;
   description: string;
   features: string[];
   ctaHref?: string;
@@ -51,6 +52,9 @@ function Tier({ title, price, description, features, ctaHref, isPopular, isPaid,
           <span className="text-4xl font-bold text-white">{price}</span>
           {price !== 'Custom' && <span className="text-gray-400 ml-1">/month</span>}
         </div>
+        {priceUsd && (
+          <p className="text-sm text-gray-500 mt-1">{priceUsd}/month</p>
+        )}
       </div>
       <ul className="space-y-3 text-sm flex-1 mb-6">
         {features.map((feature) => (
@@ -68,7 +72,7 @@ function Tier({ title, price, description, features, ctaHref, isPopular, isPaid,
           disabled={subscribing}
           className={btnClass}
         >
-          {subscribing ? 'Processing...' : `Subscribe for ${price}/month`}
+          {subscribing ? 'Processing...' : `Subscribe for ${price}${priceUsd ? ` (${priceUsd})` : ''}/month`}
         </button>
       ) : ctaHref?.includes('contact') ? (
         <Link href={ctaHref || '/contact'} className={btnClass}>
@@ -168,7 +172,7 @@ function PricingContent() {
       const options = {
         key: data.key,
         amount: data.amount,
-        currency: data.currency || 'INR',
+        currency: 'INR',
         name: 'Open Idea',
         description: `${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan - Monthly`,
         order_id: data.orderId,
@@ -198,6 +202,9 @@ function PricingContent() {
           }
         },
         theme: { color: '#10b981' },
+        display: {
+          hide: [{ method: 'currency_conversion' }],
+        },
       }
 
       const rzp = new window.Razorpay(options)
@@ -214,6 +221,7 @@ function PricingContent() {
     {
       title: "Free",
       price: "₹0",
+      priceUsd: "$0",
       description: "Basic access for individuals getting started",
       features: [
         "3 workspaces",
@@ -226,8 +234,24 @@ function PricingContent() {
       ctaHref: "/auth?plan=free"
     },
     {
+      title: "Basic",
+      price: "₹200",
+      priceUsd: "$2.50",
+      description: "Essential tools for getting more done",
+      features: [
+        "Everything in Free",
+        "5 workspaces",
+        "Enhanced AI search",
+        "Priority support",
+        "2GB storage per workspace"
+      ],
+      isPaid: true,
+      planId: "basic"
+    },
+    {
       title: "Plus",
       price: "₹999",
+      priceUsd: "$12",
       description: "Enhanced capabilities for power users",
       features: [
         "Everything in Free",
@@ -239,7 +263,8 @@ function PricingContent() {
         "API access (100K requests/month)"
       ],
       isPaid: true,
-      isPopular: true
+      isPopular: true,
+      planId: "plus"
     },
     {
       title: "Enterprise",
@@ -342,7 +367,7 @@ function PricingContent() {
               <Tier
                 key={tier.title}
                 {...tier}
-                onSubscribe={tier.isPaid ? () => handleSubscribe('plus') : undefined}
+                onSubscribe={tier.isPaid && tier.planId ? () => handleSubscribe(tier.planId!) : undefined}
                 subscribing={subscribing}
               />
             ))}

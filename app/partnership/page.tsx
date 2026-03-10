@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -29,12 +29,30 @@ const BENEFITS = [
 export default function PartnershipPage() {
   const [showApplyModal, setShowApplyModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [isApprovedPartner, setIsApprovedPartner] = useState(false);
+  const [affiliateCode, setAffiliateCode] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     linkedin: '',
     coverNote: '',
   });
+
+  // Check if current user is an approved partner
+  useEffect(() => {
+    fetch('/api/partnership/commissions')
+      .then((res) => {
+        if (res.ok) return res.json();
+        return null;
+      })
+      .then((data) => {
+        if (data?.affiliateCode) {
+          setIsApprovedPartner(true);
+          setAffiliateCode(data.affiliateCode);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleApplySubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -174,25 +192,53 @@ export default function PartnershipPage() {
               transition={{ delay: 0.4, duration: 0.5 }}
               className="text-center pt-12 border-t border-white/10"
             >
-              <h3 className="text-xl font-semibold text-emerald-400 mb-4">Ready to become an affiliate?</h3>
-              <p className="text-teal-100/70 text-sm mb-6 max-w-xl mx-auto">
-                Apply now. We&apos;ll review your application and send you your unique referral link and dashboard access.
-              </p>
-              <div className="flex flex-wrap justify-center gap-4">
-                <button
-                  onClick={() => setShowApplyModal(true)}
-                  disabled={submitting}
-                  className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-gray-900 font-semibold rounded-lg hover:scale-[1.02] hover:shadow-lg hover:shadow-emerald-500/25 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {submitting ? 'Sending...' : 'Apply for Partnership'}
-                </button>
-                <Link
-                  href="/contact?enquiry=partnership"
-                  className="inline-flex items-center justify-center px-6 py-3 border border-white/20 text-teal-100/80 font-medium rounded-lg hover:bg-white/10 hover:border-emerald-500/30 transition text-sm backdrop-blur-sm"
-                >
-                  Contact us
-                </Link>
-              </div>
+              {isApprovedPartner ? (
+                <>
+                  <h3 className="text-xl font-semibold text-emerald-400 mb-4">Welcome back, Partner!</h3>
+                  <p className="text-teal-100/70 text-sm mb-3 max-w-xl mx-auto">
+                    Your affiliate code: <code className="px-2 py-1 bg-emerald-500/20 text-emerald-400 rounded text-sm font-mono">{affiliateCode}</code>
+                  </p>
+                  <p className="text-teal-100/50 text-xs mb-6 max-w-xl mx-auto">
+                    View your commissions, set up payout details, and track earnings on your dashboard.
+                  </p>
+                  <div className="flex flex-wrap justify-center gap-4">
+                    <Link
+                      href="/partnership/dashboard"
+                      className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-gray-900 font-semibold rounded-lg hover:scale-[1.02] hover:shadow-lg hover:shadow-emerald-500/25 transition-all text-sm"
+                    >
+                      Go to Dashboard
+                    </Link>
+                    <Link
+                      href={`/pricing?ref=${affiliateCode}`}
+                      className="inline-flex items-center justify-center px-6 py-3 border border-white/20 text-teal-100/80 font-medium rounded-lg hover:bg-white/10 hover:border-emerald-500/30 transition text-sm backdrop-blur-sm"
+                    >
+                      Copy Referral Link
+                    </Link>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h3 className="text-xl font-semibold text-emerald-400 mb-4">Ready to become an affiliate?</h3>
+                  <p className="text-teal-100/70 text-sm mb-6 max-w-xl mx-auto">
+                    Apply now. We&apos;ll review your application and send you your unique referral link and dashboard access.
+                  </p>
+                  <div className="flex flex-wrap justify-center gap-4">
+                    <button
+                      onClick={() => setShowApplyModal(true)}
+                      disabled={submitting}
+                      className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-gray-900 font-semibold rounded-lg hover:scale-[1.02] hover:shadow-lg hover:shadow-emerald-500/25 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {submitting ? 'Sending...' : 'Apply for Partnership'}
+                    </button>
+                    <Link
+                      href="/contact?enquiry=partnership"
+                      className="inline-flex items-center justify-center px-6 py-3 border border-white/20 text-teal-100/80 font-medium rounded-lg hover:bg-white/10 hover:border-emerald-500/30 transition text-sm backdrop-blur-sm"
+                    >
+                      Contact us
+                    </Link>
+                  </div>
+                </>
+              )}
             </motion.section>
           </div>
         </section>

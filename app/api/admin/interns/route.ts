@@ -21,6 +21,10 @@ export async function GET() {
         user: { select: { id: true, name: true, email: true, avatarUrl: true } },
         track: true,
         tasks: { orderBy: { createdAt: 'desc' } },
+        payouts: {
+          where: { status: 'pending' },
+          select: { id: true, amount: true },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -30,6 +34,8 @@ export async function GET() {
       unlockedMilestoneIds: Array.isArray(f.unlockedMilestoneIds)
         ? f.unlockedMilestoneIds
         : [],
+      pendingPayoutsCount: f.payouts.length,
+      pendingPayoutsAmount: f.payouts.reduce((sum, p) => sum + p.amount, 0),
     }));
 
     return NextResponse.json({ fellows: mapped });

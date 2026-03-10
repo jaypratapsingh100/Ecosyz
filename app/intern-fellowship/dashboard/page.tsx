@@ -26,6 +26,10 @@ import {
   Send,
   ChevronDown,
   ChevronRight,
+  Wallet,
+  IndianRupee,
+  CreditCard,
+  Edit3,
 } from 'lucide-react';
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string }> = {
@@ -262,6 +266,29 @@ type Fellow = {
   tasks: Task[];
 };
 
+type PaymentDetails = {
+  id: string;
+  upiId: string | null;
+  bankName: string | null;
+  accountNumber: string | null;
+  ifscCode: string | null;
+  accountHolderName: string | null;
+  isVerified: boolean;
+  updatedAt: string;
+} | null;
+
+type Payout = {
+  id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  transactionRef: string | null;
+  paidAt: string | null;
+  createdAt: string;
+  task: { id: string; title: string } | null;
+  milestone: { id: string; title: string } | null;
+};
+
 export default function InternDashboardPage() {
   const router = useRouter();
   const { isAuthenticated, isLoading } = useAuthCheck();
@@ -272,6 +299,13 @@ export default function InternDashboardPage() {
   const [selectedTrack, setSelectedTrack] = useState('');
   const [activeSubTrack, setActiveSubTrack] = useState<string | null>(null);
   const [collapsedMilestoneIds, setCollapsedMilestoneIds] = useState<Set<string>>(new Set());
+  const [paymentDetails, setPaymentDetails] = useState<PaymentDetails>(null);
+  const [payouts, setPayouts] = useState<Payout[]>([]);
+  const [totalEarned, setTotalEarned] = useState(0);
+  const [totalPending, setTotalPending] = useState(0);
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [paymentForm, setPaymentForm] = useState({ upiId: '', bankName: '', accountNumber: '', ifscCode: '', accountHolderName: '' });
+  const [savingPayment, setSavingPayment] = useState(false);
 
   const toggleMilestone = (id: string) => {
     setCollapsedMilestoneIds((prev) => {
@@ -289,6 +323,8 @@ export default function InternDashboardPage() {
     }
     if (isAuthenticated) {
       fetchFellow();
+      fetchPaymentDetails();
+      fetchPayouts();
     }
   }, [isAuthenticated, isLoading, router]);
 
@@ -302,6 +338,55 @@ export default function InternDashboardPage() {
       setFellow(null);
     } finally {
       setLoadingFellow(false);
+    }
+  };
+
+  const fetchPaymentDetails = async () => {
+    try {
+      const res = await fetch('/api/intern-fellowship/payment-details');
+      const data = await res.json();
+      if (res.ok) setPaymentDetails(data.details);
+    } catch { /* ignore */ }
+  };
+
+  const fetchPayouts = async () => {
+    try {
+      const res = await fetch('/api/intern-fellowship/payouts');
+      const data = await res.json();
+      if (res.ok) {
+        setPayouts(data.payouts || []);
+        setTotalEarned(data.totalEarned || 0);
+        setTotalPending(data.totalPending || 0);
+      }
+    } catch { /* ignore */ }
+  };
+
+  const handleSavePaymentDetails = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingPayment(true);
+    try {
+      const body: Record<string, string> = {};
+      if (paymentForm.upiId) body.upiId = paymentForm.upiId;
+      if (paymentForm.bankName) body.bankName = paymentForm.bankName;
+      if (paymentForm.accountNumber) body.accountNumber = paymentForm.accountNumber;
+      if (paymentForm.ifscCode) body.ifscCode = paymentForm.ifscCode;
+      if (paymentForm.accountHolderName) body.accountHolderName = paymentForm.accountHolderName;
+
+      const res = await fetch('/api/intern-fellowship/payment-details', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save');
+      setPaymentDetails(data.details);
+      setShowPaymentForm(false);
+      setPaymentForm({ upiId: '', bankName: '', accountNumber: '', ifscCode: '', accountHolderName: '' });
+      toast.success('Payment details saved!');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to save payment details');
+    } finally {
+      setSavingPayment(false);
     }
   };
 
@@ -566,6 +651,200 @@ export default function InternDashboardPage() {
                         {uploadingResume ? 'Uploading...' : 'Upload'}
                       </button>
                     </form>
+                  </motion.div>
+                )}
+
+                {/* Payment Details */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.12 }}
+                  className="rounded-xl border border-white/20 bg-white/10 backdrop-blur-xl p-6 mb-6"
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold text-[#38bdf8] flex items-center gap-2">
+                      <CreditCard className="w-5 h-5" />
+                      Payment details
+                    </h3>
+                    {paymentDetails && !showPaymentForm && (
+                      <button
+                        onClick={() => {
+                          setPaymentForm({
+                            upiId: paymentDetails.upiId || '',
+                            bankName: paymentDetails.bankName || '',
+                            accountNumber: '',
+                            ifscCode: paymentDetails.ifscCode || '',
+                            accountHolderName: paymentDetails.accountHolderName || '',
+                          });
+                          setShowPaymentForm(true);
+                        }}
+                        className="flex items-center gap-1 text-xs text-[#38bdf8] hover:text-[#0ff0fc] transition-colors"
+                      >
+                        <Edit3 className="w-3 h-3" /> Edit
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-teal-100/70 text-sm mb-4">
+                    Add your UPI ID or bank details to receive stipend payouts.
+                  </p>
+
+                  {paymentDetails && !showPaymentForm ? (
+                    <div className="space-y-2 text-sm">
+                      {paymentDetails.upiId && (
+                        <div className="flex justify-between px-3 py-2 rounded-lg bg-zinc-800/60">
+                          <span className="text-teal-100/60">UPI ID</span>
+                          <span className="text-teal-100 font-medium">{paymentDetails.upiId}</span>
+                        </div>
+                      )}
+                      {paymentDetails.bankName && (
+                        <div className="flex justify-between px-3 py-2 rounded-lg bg-zinc-800/60">
+                          <span className="text-teal-100/60">Bank</span>
+                          <span className="text-teal-100 font-medium">{paymentDetails.bankName}</span>
+                        </div>
+                      )}
+                      {paymentDetails.accountNumber && (
+                        <div className="flex justify-between px-3 py-2 rounded-lg bg-zinc-800/60">
+                          <span className="text-teal-100/60">Account</span>
+                          <span className="text-teal-100 font-medium">{paymentDetails.accountNumber}</span>
+                        </div>
+                      )}
+                      {paymentDetails.ifscCode && (
+                        <div className="flex justify-between px-3 py-2 rounded-lg bg-zinc-800/60">
+                          <span className="text-teal-100/60">IFSC</span>
+                          <span className="text-teal-100 font-medium">{paymentDetails.ifscCode}</span>
+                        </div>
+                      )}
+                      {paymentDetails.accountHolderName && (
+                        <div className="flex justify-between px-3 py-2 rounded-lg bg-zinc-800/60">
+                          <span className="text-teal-100/60">Name</span>
+                          <span className="text-teal-100 font-medium">{paymentDetails.accountHolderName}</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <form onSubmit={handleSavePaymentDetails} className="space-y-3">
+                      <div>
+                        <label className="text-xs text-teal-100/60 block mb-1">UPI ID</label>
+                        <input
+                          type="text"
+                          placeholder="yourname@upi"
+                          value={paymentForm.upiId}
+                          onChange={(e) => setPaymentForm((p) => ({ ...p, upiId: e.target.value }))}
+                          className="w-full px-3 py-2 text-sm rounded-lg bg-zinc-800/80 border border-zinc-600/50 text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-[#38bdf8]/50"
+                        />
+                      </div>
+                      <div className="border-t border-zinc-700/50 pt-3">
+                        <p className="text-xs text-teal-100/50 mb-2">Or add bank details:</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-xs text-teal-100/60 block mb-1">Bank name</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. SBI"
+                              value={paymentForm.bankName}
+                              onChange={(e) => setPaymentForm((p) => ({ ...p, bankName: e.target.value }))}
+                              className="w-full px-3 py-2 text-sm rounded-lg bg-zinc-800/80 border border-zinc-600/50 text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-[#38bdf8]/50"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-teal-100/60 block mb-1">Account number</label>
+                            <input
+                              type="text"
+                              placeholder="Account number"
+                              value={paymentForm.accountNumber}
+                              onChange={(e) => setPaymentForm((p) => ({ ...p, accountNumber: e.target.value }))}
+                              className="w-full px-3 py-2 text-sm rounded-lg bg-zinc-800/80 border border-zinc-600/50 text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-[#38bdf8]/50"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-teal-100/60 block mb-1">IFSC code</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. SBIN0001234"
+                              value={paymentForm.ifscCode}
+                              onChange={(e) => setPaymentForm((p) => ({ ...p, ifscCode: e.target.value }))}
+                              className="w-full px-3 py-2 text-sm rounded-lg bg-zinc-800/80 border border-zinc-600/50 text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-[#38bdf8]/50"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-teal-100/60 block mb-1">Account holder name</label>
+                            <input
+                              type="text"
+                              placeholder="Full name as on bank account"
+                              value={paymentForm.accountHolderName}
+                              onChange={(e) => setPaymentForm((p) => ({ ...p, accountHolderName: e.target.value }))}
+                              className="w-full px-3 py-2 text-sm rounded-lg bg-zinc-800/80 border border-zinc-600/50 text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-[#38bdf8]/50"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="submit"
+                          disabled={savingPayment || (!paymentForm.upiId && !paymentForm.accountNumber)}
+                          className="px-4 py-2 bg-[#38bdf8] text-gray-900 font-semibold rounded-lg hover:bg-[#0ff0fc] transition disabled:opacity-50 text-sm"
+                        >
+                          {savingPayment ? 'Saving...' : 'Save details'}
+                        </button>
+                        {showPaymentForm && (
+                          <button
+                            type="button"
+                            onClick={() => setShowPaymentForm(false)}
+                            className="px-4 py-2 text-teal-100/60 hover:text-teal-100 text-sm"
+                          >
+                            Cancel
+                          </button>
+                        )}
+                      </div>
+                    </form>
+                  )}
+                </motion.div>
+
+                {/* Payout History */}
+                {payouts.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.14 }}
+                    className="rounded-xl border border-white/20 bg-white/10 backdrop-blur-xl p-6 mb-6"
+                  >
+                    <h3 className="font-semibold text-[#38bdf8] flex items-center gap-2 mb-4">
+                      <Wallet className="w-5 h-5" />
+                      Stipend payouts
+                    </h3>
+                    <div className="grid grid-cols-2 gap-3 mb-4">
+                      <div className="rounded-lg bg-zinc-800/60 p-3 text-center">
+                        <p className="text-xl font-bold text-emerald-400 flex items-center justify-center gap-1"><IndianRupee className="w-4 h-4" />{totalEarned}</p>
+                        <p className="text-xs text-teal-100/60">Total earned</p>
+                      </div>
+                      <div className="rounded-lg bg-zinc-800/60 p-3 text-center">
+                        <p className="text-xl font-bold text-amber-400 flex items-center justify-center gap-1"><IndianRupee className="w-4 h-4" />{totalPending}</p>
+                        <p className="text-xs text-teal-100/60">Pending</p>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {payouts.map((p) => (
+                        <div key={p.id} className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-zinc-800/60">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-teal-100 truncate">
+                              {p.task?.title || p.milestone?.title || 'Stipend'}
+                            </p>
+                            <p className="text-xs text-teal-100/50">
+                              {p.task ? 'Task' : 'Milestone'} &middot; {new Date(p.createdAt).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <span className="text-sm font-semibold text-[#0ff0fc]">₹{p.amount}</span>
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                            p.status === 'paid' ? 'bg-emerald-400/20 text-emerald-400' :
+                            p.status === 'failed' ? 'bg-red-400/20 text-red-400' :
+                            p.status === 'processing' ? 'bg-purple-400/20 text-purple-400' :
+                            'bg-amber-400/20 text-amber-400'
+                          }`}>
+                            {p.status}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </motion.div>
                 )}
 

@@ -90,11 +90,29 @@ const PROVIDER_BG: Record<string, string> = {
   anthropic: 'bg-amber-500/20',
 };
 
+const USD_TO_INR = 85;
+
 function formatCost(cost: number): string {
   if (cost === 0) return '$0.00';
   if (cost < 0.01) return `$${cost.toFixed(6)}`;
   if (cost < 1) return `$${cost.toFixed(4)}`;
   return `$${cost.toFixed(2)}`;
+}
+
+function formatCostInr(cost: number): string {
+  const inr = cost * USD_TO_INR;
+  if (inr === 0) return '₹0.00';
+  if (inr < 1) return `₹${inr.toFixed(4)}`;
+  return `₹${inr.toFixed(2)}`;
+}
+
+function DualCost({ cost, className = '' }: { cost: number; className?: string }) {
+  return (
+    <span className={className}>
+      <span className="text-white">{formatCost(cost)}</span>
+      <span className="text-slate-500 ml-1">({formatCostInr(cost)})</span>
+    </span>
+  );
 }
 
 function formatTokens(tokens: number): string {
@@ -150,7 +168,7 @@ function UserRow({ entry }: { entry: UserCostEntry }) {
         </td>
         <td className="px-4 py-3 text-right text-slate-300 tabular-nums text-xs">{entry.projects.length}</td>
         <td className="px-4 py-3 text-right text-slate-300 tabular-nums text-xs">{entry.totalGenerations.toLocaleString()}</td>
-        <td className="px-4 py-3 text-right text-white font-medium tabular-nums text-xs">{formatCost(entry.totalCostUsd)}</td>
+        <td className="px-4 py-3 text-right tabular-nums text-xs"><DualCost cost={entry.totalCostUsd} /></td>
         <td className="px-4 py-3 text-right text-slate-300 tabular-nums text-xs">{formatTokens(entry.totalTokens)}</td>
       </tr>
       {open && entry.projects.map((proj) => (
@@ -186,7 +204,7 @@ function UserRow({ entry }: { entry: UserCostEntry }) {
           </td>
           <td className="px-4 py-2.5 text-right text-slate-400 tabular-nums text-[11px]">—</td>
           <td className="px-4 py-2.5 text-right text-slate-400 tabular-nums text-[11px]">{proj.generations}</td>
-          <td className="px-4 py-2.5 text-right text-slate-300 tabular-nums text-[11px]">{formatCost(proj.costUsd)}</td>
+          <td className="px-4 py-2.5 text-right tabular-nums text-[11px]"><DualCost cost={proj.costUsd} /></td>
           <td className="px-4 py-2.5 text-right text-slate-400 tabular-nums text-[11px]">
             {formatTokens(proj.totalTokens)}
             <span className="text-slate-600 ml-1">({formatLatency(proj.avgLatencyMs)} avg)</span>
@@ -341,7 +359,7 @@ export default function AdminGenerationCostsPage() {
           <div className="w-full p-4 sm:p-6 lg:p-8 space-y-6">
             {/* Summary cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <StatCard label="Total Cost" value={formatCost(totals.cost)} sub={tab === 'today' ? 'today' : 'this month'} icon={DollarSign} color="text-violet-400" />
+              <StatCard label="Total Cost" value={formatCost(totals.cost)} sub={`${formatCostInr(totals.cost)} · ${tab === 'today' ? 'today' : 'this month'}`} icon={DollarSign} color="text-violet-400" />
               <StatCard label="Total Tokens" value={formatTokens(totals.tokens)} sub={`${formatTokens(activeStats.reduce((s, r) => s + r.inputTokens, 0))} in / ${formatTokens(activeStats.reduce((s, r) => s + r.outputTokens, 0))} out`} icon={Hash} color="text-cyan-400" />
               <StatCard label="Generations" value={totals.generations.toLocaleString()} icon={Zap} color="text-emerald-400" />
               <StatCard label="Avg Latency" value={formatLatency(totals.avgLatency)} icon={Clock} color="text-amber-400" />
@@ -376,7 +394,7 @@ export default function AdminGenerationCostsPage() {
                           </span>
                         </td>
                         <td className="px-4 py-2.5 text-right text-slate-300 tabular-nums">{row.generations.toLocaleString()}</td>
-                        <td className="px-4 py-2.5 text-right text-white font-medium tabular-nums">{formatCost(row.costUsd)}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums"><DualCost cost={row.costUsd} /></td>
                         <td className="px-4 py-2.5 text-right text-slate-300 tabular-nums">{formatTokens(row.inputTokens)}</td>
                         <td className="px-4 py-2.5 text-right text-slate-300 tabular-nums">{formatTokens(row.outputTokens)}</td>
                         <td className="px-4 py-2.5 text-right text-slate-300 tabular-nums">{formatLatency(row.avgLatencyMs)}</td>
@@ -441,7 +459,7 @@ export default function AdminGenerationCostsPage() {
                           {row.model.replace(`${row.provider}/`, '')}
                         </td>
                         <td className="px-4 py-2 text-right text-slate-300 tabular-nums">{row.generations}</td>
-                        <td className="px-4 py-2 text-right text-white tabular-nums">{formatCost(row.costUsd)}</td>
+                        <td className="px-4 py-2 text-right tabular-nums"><DualCost cost={row.costUsd} /></td>
                         <td className="px-4 py-2 text-right text-slate-400 tabular-nums">{formatLatency(row.avgLatencyMs)}</td>
                       </tr>
                     ))}
@@ -505,7 +523,7 @@ export default function AdminGenerationCostsPage() {
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums">
                           {log.costUsd != null ? (
-                            <span className="text-white">{formatCost(log.costUsd)}</span>
+                            <DualCost cost={log.costUsd} />
                           ) : (
                             <span className="text-slate-500">—</span>
                           )}

@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, message: 'Already processed', plan });
     }
 
-    const amount = plan.toLowerCase() === 'plus' ? 999 : 0;
+    const amount = plan.toLowerCase() === 'plus' ? 999 : plan.toLowerCase() === 'basic' ? 200 : 0;
 
     await activateSubscription(
       prismaUser.id,

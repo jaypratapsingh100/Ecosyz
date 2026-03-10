@@ -6,6 +6,7 @@ import Footer from '../components/Footer';
 import { Container } from '../components/ui/Container';
 import ProfileForm from '../components/profile/ProfileForm';
 import SubscriptionSection from '../components/profile/SubscriptionSection';
+import CreditsSection from '../components/profile/CreditsSection';
 
 export const dynamic = 'force-dynamic';
 
@@ -206,6 +207,7 @@ export default async function ProfilePage() {
                   )}
                 </div>
 
+                <CreditsSection />
                 <SubscriptionSection subscription={subscription} />
               </div>
             </div>

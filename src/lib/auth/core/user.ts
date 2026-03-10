@@ -5,6 +5,7 @@
 
 import { User as SupabaseUser } from '@supabase/supabase-js';
 import { prisma } from '@/src/lib/db';
+import { allocateInitialCredits } from '@/lib/app-builder/credits';
 
 /**
  * Ensure user has exactly one workspace (create if doesn't exist, consolidate if multiple exist)
@@ -132,6 +133,11 @@ export async function ensureUserInDb(
         },
       });
       prismaUserId = newUser.id;
+
+      // Allocate initial free credits (fire-and-forget)
+      allocateInitialCredits(prismaUserId).catch((err) =>
+        console.error('[credits] Failed to allocate initial credits:', err)
+      );
     }
 
     if (ensureWorkspace) {

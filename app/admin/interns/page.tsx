@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Users, Plus, Loader2, LogIn, FileText, Target, Calendar, ChevronDown, ChevronUp, ChevronRight, Flag, Briefcase, Trash2, Lock, Unlock, Database } from 'lucide-react';
+import { Users, Plus, Loader2, LogIn, FileText, Target, Calendar, ChevronDown, ChevronUp, ChevronRight, Flag, Briefcase, Trash2, Lock, Unlock, Database, IndianRupee, CheckCircle2, XCircle } from 'lucide-react';
 import { INTERN_TRACKS } from '@/lib/intern-tracks';
 
 type Task = {
@@ -283,6 +283,25 @@ export default function AdminInternsPage() {
     });
   };
 
+  const handleReviewTask = async (taskId: string, action: 'approve' | 'reject', note?: string) => {
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/admin/interns/tasks/review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId, action, note }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      alert(data.message || 'Done');
+      loadData();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Failed to review task');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleApproveFellow = async (fellowId: string) => {
     try {
       const res = await fetch('/api/admin/interns/approve', {
@@ -432,6 +451,14 @@ export default function AdminInternsPage() {
           {seeding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Database className="w-4 h-4" />}
           {seeding ? 'Seeding...' : 'Seed Whitepaper Data'}
         </button>
+
+        <Link
+          href="/admin/interns/payouts"
+          className="px-4 py-2 bg-emerald-500/20 text-emerald-400 rounded-lg hover:bg-emerald-500/30 flex items-center gap-2 font-medium"
+        >
+          <IndianRupee className="w-4 h-4" />
+          Payouts Dashboard
+        </Link>
       </div>
 
       {/* Seed result banner */}
@@ -910,6 +937,41 @@ export default function AdminInternsPage() {
                           <span className={`px-2 py-1 text-xs rounded ${f.status === 'pending_approval' ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-700 text-slate-300'}`}>{f.status}</span>
                         </div>
                       </div>
+                      {/* Submitted tasks for review */}
+                      {f.tasks.filter((t) => t.status === 'submitted').length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-slate-700/50">
+                          <p className="text-xs text-amber-400 mb-2 font-medium">Tasks awaiting review:</p>
+                          <div className="space-y-1.5">
+                            {f.tasks.filter((t) => t.status === 'submitted').map((t) => (
+                              <div key={t.id} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded bg-amber-500/10 border border-amber-500/20">
+                                <span className="text-sm text-slate-300 truncate">{t.title}</span>
+                                <div className="flex gap-1 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleReviewTask(t.id, 'approve')}
+                                    disabled={submitting}
+                                    className="px-2 py-0.5 text-xs bg-emerald-500/20 text-emerald-400 rounded hover:bg-emerald-500/30 flex items-center gap-1"
+                                  >
+                                    <CheckCircle2 className="w-3 h-3" /> Approve
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const note = prompt('Feedback for intern (optional):');
+                                      handleReviewTask(t.id, 'reject', note || undefined);
+                                    }}
+                                    disabled={submitting}
+                                    className="px-2 py-0.5 text-xs bg-red-500/20 text-red-400 rounded hover:bg-red-500/30 flex items-center gap-1"
+                                  >
+                                    <XCircle className="w-3 h-3" /> Reject
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Milestone unlock controls */}
                       {trackMilestones.length > 0 && (
                         <div className="mt-3 pt-3 border-t border-slate-700/50">
