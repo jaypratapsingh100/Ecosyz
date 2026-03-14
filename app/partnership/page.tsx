@@ -12,12 +12,12 @@ const BENEFITS = [
   {
     icon: '🤝',
     title: 'Become an Affiliate',
-    description: 'Get your unique affiliate code and link when approved. Share with your network—subscribers enter your code at checkout to give you 5%.',
+    description: 'Get your unique affiliate code and link when approved. Share with your network—subscribers enter your code at checkout.',
   },
   {
     icon: '💰',
-    title: '5% Commission',
-    description: 'Earn 5% commission for every subscription where your code is used. Subscribers enter your code on the pricing page before subscribing.',
+    title: 'Up to 10% Commission',
+    description: 'Start at 5% and earn up to 10% commission as you grow your referrals. Your tier upgrades automatically.',
   },
   {
     icon: '📈',
@@ -115,15 +115,15 @@ export default function PartnershipPage() {
                   Affiliate Partnership Program
                 </span>
                 <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight text-transparent bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 bg-clip-text mb-4">
-                  Earn 5% Commission on Every Subscription
+                  Earn Up to 10% Commission on Every Subscription
                 </h1>
                 <p className="text-center text-lg sm:text-xl text-teal-100/80 max-w-2xl mx-auto">
-                  Become an ECOSYZ affiliate. Get your unique code when approved—share it or your link. When subscribers enter your code at checkout, you earn 5%.
+                  Become an ECOSYZ affiliate. Get your unique code when approved—share it or your link. When subscribers enter your code at checkout, you earn commissions.
                 </p>
               </div>
               <div className="flex flex-wrap justify-center gap-6 text-sm text-teal-100/60">
                 <span>Free to join</span>
-                <span>5% commission per subscription</span>
+                <span>Up to 10% commission per subscription</span>
                 <span>Unique referral links</span>
               </div>
             </motion.div>
@@ -159,13 +159,27 @@ export default function PartnershipPage() {
             >
               <h2 className="text-2xl font-bold text-emerald-400 mb-6">Commission structure</h2>
               <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-xl p-6 shadow-lg">
-                <div className="flex items-center gap-4 mb-4">
-                  <span className="text-4xl">💵</span>
-                  <div>
-                    <h3 className="font-semibold text-emerald-400 text-lg">5% per subscription</h3>
-                    <p className="text-sm text-teal-100/80">
-                      When someone subscribes through your affiliate link, you earn 5% commission. No cap on how many subscribers you can refer.
-                    </p>
+                <p className="text-sm text-teal-100/80 mb-6">
+                  Earn more as you refer more subscribers. Your commission rate automatically increases when you hit referral milestones.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-4 text-center">
+                    <span className="text-2xl">🥉</span>
+                    <h4 className="text-amber-400 font-semibold mt-2">Bronze</h4>
+                    <p className="text-2xl font-bold text-white mt-1">5%</p>
+                    <p className="text-xs text-teal-100/60 mt-1">Default tier</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-400/20 bg-slate-400/5 p-4 text-center">
+                    <span className="text-2xl">🥈</span>
+                    <h4 className="text-slate-300 font-semibold mt-2">Silver</h4>
+                    <p className="text-2xl font-bold text-white mt-1">7%</p>
+                    <p className="text-xs text-teal-100/60 mt-1">10+ referrals</p>
+                  </div>
+                  <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-4 text-center">
+                    <span className="text-2xl">🥇</span>
+                    <h4 className="text-yellow-400 font-semibold mt-2">Gold</h4>
+                    <p className="text-2xl font-bold text-white mt-1">10%</p>
+                    <p className="text-xs text-teal-100/60 mt-1">25+ referrals</p>
                   </div>
                 </div>
                 <ul className="space-y-2 text-sm text-teal-100/80">
@@ -176,10 +190,10 @@ export default function PartnershipPage() {
                     <span className="text-emerald-400">✓</span> Share your link (e.g. /pricing?ref=YOURCODE) or code—subscribers enter it at checkout
                   </li>
                   <li className="flex items-center gap-2">
-                    <span className="text-emerald-400">✓</span> 5% commission credited when they subscribe with your code
+                    <span className="text-emerald-400">✓</span> Your tier upgrades automatically as you grow referrals
                   </li>
                   <li className="flex items-center gap-2">
-                    <span className="text-emerald-400">✓</span> Payouts processed regularly
+                    <span className="text-emerald-400">✓</span> Payouts processed regularly via UPI or bank transfer
                   </li>
                 </ul>
               </div>

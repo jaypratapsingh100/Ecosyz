@@ -64,7 +64,8 @@ export default function AINewsFeed() {
       try {
         const sessionRes = await fetch('/api/auth/session');
         if (cancelled) return;
-        if (!sessionRes.ok) {
+        const sessionData = sessionRes.ok ? await sessionRes.json() : null;
+        if (!sessionData?.user) {
           setAuthChecked(true);
           return;
         }

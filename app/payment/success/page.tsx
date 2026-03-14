@@ -162,10 +162,10 @@ function PaymentSuccessContent() {
               Start Building
             </Link>
             <Link
-              href="/profile"
+              href="/billing"
               className="px-6 py-3 bg-transparent border-2 border-emerald-500/50 text-emerald-400 rounded-lg font-semibold hover:border-emerald-500 transition-colors"
             >
-              View Profile
+              View Billing
             </Link>
           </div>
         </div>

@@ -18,6 +18,16 @@ export default function Hero() {
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<any>(null);
   const baseTextRef = useRef<string>('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{
+    name: string;
+    type: string;
+    size: number;
+    extractedText: string;
+    isImage?: boolean;
+    imageDataUrl?: string;
+  }>>([]);
+  const [isUploading, setIsUploading] = useState(false);
 
   const placeholderTexts = {
     discover: 'What would you like to discover?',
@@ -140,6 +150,48 @@ export default function Hero() {
     }
   };
 
+  // File upload handler
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploading(true);
+    setShowActionMenu(false);
+
+    for (const file of Array.from(files)) {
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const res = await fetch('/api/upload-file', { method: 'POST', body: formData });
+        const data = await res.json();
+
+        if (!res.ok) {
+          alert(data.error || 'Upload failed');
+          continue;
+        }
+
+        setUploadedFiles(prev => [...prev, {
+          name: data.fileName,
+          type: data.fileType,
+          size: data.fileSize,
+          extractedText: data.extractedText,
+          isImage: data.isImage,
+          imageDataUrl: data.imageDataUrl,
+        }]);
+      } catch {
+        alert(`Failed to upload ${file.name}`);
+      }
+    }
+
+    setIsUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const removeFile = (index: number) => {
+    setUploadedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
   // Typewriter animation for placeholder
   useEffect(() => {
     if (buildQuery || isListening) return; // Don't animate if user is typing or listening
@@ -189,22 +241,27 @@ export default function Hero() {
 
 
   const submitBuild = () => {
-    if (buildQuery.trim()) {
-      // Process search query first, then redirect
+    // Store file context in sessionStorage so destination pages can access it
+    if (uploadedFiles.length > 0) {
+      sessionStorage.setItem('uploadedFileContext', JSON.stringify(
+        uploadedFiles.map(f => ({ name: f.name, type: f.type, extractedText: f.extractedText, isImage: f.isImage }))
+      ));
+    } else {
+      sessionStorage.removeItem('uploadedFileContext');
+    }
+
+    if (buildQuery.trim() || uploadedFiles.length > 0) {
+      const q = buildQuery.trim();
       if (selectedAction === 'discover') {
-        router.push(`/openresources?q=${encodeURIComponent(buildQuery.trim())}`);
+        router.push(`/openresources?q=${encodeURIComponent(q)}`);
       } else if (selectedAction === 'build') {
-        // Redirect to studio with description to start chat wizard
-        router.push(`/studio?description=${encodeURIComponent(buildQuery.trim())}`);
+        router.push(`/studio?description=${encodeURIComponent(q)}`);
       } else if (selectedAction === 'projects') {
-        // Process search and redirect to projects with query
-        router.push(`/projects?q=${encodeURIComponent(buildQuery.trim())}`);
+        router.push(`/projects?q=${encodeURIComponent(q)}`);
       } else if (selectedAction === 'network') {
-        // Process search and redirect to network with query
-        router.push(`/coming-soon?q=${encodeURIComponent(buildQuery.trim())}`);
+        router.push(`/coming-soon?q=${encodeURIComponent(q)}`);
       }
     } else {
-      // No query - just navigate to the page without search
       if (selectedAction === 'projects') {
         router.push(`/projects`);
       } else if (selectedAction === 'network') {
@@ -212,7 +269,6 @@ export default function Hero() {
       } else if (selectedAction === 'discover') {
         router.push(`/openresources`);
       } else if (selectedAction === 'build') {
-        // Redirect to studio and open Create New Project modal
         router.push(`/studio?new=1`);
       }
     }
@@ -383,6 +439,38 @@ export default function Hero() {
                   />
                 </div>
 
+                {/* Uploaded Files Preview */}
+                {(uploadedFiles.length > 0 || isUploading) && (
+                  <div className="flex flex-wrap gap-2 px-3 sm:px-4 pb-2">
+                    {uploadedFiles.map((file, idx) => (
+                      <div key={idx} className="flex items-center gap-2 bg-gray-700/40 border border-gray-600/50 rounded-lg px-3 py-1.5 text-xs text-gray-200">
+                        <svg className={`w-3.5 h-3.5 flex-shrink-0 ${file.isImage ? 'text-blue-400' : 'text-amber-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          {file.isImage ? (
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          ) : (
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          )}
+                        </svg>
+                        <span className="max-w-[120px] truncate">{file.name}</span>
+                        <button type="button" onClick={() => removeFile(idx)} className="text-gray-500 hover:text-red-400 transition-colors ml-1">
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                    {isUploading && (
+                      <div className="flex items-center gap-2 bg-gray-700/40 border border-gray-600/50 rounded-lg px-3 py-1.5 text-xs text-gray-400">
+                        <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Uploading...
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Control Bar - Bottom */}
                 <div className="flex items-center justify-between gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-3 overflow-visible rounded-b-2xl" style={{ backgroundColor: '#141618' }}>
                   {/* Left side buttons */}
@@ -404,16 +492,40 @@ export default function Hero() {
                       </svg>
                     </button>
                     
+                    {/* Hidden file input */}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".pdf,.txt,.csv,.md,.json,.png,.jpg,.jpeg,.webp,.gif"
+                      multiple
+                      className="hidden"
+                      onChange={handleFileUpload}
+                    />
+
                     {/* Action Menu Dropdown */}
                     {showActionMenu && (
-                      <div 
+                      <div
                         className="absolute top-full left-0 mt-1 bg-[#1f1f1f] border border-gray-700/50 rounded-lg shadow-2xl z-[9999] min-w-[180px] py-1"
                         onClick={(e) => e.stopPropagation()}
-                        style={{ 
+                        style={{
                           position: 'absolute',
                           zIndex: 9999
                         }}
                       >
+                        {/* Upload File option */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            fileInputRef.current?.click();
+                            setShowActionMenu(false);
+                          }}
+                          className="w-full px-3 py-2 text-left text-gray-200 hover:bg-gray-700/50 transition-colors flex items-center gap-3 text-xs font-normal border-b border-gray-700/30"
+                        >
+                          <svg className="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                          </svg>
+                          Upload File
+                        </button>
                         <button
                           type="button"
                           onClick={() => {

@@ -20,7 +20,7 @@ import { getEffectivePlan } from '@/lib/payments/subscription';
 // Types
 // ---------------------------------------------------------------------------
 
-export type PlanTier = 'free' | 'plus' | 'enterprise';
+export type PlanTier = 'free' | 'basic' | 'plus' | 'enterprise';
 
 export interface PlanLimits {
   tier: PlanTier;
@@ -51,6 +51,12 @@ const PLAN_CONFIG: Record<PlanTier, PlanLimits> = {
     tier: 'free',
     maxGenerationsPerMonth: 5,
     maxFilesPerGeneration: 10,
+    allowedProviders: ALL_PROVIDERS,
+  },
+  basic: {
+    tier: 'basic',
+    maxGenerationsPerMonth: 50,
+    maxFilesPerGeneration: 15,
     allowedProviders: ALL_PROVIDERS,
   },
   plus: {

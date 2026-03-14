@@ -19,6 +19,11 @@ type PartnerBalance = {
   name: string;
   email: string;
   affiliateCode: string | null;
+  tier: string;
+  tierLabel: string;
+  tierIcon: string;
+  commissionPercent: number;
+  tierUpgradedAt: string | null;
   hasPayoutDetails: boolean;
   payoutMethod: string | null;
   eligibleBalance: number;
@@ -241,6 +246,7 @@ export default function AdminAffiliateCommissionsPage() {
                     <tr className="border-b border-slate-700/50">
                       <th className="text-left p-4 text-slate-400 font-medium">Partner</th>
                       <th className="text-left p-4 text-slate-400 font-medium">Code</th>
+                      <th className="text-left p-4 text-slate-400 font-medium">Tier</th>
                       <th className="text-right p-4 text-slate-400 font-medium">Referrals</th>
                       <th className="text-right p-4 text-slate-400 font-medium">Eligible</th>
                       <th className="text-right p-4 text-slate-400 font-medium">On Hold</th>
@@ -258,6 +264,13 @@ export default function AdminAffiliateCommissionsPage() {
                         </td>
                         <td className="p-4">
                           <code className="text-emerald-400 text-xs font-mono">{p.affiliateCode}</code>
+                        </td>
+                        <td className="p-4">
+                          <span className="inline-flex items-center gap-1 text-xs font-medium">
+                            <span>{p.tierIcon}</span>
+                            <span className="text-slate-300">{p.tierLabel}</span>
+                            <span className="text-slate-500">({p.commissionPercent}%)</span>
+                          </span>
                         </td>
                         <td className="p-4 text-right text-slate-300">{p.referralCount}</td>
                         <td className="p-4 text-right text-cyan-400 font-medium">₹{p.eligibleBalance}</td>

@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/src/lib/supabase';
 import { z } from 'zod';
-import { prisma } from '@/src/lib/db';
 import { rateLimit, getClientKey } from '@/app/lib/utils/rate-limit';
 import { maskEmail } from '@/app/lib/utils/logger';
+import { ensureUserInDb } from '@/lib/auth/core/user';
 
 const SignUpSchema = z.object({
   email: z.string().email(),
@@ -95,26 +95,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Create user record in Prisma database immediately
+    // Uses ensureUserInDb which handles trial period (14 days),
+    // initial credit allocation (10 free credits), and workspace creation
     try {
-      if (!data.user.email) {
-        throw new Error('User email is required');
-      }
-
-      await prisma.user.upsert({
-        where: { supabaseId: data.user.id },
-        update: {
-          email: data.user.email,
-          name: data.user.user_metadata?.name || data.user.user_metadata?.full_name || name || email.split('@')[0],
-          avatarUrl: data.user.user_metadata?.avatar_url,
-          updatedAt: new Date(),
-        },
-        create: {
-          supabaseId: data.user.id,
-          email: data.user.email,
-          name: data.user.user_metadata?.name || data.user.user_metadata?.full_name || name || email.split('@')[0],
-          avatarUrl: data.user.user_metadata?.avatar_url,
-        },
-      });
+      await ensureUserInDb(data.user);
     } catch (dbError) {
       console.error('Error creating user in database:', dbError);
       // Don't fail the signup if DB creation fails, but log it

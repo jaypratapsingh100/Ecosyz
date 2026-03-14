@@ -2,7 +2,7 @@
  * Server-Sent Events helper for streaming AI generation progress to the client.
  */
 
-export type SSEEventType = 'status' | 'token' | 'file-created' | 'done' | 'error';
+export type SSEEventType = 'status' | 'token' | 'file-created' | 'done' | 'error' | 'plan' | 'architecture';
 
 export interface SSEEvent {
   type: SSEEventType;

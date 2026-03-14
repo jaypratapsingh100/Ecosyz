@@ -3,6 +3,7 @@
  *
  * Credit allocation:
  *   FREE       → 10 credits (one-time on signup)
+ *   BASIC      → 200 credits per billing cycle (carry over)
  *   PLUS       → 1000 credits per billing cycle (carry over)
  *   ENTERPRISE → unlimited (bypass)
  *
@@ -19,6 +20,7 @@ const MARKUP_MULTIPLIER = 2;
 
 const PLAN_CREDITS: Record<EffectivePlan, number> = {
   free: 10,
+  basic: 200,
   plus: 1000,
   enterprise: -1, // unlimited
 };
@@ -50,15 +52,16 @@ export async function allocateInitialCredits(userId: string): Promise<void> {
 }
 
 /**
- * Allocate credits for a Plus subscription billing cycle.
+ * Allocate credits for a paid subscription billing cycle.
  * Credits carry over — increments existing balance.
  */
-export async function allocateSubscriptionCredits(userId: string): Promise<void> {
+export async function allocateSubscriptionCredits(userId: string, plan: 'basic' | 'plus' = 'plus'): Promise<void> {
+  const credits = PLAN_CREDITS[plan];
   await prisma.user.update({
     where: { id: userId },
     data: {
-      creditBalance: { increment: PLAN_CREDITS.plus },
-      creditsAllocated: { increment: PLAN_CREDITS.plus },
+      creditBalance: { increment: credits },
+      creditsAllocated: { increment: credits },
     },
   });
 }

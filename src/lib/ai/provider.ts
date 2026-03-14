@@ -49,7 +49,7 @@ export const OPENROUTER_APP_BUILDER_MODELS = [
   { id: 'deepseek/deepseek-chat', label: 'DeepSeek V3' },
   { id: 'deepseek/deepseek-coder', label: 'DeepSeek Coder' },
   // Qwen
-  { id: 'qwen/qwen-2.5-coder-32b-instruct', label: 'Qwen 2.5 Coder 32B' },
+  { id: 'qwen/qwen3-coder', label: 'Qwen3 Coder' },
   // Meta
   { id: 'meta-llama/llama-3.3-70b-instruct', label: 'Llama 3.3 70B' },
   { id: 'meta-llama/llama-4-maverick', label: 'Llama 4 Maverick' },
@@ -119,7 +119,7 @@ export const PROVIDER_GROUPS = [
     provider: 'qwen',
     label: 'Qwen',
     models: [
-      { id: 'qwen/qwen-2.5-coder-32b-instruct', label: 'Qwen 2.5 Coder 32B' },
+      { id: 'qwen/qwen3-coder', label: 'Qwen3 Coder' },
     ],
   },
   {

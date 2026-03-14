@@ -32,6 +32,7 @@ export default function Inbox() {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
   const [newMessage, setNewMessage] = useState('');
+  const [showMobileThread, setShowMobileThread] = useState(false);
 
   // Load inbox list
   useEffect(() => {
@@ -126,10 +127,19 @@ export default function Inbox() {
 
   const selectedConversation = conversations.find((c) => c.id === selectedConversationId) || null;
 
+  const handleSelectConversation = (id: string) => {
+    setSelectedConversationId(id);
+    setShowMobileThread(true);
+  };
+
+  const handleBackToList = () => {
+    setShowMobileThread(false);
+  };
+
   return (
-    <div className="flex h-full bg-[#050505] border border-white/10 rounded-2xl overflow-hidden">
-      {/* Conversation list */}
-      <div className="w-72 border-r border-white/10 flex flex-col">
+    <div className="flex flex-col md:flex-row h-full bg-[#050505] border border-white/10 rounded-2xl overflow-hidden">
+      {/* Conversation list — hidden on mobile when a thread is open */}
+      <div className={`w-full md:w-72 border-r border-white/10 flex flex-col ${showMobileThread ? 'hidden md:flex' : 'flex'}`}>
         <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-white">Inbox</h2>
         </div>
@@ -161,7 +171,7 @@ export default function Inbox() {
                   <li key={conv.id}>
                     <button
                       type="button"
-                      onClick={() => setSelectedConversationId(conv.id)}
+                      onClick={() => handleSelectConversation(conv.id)}
                       className={`w-full text-left px-3 py-3 flex flex-col gap-1 hover:bg-white/5 ${
                         isActive ? 'bg-white/10' : ''
                       }`}
@@ -192,11 +202,19 @@ export default function Inbox() {
         </div>
       </div>
 
-      {/* Conversation thread */}
-      <div className="flex-1 flex flex-col">
+      {/* Conversation thread — full width on mobile, hidden when no thread selected on mobile */}
+      <div className={`flex-1 flex flex-col ${!showMobileThread ? 'hidden md:flex' : 'flex'}`}>
         {selectedConversation ? (
           <>
-            <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+            <div className="px-4 py-3 border-b border-white/10 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleBackToList}
+                className="md:hidden text-gray-400 hover:text-white text-sm"
+                aria-label="Back to conversations"
+              >
+                ← Back
+              </button>
               <div>
                 <p className="text-sm font-semibold text-white">
                   {selectedConversation.participants.map((p) => p.name || 'Unnamed').join(', ')}
@@ -242,7 +260,10 @@ export default function Inbox() {
             </div>
             <form onSubmit={handleSend} className="border-t border-white/10 p-3">
               <div className="flex items-center gap-2">
+                <label htmlFor="inboxMessage" className="sr-only">Type a message</label>
                 <input
+                  id="inboxMessage"
+                  name="inboxMessage"
                   type="text"
                   className="flex-1 bg-[#111111] border border-white/15 rounded-full px-4 py-2 text-xs text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
                   placeholder="Type a message…"

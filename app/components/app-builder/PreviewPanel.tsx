@@ -20,6 +20,7 @@ export default function PreviewPanel({
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // Prevent overlapping preview calls; queue one more refresh if requested while in flight
   const inFlightRef = useRef(false);
@@ -281,6 +282,7 @@ export default function PreviewPanel({
           </div>
         ) : previewHtml ? (
           <iframe
+            ref={iframeRef}
             srcDoc={previewHtml}
             className="w-full h-full border-0"
             title="Preview"
@@ -291,6 +293,27 @@ export default function PreviewPanel({
                 '✅ PreviewPanel: iframe loaded, length:',
                 previewHtml.length
               );
+              // Recovery: if iframe navigated away from srcdoc, re-inject
+              try {
+                const doc = iframeRef.current?.contentDocument;
+                if (doc && !doc.querySelector('style#preview-base') && !doc.querySelector('style#preview-globals')) {
+                  console.warn('⚠️ PreviewPanel: iframe navigated away, re-injecting srcdoc');
+                  if (iframeRef.current) {
+                    iframeRef.current.srcdoc = '';
+                    requestAnimationFrame(() => {
+                      if (iframeRef.current) iframeRef.current.srcdoc = previewHtml;
+                    });
+                  }
+                }
+              } catch {
+                // Cross-origin → iframe navigated to a different origin, re-inject
+                if (iframeRef.current) {
+                  iframeRef.current.srcdoc = '';
+                  requestAnimationFrame(() => {
+                    if (iframeRef.current) iframeRef.current.srcdoc = previewHtml;
+                  });
+                }
+              }
             }}
           />
         ) : (

@@ -35,30 +35,46 @@ export default function Header() {
 
   // Check authentication status and fetch user data
   useEffect(() => {
+    // Cleanup controller — aborts all in-flight requests when the component unmounts
+    const cleanup = new AbortController();
+
     const checkAuth = async () => {
       try {
-        // Add timeout to prevent hanging
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+        // Session check with its own timeout
+        const sessionController = new AbortController();
+        const timeoutId = setTimeout(() => sessionController.abort(), 5000);
+
+        // Abort session fetch if either the timeout fires or the component unmounts
+        cleanup.signal.addEventListener('abort', () => sessionController.abort());
 
         const response = await fetch('/api/auth/session', {
-          signal: controller.signal,
+          signal: sessionController.signal,
         });
 
         clearTimeout(timeoutId);
 
         if (response.ok) {
           const data = await response.json();
+
+          if (!data.user) {
+            setIsAuthenticated(false);
+            setUserData(null);
+            return;
+          }
+
           setIsAuthenticated(true);
           setUserData(data.user);
-          
-          // Fetch community user id and extended profile metadata
-          try {
-            const profileRes = await fetch('/api/profile', {
-              signal: controller.signal,
-            });
-            if (profileRes.ok) {
-              const profileData = await profileRes.json();
+
+          // Fetch profile and workspace in parallel using the cleanup signal
+          const [profileRes, workspaceRes] = await Promise.allSettled([
+            fetch('/api/profile', { signal: cleanup.signal }),
+            fetch('/api/workspaces', { signal: cleanup.signal }),
+          ]);
+
+          // Process profile result
+          if (profileRes.status === 'fulfilled' && profileRes.value.ok) {
+            try {
+              const profileData = await profileRes.value.json();
               if (profileData?.userId) {
                 setCommunityUserId(profileData.userId);
               }
@@ -76,53 +92,43 @@ export default function Header() {
                   (value) => typeof value === 'string' && value.trim().length > 0,
                 ).length;
 
-                const completionPercent = Math.round(
-                  (filledCount / fieldsToCheck.length) * 100,
+                setProfileCompletion(
+                  Math.round((filledCount / fieldsToCheck.length) * 100),
                 );
-
-                setProfileCompletion(completionPercent);
               }
+            } catch {
+              // ignore JSON parse errors
             }
-          } catch (error) {
-            console.error('Failed to fetch profile metadata:', error);
           }
 
-          // Fetch workspace ID
-          try {
-            const workspaceRes = await fetch('/api/workspaces', {
-              signal: controller.signal,
-            });
-            if (workspaceRes.ok) {
-              const workspaceData = await workspaceRes.json();
+          // Process workspace result
+          if (workspaceRes.status === 'fulfilled' && workspaceRes.value.ok) {
+            try {
+              const workspaceData = await workspaceRes.value.json();
               if (workspaceData?.id) {
                 setWorkspaceId(workspaceData.id);
               }
+            } catch {
+              // ignore JSON parse errors
             }
-          } catch (error) {
-            // Silently fail - workspace will be fetched on click if needed
-            console.error('Failed to fetch workspace:', error);
           }
         } else {
-          // 401 is expected when user is not logged in - don't log as error
-          // Only log unexpected errors (500, 503, etc.)
-          if (response.status !== 401) {
-            console.warn('Unexpected auth check status:', response.status);
-          }
           setIsAuthenticated(false);
           setUserData(null);
         }
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
-          console.warn('Auth check timed out');
-        } else {
-          // Only log network/connection errors, not expected 401s
-          console.error('Auth check network error:', error);
+          // Component unmounted or session timed out — no action needed
+          return;
         }
+        console.error('Auth check network error:', error);
         setIsAuthenticated(false);
         setUserData(null);
       }
     };
     checkAuth();
+
+    return () => cleanup.abort();
   }, []);
 
   // Listen for avatar updates from the profile page so the header
@@ -378,6 +384,14 @@ export default function Header() {
                             )}
                           </div>
                         </Link>
+                        <Link
+                          href="/billing"
+                          role="menuitem"
+                          className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                          onClick={() => setDropdownOpen(false)}
+                        >
+                          Billing
+                        </Link>
                         {workspaceId ? (
                           <Link
                             href={`/workspaces/${workspaceId}`}
@@ -534,6 +548,14 @@ export default function Header() {
                     {profileCompletion}%
                   </span>
                 )}
+              </Link>
+              <Link
+                href="/billing"
+                className="w-full flex items-center justify-center gap-2 p-3 rounded focus:outline-none focus:ring-2 focus:ring-emerald-400/60 hover:bg-white/10 text-white font-medium"
+                onClick={() => setMobileOpen(false)}
+                tabIndex={mobileOpen ? 0 : -1}
+              >
+                Billing
               </Link>
               {workspaceId ? (
                 <Link

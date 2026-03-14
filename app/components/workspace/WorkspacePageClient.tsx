@@ -182,19 +182,20 @@ export default function WorkspacePageClient({ workspaceData }: WorkspacePageClie
             )}
           </div>
 
-          {/* Right Sidebar - Share Link Panel at Top */}
-          <div className="lg:col-span-1">
-            <div className="sticky top-8 space-y-6">
-              {/* Share Links Panel - Positioned at top */}
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.1 }}
-              >
-                <ShareLinksPanel workspaceId={workspaceData.id} />
-              </motion.div>
+          {/* Right Sidebar - Share Link Panel (only when resources exist) */}
+          {workspaceData.resources.length > 0 && (
+            <div className="lg:col-span-1">
+              <div className="sticky top-8 space-y-6">
+                <motion.div
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.1 }}
+                >
+                  <ShareLinksPanel workspaceId={workspaceData.id} />
+                </motion.div>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </motion.div>
     </div>

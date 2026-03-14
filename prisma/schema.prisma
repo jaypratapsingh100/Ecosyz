@@ -856,6 +856,12 @@ model InternTask {
   @@index([status])
 }
 
+enum PartnerTier {
+  BRONZE
+  SILVER
+  GOLD
+}
+
 // Affiliate Partnership applications
 model PartnershipApplication {
   id           String    @id @default(cuid())
@@ -865,6 +871,8 @@ model PartnershipApplication {
   coverNote    String?   @db.Text
   status       String    @default("pending") // pending, approved, rejected
   affiliateCode String?  @unique // Generated when approved; partners share this for 5% commission
+  tier          PartnerTier @default(BRONZE)
+  tierUpgradedAt DateTime?
   reviewedAt   DateTime?
   reviewedBy   String?
   // Payout details
@@ -916,7 +924,8 @@ model AffiliateCommission {
   affiliateCode String
   partnershipId String
   partnership   PartnershipApplication @relation(fields: [partnershipId], references: [id], onDelete: Cascade)
-  amount        Float                  // 5% of payment amount
+  amount        Float                  // Commission amount (rate varies by partner tier)
+  commissionRate Float                 @default(0.05) // Rate at time of commission creation
   currency      String                 @default("INR")
   status        String                 @default("pending") // pending, eligible, paid, reversed
   eligibleAt    DateTime               // createdAt + 30 days; payout only allowed after this

@@ -81,7 +81,7 @@ export async function PATCH(
         <p><strong>Your affiliate code:</strong> <code style="background:#0f172a;padding:4px 8px;border-radius:4px;font-size:18px;">${affiliateCode}</code></p>
         <p><strong>Your referral link:</strong></p>
         <p><a href="${affiliateLink}" style="color:#10b981;word-break:break-all;">${affiliateLink}</a></p>
-        <p>Share your link or code with your network. When someone subscribes and enters your code on the pricing page, you earn 5% commission.</p>
+        <p>Share your link or code with your network. When someone subscribes and enters your code on the pricing page, you earn commissions starting at 5% (Bronze tier). Refer 10+ subscribers to unlock 7% (Silver) and 25+ for 10% (Gold).</p>
         <p>Best regards,<br/>ECOSYZ Team</p>
       `;
       const text = `
@@ -95,7 +95,7 @@ Your affiliate code: ${affiliateCode}
 
 Your referral link: ${affiliateLink}
 
-Share your link or code with your network. When someone subscribes and enters your code on the pricing page, you earn 5% commission.
+Share your link or code with your network. When someone subscribes and enters your code on the pricing page, you earn commissions starting at 5% (Bronze). Refer 10+ for 7% (Silver) and 25+ for 10% (Gold).
 
 Best regards,
 ECOSYZ Team

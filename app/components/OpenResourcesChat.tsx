@@ -575,6 +575,11 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
     "Find similar resources",
     "What are the key differences?"
   ]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{
+    name: string; type: string; extractedText: string; isImage?: boolean;
+  }>>([]);
+  const [isUploading, setIsUploading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const citationMenuRef = useRef<HTMLDivElement>(null);
@@ -831,6 +836,41 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
     };
   }, [searchQuery, messages]);
 
+  // Load file context from Hero page sessionStorage
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem('uploadedFileContext');
+      if (stored) {
+        setUploadedFiles(JSON.parse(stored));
+        sessionStorage.removeItem('uploadedFileContext');
+      }
+    } catch {}
+  }, []);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setIsUploading(true);
+    for (const file of Array.from(files)) {
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await fetch('/api/upload-file', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (!res.ok) { alert(data.error || 'Upload failed'); continue; }
+        setUploadedFiles(prev => [...prev, {
+          name: data.fileName, type: data.fileType, extractedText: data.extractedText, isImage: data.isImage,
+        }]);
+      } catch { alert(`Failed to upload ${file.name}`); }
+    }
+    setIsUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const removeFile = (index: number) => {
+    setUploadedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputValue.trim() || isLoading) return;
@@ -843,7 +883,14 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
     };
 
     setMessages((prev) => [...prev, userMessage]);
-    const currentInput = inputValue.trim();
+    let currentInput = inputValue.trim();
+    // Prepend uploaded file content to the message for AI context
+    if (uploadedFiles.length > 0) {
+      const fileContext = uploadedFiles.map(f =>
+        `[Uploaded file: ${f.name} (${f.type})]\n${f.extractedText}`
+      ).join('\n\n');
+      currentInput = `${fileContext}\n\nUser question: ${currentInput}`;
+    }
     setInputValue('');
     setIsLoading(true);
 
@@ -917,75 +964,23 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
 
       const response = await fetch('/api/chat', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: currentInput,
-          apiKey: userApiKey, // Send user's API key if available
+          apiKey: userApiKey,
           model: userModel,
-          provider: userProvider, // Send user's provider preference
+          provider: userProvider,
+          stream: true,
           context: {
             searchQuery: searchQuery || currentInput,
             resultsCount: resourcesToAnalyze.length,
             results: detailedResults,
-            hasContext: resourcesToAnalyze.length > 0, // Indicate if we have search context
+            hasContext: resourcesToAnalyze.length > 0,
           },
         }),
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        
-        // Generate follow-up questions based on response and resources
-        const followUps = generateFollowUpQuestions(currentInput, data.response, resourcesToAnalyze);
-        
-        // Parse resource links from response
-        const resourceLinks = parseResourceReferences(data.response, resourcesToAnalyze).links;
-        
-        // Generate recommendations if user asks for suggestions
-        let recommendations: any[] = [];
-        if (currentInput.toLowerCase().includes('recommend') || 
-            currentInput.toLowerCase().includes('suggest') ||
-            currentInput.toLowerCase().includes('similar') ||
-            currentInput.toLowerCase().includes('best')) {
-          recommendations = generateRecommendations(resourcesToAnalyze, searchQuery);
-        }
-        
-        // Add quality scores to resource links
-        const enhancedResourceLinks = resourceLinks.map(link => ({
-          ...link,
-          qualityScore: calculateQualityScore(link.resource)
-        }));
-        
-        let enhancedContent = data.response || `I understand you're asking about "${currentInput}". I can help you explore open resources, understand research papers, datasets, code repositories, and more. How can I assist you?`;
-        
-        // Add recommendations to content if available
-        if (recommendations.length > 0) {
-          enhancedContent += `\n\n**💡 Top Recommendations:**\n`;
-          recommendations.forEach((rec, idx) => {
-            const resourceIndex = resourcesToAnalyze.findIndex(r => r.url === rec.url);
-            enhancedContent += `${idx + 1}. **Resource ${resourceIndex + 1}**: ${rec.title} (Quality Score: ${rec.qualityScore}/100)\n`;
-          });
-        }
-        
-        const assistantMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: enhancedContent,
-          timestamp: new Date(),
-          followUps: followUps.length > 0 ? followUps : undefined,
-          resourceLinks: enhancedResourceLinks.length > 0 ? enhancedResourceLinks : undefined,
-        };
-        setMessages((prev) => {
-          const next = [...prev, assistantMessage];
-          if (searchQuery) {
-            queueMicrotask(() => saveChatToApi(getSessionId(), searchQuery, next));
-          }
-          return next;
-        });
-      } else if (response.status === 429) {
-        // Check for anonymous chat limit
+      if (response.status === 429) {
         let errorData: any = {};
         try { errorData = await response.json(); } catch {}
         if (errorData.code === 'AUTH_REQUIRED') {
@@ -994,22 +989,83 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
           return;
         }
         throw new Error(errorData.error || 'Rate limit exceeded. Please try again later.');
-      } else {
+      }
+
+      if (!response.ok || !response.body) {
         let errorMessage = 'Failed to get response';
         try {
           const errorData = await response.json();
           errorMessage = errorData.error || errorData.message || `HTTP ${response.status}: ${response.statusText}`;
-
-          // Add details if available
-          if (errorData.details) {
-            errorMessage += `\n\nDetails: ${JSON.stringify(errorData.details)}`;
-          }
-        } catch (parseError) {
-          // If JSON parsing fails, use status text
-          errorMessage = `HTTP ${response.status}: ${response.statusText || 'Unknown error'}`;
-        }
+          if (errorData.details) errorMessage += `\n\nDetails: ${JSON.stringify(errorData.details)}`;
+        } catch { errorMessage = `HTTP ${response.status}: ${response.statusText || 'Unknown error'}`; }
         throw new Error(errorMessage);
       }
+
+      // Read SSE stream
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let fullContent = '';
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const parsed = JSON.parse(line.slice(6));
+            if (parsed.error) throw new Error(parsed.error);
+            if (parsed.content) fullContent += parsed.content;
+          } catch {}
+        }
+      }
+
+      const aiResponse = fullContent || `I understand you're asking about "${currentInput}". I can help you explore open resources, understand research papers, datasets, code repositories, and more. How can I assist you?`;
+
+      // Generate follow-up questions based on response and resources
+      const followUps = generateFollowUpQuestions(currentInput, aiResponse, resourcesToAnalyze);
+      const resourceLinks = parseResourceReferences(aiResponse, resourcesToAnalyze).links;
+
+      let recommendations: any[] = [];
+      if (currentInput.toLowerCase().includes('recommend') ||
+          currentInput.toLowerCase().includes('suggest') ||
+          currentInput.toLowerCase().includes('similar') ||
+          currentInput.toLowerCase().includes('best')) {
+        recommendations = generateRecommendations(resourcesToAnalyze, searchQuery);
+      }
+
+      const enhancedResourceLinks = resourceLinks.map(link => ({
+        ...link,
+        qualityScore: calculateQualityScore(link.resource)
+      }));
+
+      let enhancedContent = aiResponse;
+      if (recommendations.length > 0) {
+        enhancedContent += `\n\n**Top Recommendations:**\n`;
+        recommendations.forEach((rec, idx) => {
+          const resourceIndex = resourcesToAnalyze.findIndex(r => r.url === rec.url);
+          enhancedContent += `${idx + 1}. **Resource ${resourceIndex + 1}**: ${rec.title} (Quality Score: ${rec.qualityScore}/100)\n`;
+        });
+      }
+
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: enhancedContent,
+        timestamp: new Date(),
+        followUps: followUps.length > 0 ? followUps : undefined,
+        resourceLinks: enhancedResourceLinks.length > 0 ? enhancedResourceLinks : undefined,
+      };
+      setMessages((prev) => {
+        const next = [...prev, assistantMessage];
+        if (searchQuery) {
+          queueMicrotask(() => saveChatToApi(getSessionId(), searchQuery, next));
+        }
+        return next;
+      });
     } catch (error: any) {
       console.error('Chat error:', error);
       let errorMessage = `I apologize, but I encountered an error processing your question about "${currentInput}".`;
@@ -1833,10 +1889,53 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
       {/* Input Area - Fixed at Bottom */}
       {!chatLimitReached && (
       <div className="border-t border-white/10 p-4 flex-shrink-0 bg-[#0a0a0a]/80 backdrop-blur-sm">
+        {/* Uploaded Files Preview */}
+        {(uploadedFiles.length > 0 || isUploading) && (
+          <div className="flex flex-wrap gap-2 mb-2">
+            {uploadedFiles.map((file, idx) => (
+              <div key={idx} className="flex items-center gap-1.5 bg-gray-700/40 border border-gray-600/50 rounded-lg px-2.5 py-1 text-xs text-gray-200">
+                <svg className={`w-3.5 h-3.5 flex-shrink-0 ${file.isImage ? 'text-blue-400' : 'text-amber-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  {file.isImage ? (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  ) : (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  )}
+                </svg>
+                <span className="max-w-[100px] truncate">{file.name}</span>
+                <button type="button" onClick={() => removeFile(idx)} className="text-gray-500 hover:text-red-400 transition-colors">
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+            {isUploading && (
+              <div className="flex items-center gap-1.5 bg-gray-700/40 border border-gray-600/50 rounded-lg px-2.5 py-1 text-xs text-gray-400">
+                <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Uploading...
+              </div>
+            )}
+          </div>
+        )}
+        <input ref={fileInputRef} type="file" accept=".pdf,.txt,.csv,.md,.json,.png,.jpg,.jpeg,.webp,.gif" multiple className="hidden" onChange={handleFileUpload} />
         <form onSubmit={handleSend} className="relative">
           <div className="flex items-center gap-0 w-full">
+            {/* Upload Button */}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="px-3 py-3.5 bg-[#1a1a1a] rounded-l-full border border-r-0 border-gray-500/30 hover:bg-gray-700/50 transition-colors"
+              aria-label="Upload file"
+            >
+              <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+            </button>
             {/* Input Field */}
-            <div className="flex-1 flex items-center gap-3 bg-[#1a1a1a] rounded-l-full border border-gray-500/30 focus-within:border-gray-400/50 transition-all px-4 py-3.5">
+            <div className="flex-1 flex items-center gap-3 bg-[#1a1a1a] border border-x-0 border-gray-500/30 focus-within:border-gray-400/50 transition-all px-4 py-3.5">
               <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
@@ -1845,14 +1944,14 @@ export default function OpenResourcesChat({ searchResults = [], searchQuery = ''
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                placeholder="Ask me..."
+                placeholder={uploadedFiles.length > 0 ? "Ask about your uploaded files..." : "Ask me..."}
                 className="flex-1 bg-transparent text-white placeholder-gray-400 focus:outline-none text-sm"
               />
             </div>
             {/* Search Button */}
             <button
               type="submit"
-              disabled={!inputValue.trim() || isLoading}
+              disabled={(!inputValue.trim() && uploadedFiles.length === 0) || isLoading}
               className="px-6 py-3.5 bg-gradient-to-r from-emerald-400 to-cyan-500 hover:from-emerald-500 hover:to-cyan-600 rounded-r-full border border-l-0 border-gray-500/30 text-white font-medium text-sm flex items-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
               aria-label="Send message"
             >

@@ -171,7 +171,8 @@ export default function DeploymentPanel({ projectId, projectName, onAuthRequired
         credentials: 'include',
         cache: 'no-store',
       });
-      if (!sessionRes.ok) {
+      const sessionData = sessionRes.ok ? await sessionRes.json() : null;
+      if (!sessionData?.user) {
         handleAuthError();
         return;
       }

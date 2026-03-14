@@ -332,6 +332,30 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
                     m.id === assistantId ? { ...m, content: `_${label}_` } : m
                   ));
                 }
+              } else if (event.type === 'plan') {
+                const p = event.data;
+                let planText = `**Plan: ${p.name || 'App'}**\n${p.description || ''}\n`;
+                if (p.techstack) planText += `\n**Tech:** ${p.techstack}`;
+                if (p.features?.length) planText += `\n**Features:**\n${p.features.map((f: string) => `- ${f}`).join('\n')}`;
+                if (p.files?.length) planText += `\n**Files:**\n${p.files.map((f: { path: string; purpose: string }) => `- \`${f.path}\` — ${f.purpose}`).join('\n')}`;
+                planText += '\n\n---\n';
+                streamedContent = planText;
+                setMessages((prev) => prev.map((m) =>
+                  m.id === assistantId ? { ...m, content: streamedContent } : m
+                ));
+              } else if (event.type === 'architecture') {
+                const steps = event.data?.implementationSteps || [];
+                if (steps.length) {
+                  let archText = '\n**Implementation Steps:**\n';
+                  archText += steps.map((s: { filepath: string; taskDescription: string; priority: string }, i: number) =>
+                    `${i + 1}. \`${s.filepath}\` — ${s.taskDescription} _(${s.priority})_`
+                  ).join('\n');
+                  archText += '\n\n---\n';
+                  streamedContent += archText;
+                  setMessages((prev) => prev.map((m) =>
+                    m.id === assistantId ? { ...m, content: streamedContent } : m
+                  ));
+                }
               } else if (event.type === 'token') {
                 streamedContent += event.data;
                 // Update message with streamed content (throttled)

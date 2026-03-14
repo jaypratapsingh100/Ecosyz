@@ -33,6 +33,7 @@ export async function trackPageVisit(path: string, referrer?: string) {
         userAgent: navigator.userAgent,
         sessionId: getSessionId(),
       }),
+      keepalive: true,
     });
   } catch (error) {
     // Silently fail - don't interrupt user experience
@@ -67,6 +68,7 @@ export async function trackSearchClick(
         providers,
         sessionId: getSessionId(),
       }),
+      keepalive: true,
     });
   } catch (error) {
     // Silently fail
@@ -96,6 +98,7 @@ export async function trackResourceView(
         workspaceId: workspaceId || null,
         sessionId: getSessionId(),
       }),
+      keepalive: true,
     });
   } catch (error) {
     // Silently fail

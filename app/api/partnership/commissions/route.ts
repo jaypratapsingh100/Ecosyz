@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { getTierDefinition, getNextTier, getTierProgress, type PartnerTierName } from '@/lib/payments/partner-tiers';
 
 /**
  * GET: Return the partner's own commissions, payouts, and balance
@@ -14,7 +15,7 @@ export async function GET() {
 
     const partner = await prisma.partnershipApplication.findFirst({
       where: { email: user.email.toLowerCase(), status: 'approved' },
-      select: { id: true, affiliateCode: true, name: true },
+      select: { id: true, affiliateCode: true, name: true, tier: true },
     });
 
     if (!partner) {
@@ -52,6 +53,13 @@ export async function GET() {
       .filter((p) => p.status === 'paid')
       .reduce((sum, p) => sum + p.amount, 0);
 
+    // Compute tier info
+    const currentTier = (partner.tier as PartnerTierName) || 'BRONZE';
+    const tierDef = getTierDefinition(currentTier);
+    const nextTierDef = getNextTier(currentTier);
+    const referralCount = commissions.filter((c) => c.status !== 'reversed').length;
+    const progress = getTierProgress(currentTier, referralCount);
+
     return NextResponse.json({
       affiliateCode: partner.affiliateCode,
       stats: {
@@ -59,11 +67,28 @@ export async function GET() {
         eligibleBalance: parseFloat(eligibleBalance.toFixed(2)),
         holdingBalance: parseFloat(holdingBalance.toFixed(2)),
         totalPaidOut: parseFloat(totalPaidOut.toFixed(2)),
-        totalReferrals: commissions.filter((c) => c.status !== 'reversed').length,
+        totalReferrals: referralCount,
+        tier: {
+          current: currentTier,
+          label: tierDef.label,
+          commissionPercent: tierDef.commissionPercent,
+          icon: tierDef.icon,
+          color: tierDef.color,
+          bgColor: tierDef.bgColor,
+          progress,
+          nextTier: nextTierDef
+            ? {
+                label: nextTierDef.label,
+                commissionPercent: nextTierDef.commissionPercent,
+                minReferrals: nextTierDef.minReferrals,
+              }
+            : null,
+        },
       },
       commissions: commissions.map((c) => ({
         id: c.id,
         amount: c.amount,
+        commissionRate: c.commissionRate,
         currency: c.currency,
         status: c.status,
         eligibleAt: c.eligibleAt,

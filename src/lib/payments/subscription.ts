@@ -2,11 +2,12 @@ import { prisma } from '@/lib/db';
 import { getAdminEmails } from '@/lib/admin';
 import { allocateSubscriptionCredits } from '@/lib/app-builder/credits';
 import { notifyAffiliateCommissionEarned, notifyAdminCommissionCreated } from '@/lib/payments/affiliate-emails';
+import { getCommissionRate, checkAndUpgradeTier, type PartnerTierName } from '@/lib/payments/partner-tiers';
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://ecosyz.com';
 
-export type EffectivePlan = 'free' | 'plus' | 'enterprise';
+export type EffectivePlan = 'free' | 'basic' | 'plus' | 'enterprise';
 
 interface UserSubscriptionData {
   subscriptionPlan: string | null;
@@ -34,6 +35,7 @@ export function getEffectivePlan(user: UserSubscriptionData): EffectivePlan {
     (!user.subscriptionEndDate || user.subscriptionEndDate > now)
   ) {
     const plan = user.subscriptionPlan.trim().toLowerCase();
+    if (plan === 'basic') return 'basic';
     if (plan === 'plus' || plan === 'pro') return 'plus';
     if (plan === 'enterprise') return 'enterprise';
   }
@@ -46,6 +48,7 @@ export function getEffectivePlan(user: UserSubscriptionData): EffectivePlan {
     user.subscriptionEndDate > now
   ) {
     const plan = user.subscriptionPlan.trim().toLowerCase();
+    if (plan === 'basic') return 'basic';
     if (plan === 'plus' || plan === 'pro') return 'plus';
     if (plan === 'enterprise') return 'enterprise';
   }
@@ -77,13 +80,13 @@ export async function activateSubscription(
 
   // Validate affiliate code
   let validAffiliateCode: string | null = null;
-  let validPartner: { id: string; name: string; email: string } | null = null;
+  let validPartner: { id: string; name: string; email: string; tier: string } | null = null;
   if (affiliateCode) {
     const code = affiliateCode.trim().toUpperCase();
     if (code.length >= 4) {
       const partner = await prisma.partnershipApplication.findFirst({
         where: { affiliateCode: code, status: 'approved' },
-        select: { id: true, name: true, email: true },
+        select: { id: true, name: true, email: true, tier: true },
       });
       if (partner) {
         validAffiliateCode = code;
@@ -122,11 +125,10 @@ export async function activateSubscription(
     },
   });
 
-  // Allocate credits for Plus subscription (non-blocking)
-  if (plan.toLowerCase() === 'plus') {
-    allocateSubscriptionCredits(userId).catch((err) =>
-      console.error('[credits] Failed to allocate subscription credits:', err)
-    );
+  // Allocate credits for paid subscription
+  const normalizedPlan = plan.toLowerCase();
+  if (normalizedPlan === 'basic' || normalizedPlan === 'plus') {
+    await allocateSubscriptionCredits(userId, normalizedPlan as 'basic' | 'plus');
   }
 
   // Send confirmation email to user (non-blocking)
@@ -139,9 +141,10 @@ export async function activateSubscription(
     console.error('Failed to send admin notification:', err)
   );
 
-  // Create affiliate commission record (5%, eligible after 30 days)
+  // Create affiliate commission record (rate based on partner tier, eligible after 30 days)
   if (validAffiliateCode && validPartner && amount > 0) {
-    const commissionRate = 0.05;
+    const tier = (validPartner.tier as PartnerTierName) || 'BRONZE';
+    const commissionRate = getCommissionRate(tier);
     const commissionAmount = parseFloat((amount * commissionRate).toFixed(2));
     const eligibleAt = new Date(now);
     eligibleAt.setDate(eligibleAt.getDate() + 30);
@@ -152,17 +155,21 @@ export async function activateSubscription(
         affiliateCode: validAffiliateCode,
         partnershipId: validPartner.id,
         amount: commissionAmount,
+        commissionRate,
         currency,
         status: 'pending',
         eligibleAt,
       },
     });
 
+    // Check for tier upgrade after creating the commission
+    const upgradedTier = await checkAndUpgradeTier(validPartner.id);
+
     // Notify partner and admin about commission (non-blocking)
-    notifyAffiliateCommissionEarned(validPartner.email, validPartner.name, commissionAmount, validAffiliateCode).catch(
+    notifyAffiliateCommissionEarned(validPartner.email, validPartner.name, commissionAmount, validAffiliateCode, commissionRate, upgradedTier).catch(
       (err) => console.error('Failed to send affiliate commission email:', err)
     );
-    notifyAdminCommissionCreated(validPartner.name, validAffiliateCode, commissionAmount, updatedUser.email).catch(
+    notifyAdminCommissionCreated(validPartner.name, validAffiliateCode, commissionAmount, updatedUser.email, commissionRate).catch(
       (err) => console.error('Failed to send admin commission notification:', err)
     );
   }
@@ -291,7 +298,7 @@ async function sendSubscriptionEmail(
         <!-- Footer -->
         <tr><td style="padding:20px 32px;background:#f9fafb;border-top:1px solid #e5e7eb;text-align:center;">
           <p style="margin:0 0 4px;font-size:13px;color:#9ca3af;">
-            You can manage your subscription anytime from your <a href="${APP_URL}/profile" style="color:#059669;text-decoration:none;">profile</a>.
+            You can manage your subscription anytime from your <a href="${APP_URL}/billing" style="color:#059669;text-decoration:none;">billing portal</a>.
           </p>
           <p style="margin:0;font-size:12px;color:#d1d5db;">Open Idea &mdash; Build, Research, Innovate</p>
         </td></tr>
@@ -319,7 +326,7 @@ What's included:
 - API access (100K requests/month)
 
 Start building: ${APP_URL}/studio
-Manage subscription: ${APP_URL}/profile
+Manage subscription: ${APP_URL}/billing
 
 — Open Idea Team`;
 
@@ -398,7 +405,7 @@ async function sendAdminNotification(
             </tr>
             ${affiliateCode ? `<tr>
               <td style="padding:6px 0;font-size:14px;color:#6b7280;">Affiliate</td>
-              <td style="padding:6px 0;font-size:14px;color:#059669;font-weight:500;">${affiliateCode} (5% commission)</td>
+              <td style="padding:6px 0;font-size:14px;color:#059669;font-weight:500;">${affiliateCode}</td>
             </tr>` : ''}
           </table>
         </td></tr>
@@ -416,7 +423,7 @@ Customer: ${userName || '—'} (${userEmail})
 Plan: ${planName}
 Amount: ${amountFormatted}
 Provider: ${provider}
-Payment ID: ${paymentId}${affiliateCode ? `\nAffiliate: ${affiliateCode} (5% commission)` : ''}`;
+Payment ID: ${paymentId}${affiliateCode ? `\nAffiliate: ${affiliateCode}` : ''}`;
 
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',

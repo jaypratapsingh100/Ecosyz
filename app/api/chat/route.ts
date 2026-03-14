@@ -201,7 +201,7 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    const { message, context, apiKey: userApiKey, model: userModel, provider: userProvider } = body;
+    const { message, context, apiKey: userApiKey, model: userModel, provider: userProvider, stream: useStream } = body;
 
     if (!message || typeof message !== 'string') {
       return NextResponse.json(
@@ -240,19 +240,28 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Open Resources chat: Groq only — use Groq default model (ignore stored OpenRouter/DeepSeek model)
-    if (!process.env.GROQ_API_KEY) {
+    // Determine provider: honour client preference if a matching API key exists, else fall back to Groq
+    let apiKey: string | undefined;
+
+    if (userProvider === 'openrouter' && process.env.OPENROUTER_API_KEY) {
+      provider = 'openrouter';
+      apiKey = userApiKey || process.env.OPENROUTER_API_KEY;
+    } else if (userProvider === 'azure-deepseek' && process.env.AZURE_DEEPSEEK_URL) {
+      provider = 'azure-deepseek';
+      apiKey = process.env.AZURE_DEEPSEEK_API_KEY || '';
+    } else if (process.env.GROQ_API_KEY) {
+      provider = 'groq';
+      apiKey = process.env.GROQ_API_KEY;
+    } else {
       return NextResponse.json({
-        error: 'Groq is not configured. Set GROQ_API_KEY in your environment (get a free key at https://console.groq.com/keys).',
-        response: 'To use the Open Resources Assistant, add GROQ_API_KEY to your server environment variables.'
+        error: 'No AI provider configured. Set GROQ_API_KEY or OPENROUTER_API_KEY in your environment.',
+        response: 'Add GROQ_API_KEY or OPENROUTER_API_KEY to your server environment variables.'
       }, { status: 500 });
     }
-    provider = 'groq';
-    const apiKey = process.env.GROQ_API_KEY;
 
     let client, model;
     try {
-      const clientResult = createClient(apiKey, provider, undefined);
+      const clientResult = createClient(apiKey!, provider, userModel || undefined);
       client = clientResult.client;
       model = clientResult.model;
     } catch (clientError: any) {
@@ -396,53 +405,62 @@ Your capabilities:
       systemPrompt += `\n\nNote: No search results are currently available. You can still help with general questions about open resources, but you won't have specific resource context.`;
     }
 
-    // Call AI API (works with OpenAI-compatible providers)
-    // Use DeepSeek Coder for best analysis quality
+    const chatMessages = [
+      { role: 'system' as const, content: systemPrompt },
+      { role: 'user' as const, content: message },
+    ];
+
+    // Streaming mode (SSE) — avoids Vercel timeout for long responses
+    if (useStream) {
+      const stream = await client.chat.completions.create({
+        model, messages: chatMessages, temperature: 0.7, max_tokens: 2000, stream: true,
+      });
+      const encoder = new TextEncoder();
+      const readable = new ReadableStream({
+        async start(controller) {
+          try {
+            for await (const chunk of stream) {
+              const c = chunk.choices[0]?.delta?.content;
+              if (c) controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: c })}\n\n`));
+            }
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, model, provider })}\n\n`));
+            controller.close();
+          } catch (err: any) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: err?.message || 'Stream error' })}\n\n`));
+            controller.close();
+          }
+        },
+      });
+      return new Response(readable, {
+        headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' },
+      });
+    }
+
+    // Non-streaming JSON mode (card Q&A, summaries, etc.)
     let response: string = '';
     let finalModel = model;
-    
     try {
       const completion = await client.chat.completions.create({
-        model: model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: message }
-        ],
-        temperature: 0.7,
-        max_tokens: 2000, // Reduced to avoid credit limit issues (can be increased for paid accounts)
+        model, messages: chatMessages, temperature: 0.7, max_tokens: 2000,
       });
-
       response = completion.choices[0]?.message?.content || 'I apologize, but I could not generate a response. Please try again.';
     } catch (modelError: any) {
       const errorMessage = modelError?.message || modelError?.error?.message || '';
-      
-      // Handle credit limit errors (402) - reduce max_tokens and retry
       if (modelError?.status === 402 || errorMessage.includes('requires more credits') || errorMessage.includes('can only afford')) {
         const tokenMatch = errorMessage.match(/can only afford (\d+)/);
-        const maxAffordableTokens = tokenMatch ? parseInt(tokenMatch[1]) - 100 : 1500; // Leave buffer
-        
-        console.warn(`⚠️ Credit limit reached. Reducing max_tokens to ${maxAffordableTokens} and retrying...`);
-        
+        const maxAffordableTokens = tokenMatch ? parseInt(tokenMatch[1]) - 100 : 1500;
+        console.warn(`Credit limit reached. Reducing max_tokens to ${maxAffordableTokens} and retrying...`);
         try {
           const retryCompletion = await client.chat.completions.create({
-            model: model,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: message }
-            ],
-            temperature: 0.7,
-            max_tokens: maxAffordableTokens,
+            model, messages: chatMessages, temperature: 0.7, max_tokens: maxAffordableTokens,
           });
-          
           response = retryCompletion.choices[0]?.message?.content || 'I apologize, but I could not generate a response. Please try again.';
           finalModel = model;
         } catch (retryError: any) {
           console.error('Retry with reduced tokens also failed:', retryError);
           throw new Error(`Credit limit exceeded. You can only afford ${maxAffordableTokens} tokens. Please upgrade your OpenRouter account at https://openrouter.ai/settings/credits or reduce the request size.`);
         }
-      }
-      // For azure-deepseek, throw any other errors
-      else {
+      } else {
         throw modelError;
       }
     }

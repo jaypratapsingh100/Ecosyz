@@ -48,7 +48,8 @@ export function useAuthCheck(options: UseAuthCheckOptions = {}): UseAuthCheckRes
       clearTimeout(timeoutId);
 
       if (response.ok) {
-        setIsAuthenticated(true);
+        const data = await response.json();
+        setIsAuthenticated(!!data.user);
         setIsLoading(false);
       } else {
         setIsAuthenticated(false);

@@ -141,6 +141,18 @@ export async function POST(
     // Build HTML starting from main HTML file
     let html = htmlFile.content;
 
+    // Inject <base> tag so ALL relative URLs (href="/about", src="/img.png") resolve
+    // to about:blank instead of localhost — prevents iframe from navigating away.
+    // Absolute CDN URLs (https://...) are unaffected.
+    const baseTag = '<base href="about:blank">';
+    if (html.includes('<head>')) {
+      html = html.replace('<head>', `<head>\n${baseTag}`);
+    } else if (html.includes('<html')) {
+      html = html.replace(/<html[^>]*>/, `$&\n<head>${baseTag}</head>`);
+    } else {
+      html = `<head>${baseTag}</head>\n` + html;
+    }
+
     // Strip Vite/npm module script tags - they won't work in iframe (no server to serve /src/main.jsx)
     // Preview injects React + App directly for sandbox rendering
     html = html.replace(/<script[^>]*type=["']module["'][^>]*src=["'][^"']*["'][^>]*>[\s\S]*?<\/script>/gi, '');
@@ -210,6 +222,48 @@ export async function POST(
       } else {
         html = cssTag + html;
       }
+    }
+
+    // ── Always inject navigation interceptor & error handler ──
+    // This MUST run regardless of project type or whether React is already present,
+    // so link/button clicks never navigate the iframe away from srcdoc.
+    const navigationGuard = `<script>
+    (function() {
+      // Intercept all <a> navigation so preview never leaves srcdoc
+      document.addEventListener('click', function(e) {
+        var el = e.target;
+        while (el && el !== document.body) {
+          if (el.tagName === 'A') {
+            var href = el.getAttribute('href') || '';
+            if (href && href !== '#' && !href.startsWith('#') && !href.startsWith('javascript:')) {
+              e.preventDefault();
+              e.stopPropagation();
+            }
+            return;
+          }
+          el = el.parentElement;
+        }
+      }, true);
+      // Intercept form submissions
+      document.addEventListener('submit', function(e) {
+        e.preventDefault();
+      }, true);
+      // Block programmatic navigation (window.location assignments)
+      try {
+        var _origAssign = window.location.assign.bind(window.location);
+        var _origReplace = window.location.replace.bind(window.location);
+        window.location.assign = function() {};
+        window.location.replace = function() {};
+        Object.defineProperty(window, 'onbeforeunload', { set: function() {}, get: function() { return null; } });
+      } catch(_) {}
+    })();
+    </script>`;
+    if (html.includes('</head>')) {
+      html = html.replace('</head>', `${navigationGuard}\n</head>`);
+    } else if (html.includes('<body>')) {
+      html = html.replace('<body>', `${navigationGuard}\n<body>`);
+    } else {
+      html = navigationGuard + '\n' + html;
     }
 
     // Handle JS/JSX file injection
@@ -304,29 +358,7 @@ export async function POST(
       }
     }, 4000);
 
-    // Intercept all navigation so preview never leaves srcdoc
-    document.addEventListener('click', function(e) {
-      var el = e.target;
-      // Walk up to find the nearest <a> or <button type=submit>
-      while (el && el !== document.body) {
-        if (el.tagName === 'A') {
-          var href = el.getAttribute('href') || '';
-          // Allow anchor links (#section) and javascript: void
-          if (href && href !== '#' && !href.startsWith('#') && !href.startsWith('javascript:')) {
-            e.preventDefault();
-            e.stopPropagation();
-            // Smooth-scroll to section if href looks like #id
-            // Otherwise just swallow the click
-          }
-          return;
-        }
-        el = el.parentElement;
-      }
-    }, true);
-    // Intercept form submissions
-    document.addEventListener('submit', function(e) {
-      e.preventDefault();
-    }, true);
+    // Navigation interception is now injected globally above (navigationGuard).
   </script>`;
         if (!html.includes('react@18') && !html.includes('react.development.js')) {
           if (html.includes('</head>')) {

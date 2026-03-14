@@ -100,6 +100,7 @@ export default function ProfileForm({ initialData }: ProfileFormProps) {
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors, isDirty },
   } = useForm<ProfileFormData>({
     resolver: zodResolver(UpdateProfile),
@@ -135,6 +136,11 @@ export default function ProfileForm({ initialData }: ProfileFormProps) {
     },
   });
 
+  const watchedBio = watch('bio') || '';
+  const watchedCurrentFocus = watch('currentFocus') || '';
+  const watchedLookingFor = watch('lookingFor') || '';
+  const watchedCanHelpWith = watch('canHelpWith') || '';
+
   const onSubmit = async (data: ProfileFormData) => {
     setLoading(true);
     try {
@@ -154,6 +160,7 @@ export default function ProfileForm({ initialData }: ProfileFormProps) {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify(payload),
       });
 
@@ -266,9 +273,13 @@ export default function ProfileForm({ initialData }: ProfileFormProps) {
                 id="bio"
                 data-testid="profile-bio"
                 rows={4}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white"
+                maxLength={1000}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white resize-none"
                 placeholder="Tell us about yourself..."
               />
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 text-right">
+                {watchedBio.length}/1000
+              </p>
               {errors.bio && (
                 <p className="mt-1 text-sm text-red-600 dark:text-red-400">
                   {errors.bio.message}
@@ -419,9 +430,13 @@ export default function ProfileForm({ initialData }: ProfileFormProps) {
                   {...register('currentFocus')}
                   id="currentFocus"
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white"
+                  maxLength={500}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white resize-none"
                   placeholder="Describe your main project or research focus."
                 />
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 text-right">
+                  {watchedCurrentFocus.length}/500
+                </p>
                 {errors.currentFocus && (
                   <p className="mt-1 text-sm text-red-600 dark:text-red-400">
                     {errors.currentFocus.message}
@@ -440,9 +455,13 @@ export default function ProfileForm({ initialData }: ProfileFormProps) {
                   {...register('lookingFor')}
                   id="lookingFor"
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white"
+                  maxLength={500}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white resize-none"
                   placeholder="Co-founders, collaborators, early users, funding, mentors..."
                 />
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 text-right">
+                  {watchedLookingFor.length}/500
+                </p>
                 {errors.lookingFor && (
                   <p className="mt-1 text-sm text-red-600 dark:text-red-400">
                     {errors.lookingFor.message}
@@ -461,9 +480,13 @@ export default function ProfileForm({ initialData }: ProfileFormProps) {
                   {...register('canHelpWith')}
                   id="canHelpWith"
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white"
+                  maxLength={500}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white resize-none"
                   placeholder="Areas where you&apos;re happy to support others."
                 />
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 text-right">
+                  {watchedCanHelpWith.length}/500
+                </p>
                 {errors.canHelpWith && (
                   <p className="mt-1 text-sm text-red-600 dark:text-red-400">
                     {errors.canHelpWith.message}
@@ -507,30 +530,59 @@ export default function ProfileForm({ initialData }: ProfileFormProps) {
               <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
                 If you&apos;re a founder
               </h3>
-              <input
-                {...register('startupName')}
-                type="text"
-                placeholder="Startup name"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white"
-              />
-              <input
-                {...register('startupStage')}
-                type="text"
-                placeholder="Stage (idea, prototype, MVP, revenue, scaling)"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white"
-              />
-              <input
-                {...register('startupSector')}
-                type="text"
-                placeholder="Sector (AI, climate, fintech, health, etc.)"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white"
-              />
-              <textarea
-                {...register('startupDescription')}
-                rows={3}
-                placeholder="One-paragraph description of what you are building."
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white"
-              />
+              <div>
+                <label htmlFor="startupName" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Startup name
+                </label>
+                <input
+                  {...register('startupName')}
+                  id="startupName"
+                  name="startupName"
+                  type="text"
+                  placeholder="Startup name"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white"
+                />
+              </div>
+              <div>
+                <label htmlFor="startupStage" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Stage
+                </label>
+                <input
+                  {...register('startupStage')}
+                  id="startupStage"
+                  name="startupStage"
+                  type="text"
+                  placeholder="Stage (idea, prototype, MVP, revenue, scaling)"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white"
+                />
+              </div>
+              <div>
+                <label htmlFor="startupSector" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Sector
+                </label>
+                <input
+                  {...register('startupSector')}
+                  id="startupSector"
+                  name="startupSector"
+                  type="text"
+                  placeholder="Sector (AI, climate, fintech, health, etc.)"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white"
+                />
+              </div>
+              <div>
+                <label htmlFor="startupDescription" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Description
+                </label>
+                <textarea
+                  {...register('startupDescription')}
+                  id="startupDescription"
+                  name="startupDescription"
+                  rows={3}
+                  maxLength={2000}
+                  placeholder="One-paragraph description of what you are building."
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white resize-none"
+                />
+              </div>
             </div>
 
             {/* Researcher section */}
@@ -538,30 +590,60 @@ export default function ProfileForm({ initialData }: ProfileFormProps) {
               <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
                 If you&apos;re a researcher
               </h3>
-              <input
-                {...register('researchField')}
-                type="text"
-                placeholder="Research field"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white"
-              />
-              <input
-                {...register('researchInstitution')}
-                type="text"
-                placeholder="Institution or lab"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white"
-              />
-              <textarea
-                {...register('researchSummary')}
-                rows={3}
-                placeholder="Short overview of your research focus."
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white"
-              />
-              <textarea
-                {...register('selectedPublications')}
-                rows={3}
-                placeholder="Selected publications, preprints, or links (one per line)."
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white"
-              />
+              <div>
+                <label htmlFor="researchField" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Research field
+                </label>
+                <input
+                  {...register('researchField')}
+                  id="researchField"
+                  name="researchField"
+                  type="text"
+                  placeholder="Research field"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white"
+                />
+              </div>
+              <div>
+                <label htmlFor="researchInstitution" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Institution or lab
+                </label>
+                <input
+                  {...register('researchInstitution')}
+                  id="researchInstitution"
+                  name="researchInstitution"
+                  type="text"
+                  placeholder="Institution or lab"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white"
+                />
+              </div>
+              <div>
+                <label htmlFor="researchSummary" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Research summary
+                </label>
+                <textarea
+                  {...register('researchSummary')}
+                  id="researchSummary"
+                  name="researchSummary"
+                  rows={3}
+                  maxLength={2000}
+                  placeholder="Short overview of your research focus."
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white resize-none"
+                />
+              </div>
+              <div>
+                <label htmlFor="selectedPublications" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Selected publications
+                </label>
+                <textarea
+                  {...register('selectedPublications')}
+                  id="selectedPublications"
+                  name="selectedPublications"
+                  rows={3}
+                  maxLength={4000}
+                  placeholder="Selected publications, preprints, or links (one per line)."
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white resize-none"
+                />
+              </div>
             </div>
           </div>
 
@@ -643,11 +725,12 @@ export default function ProfileForm({ initialData }: ProfileFormProps) {
           <div className="space-y-4">
             {/* Theme */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label htmlFor="theme" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Theme
               </label>
               <select
                 {...register('preferences.theme')}
+                id="theme"
                 data-testid="profile-theme"
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white"
               >
@@ -820,52 +903,73 @@ function AccountSecuritySection() {
           Change Password
         </h3>
 
-        <div className="relative">
-          <input
-            type={showCurrentPw ? 'text' : 'password'}
-            value={currentPassword}
-            onChange={(e) => setCurrentPassword(e.target.value)}
-            placeholder="Current password"
-            required
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white"
-          />
-          <button
-            type="button"
-            onClick={() => setShowCurrentPw(!showCurrentPw)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-sm"
-          >
-            {showCurrentPw ? 'Hide' : 'Show'}
-          </button>
+        <div>
+          <label htmlFor="currentPassword" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Current password
+          </label>
+          <div className="relative">
+            <input
+              type={showCurrentPw ? 'text' : 'password'}
+              id="currentPassword"
+              name="currentPassword"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              placeholder="Current password"
+              required
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white"
+            />
+            <button
+              type="button"
+              onClick={() => setShowCurrentPw(!showCurrentPw)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-sm"
+            >
+              {showCurrentPw ? 'Hide' : 'Show'}
+            </button>
+          </div>
         </div>
 
-        <div className="relative">
+        <div>
+          <label htmlFor="newPassword" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            New password
+          </label>
+          <div className="relative">
+            <input
+              type={showNewPw ? 'text' : 'password'}
+              id="newPassword"
+              name="newPassword"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="New password"
+              required
+              minLength={8}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white"
+            />
+            <button
+              type="button"
+              onClick={() => setShowNewPw(!showNewPw)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-sm"
+            >
+              {showNewPw ? 'Hide' : 'Show'}
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Confirm new password
+          </label>
           <input
-            type={showNewPw ? 'text' : 'password'}
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            placeholder="New password"
+            type="password"
+            id="confirmPassword"
+            name="confirmPassword"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            placeholder="Confirm new password"
             required
             minLength={8}
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white"
           />
-          <button
-            type="button"
-            onClick={() => setShowNewPw(!showNewPw)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-sm"
-          >
-            {showNewPw ? 'Hide' : 'Show'}
-          </button>
         </div>
-
-        <input
-          type="password"
-          value={confirmPassword}
-          onChange={(e) => setConfirmPassword(e.target.value)}
-          placeholder="Confirm new password"
-          required
-          minLength={8}
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white"
-        />
 
         <p className="text-xs text-gray-500 dark:text-gray-400">
           Min 8 characters, at least one uppercase letter, one lowercase letter, and one number.

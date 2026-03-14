@@ -51,8 +51,14 @@ export async function notifyAffiliateCommissionEarned(
   email: string,
   name: string,
   amount: number,
-  affiliateCode: string
+  affiliateCode: string,
+  commissionRate: number = 0.05,
+  upgradedTier: string | null = null
 ) {
+  const ratePercent = Math.round(commissionRate * 100);
+  const upgradeHtml = upgradedTier
+    ? `<p style="margin:16px 0;padding:12px 16px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;font-size:15px;color:#065f46;font-weight:600;">Congratulations! You've been upgraded to <strong>${upgradedTier}</strong> tier!</p>`
+    : '';
   const html = wrapHtml(
     'Commission Earned!',
     `You earned a new commission of ₹${amount.toFixed(2)}`,
@@ -61,15 +67,17 @@ export async function notifyAffiliateCommissionEarned(
      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f9fafb;border-radius:8px;margin:16px 0;">
        <tr><td style="padding:20px;">
          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-           <tr><td style="padding:8px 0;font-size:14px;color:#6b7280;">Commission (5%)</td><td style="padding:8px 0;font-size:14px;color:#1f2937;text-align:right;font-weight:600;">₹${amount.toFixed(2)}</td></tr>
+           <tr><td style="padding:8px 0;font-size:14px;color:#6b7280;">Commission (${ratePercent}%)</td><td style="padding:8px 0;font-size:14px;color:#1f2937;text-align:right;font-weight:600;">₹${amount.toFixed(2)}</td></tr>
            <tr><td style="padding:8px 0;font-size:14px;color:#6b7280;">Status</td><td style="padding:8px 0;font-size:14px;color:#f59e0b;text-align:right;font-weight:600;">On hold (30 days)</td></tr>
          </table>
        </td></tr>
      </table>
+     ${upgradeHtml}
      <p style="margin:0 0 16px;font-size:14px;color:#6b7280;">This commission will be eligible for payout after 30 days.</p>
      <p style="margin:16px 0 0;"><a href="${APP_URL}/partnership/dashboard" style="display:inline-block;padding:10px 24px;background:#059669;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;">View Dashboard</a></p>`
   );
-  const text = `Hi ${name}, a new subscriber used your code ${affiliateCode}. You earned ₹${amount.toFixed(2)} commission (eligible for payout after 30 days). View: ${APP_URL}/partnership/dashboard`;
+  const upgradeText = upgradedTier ? ` You've been upgraded to ${upgradedTier} tier!` : '';
+  const text = `Hi ${name}, a new subscriber used your code ${affiliateCode}. You earned ₹${amount.toFixed(2)} commission at ${ratePercent}% (eligible for payout after 30 days).${upgradeText} View: ${APP_URL}/partnership/dashboard`;
   await sendEmail([email], `Commission Earned: ₹${amount.toFixed(2)}`, html, text).catch(console.error);
 }
 
@@ -107,18 +115,20 @@ export async function notifyAdminCommissionCreated(
   partnerName: string,
   affiliateCode: string,
   commissionAmount: number,
-  subscriberEmail: string
+  subscriberEmail: string,
+  commissionRate: number = 0.05
 ) {
   const adminEmails = getAdminEmails();
   if (!adminEmails.length) return;
+  const ratePercent = Math.round(commissionRate * 100);
   const html = wrapHtml(
     'New Affiliate Commission',
     `₹${commissionAmount.toFixed(2)} commission for ${partnerName}`,
-    `<p style="margin:0 0 16px;font-size:15px;color:#4b5563;">A new commission of <strong>₹${commissionAmount.toFixed(2)}</strong> has been recorded for partner <strong>${partnerName}</strong> (code: ${affiliateCode}).</p>
+    `<p style="margin:0 0 16px;font-size:15px;color:#4b5563;">A new commission of <strong>₹${commissionAmount.toFixed(2)}</strong> (${ratePercent}%) has been recorded for partner <strong>${partnerName}</strong> (code: ${affiliateCode}).</p>
      <p style="margin:0 0 8px;font-size:14px;color:#6b7280;">Subscriber: ${subscriberEmail}</p>
      <p style="margin:0 0 8px;font-size:14px;color:#6b7280;">Eligible for payout after 30 days.</p>
      <p style="margin:16px 0 0;"><a href="${APP_URL}/admin/affiliate-commissions" style="display:inline-block;padding:10px 24px;background:#059669;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;">View Commissions</a></p>`
   );
-  const text = `New affiliate commission: ₹${commissionAmount.toFixed(2)} for ${partnerName} (${affiliateCode}). Subscriber: ${subscriberEmail}. Eligible after 30 days.`;
+  const text = `New affiliate commission: ₹${commissionAmount.toFixed(2)} (${ratePercent}%) for ${partnerName} (${affiliateCode}). Subscriber: ${subscriberEmail}. Eligible after 30 days.`;
   await sendEmail(adminEmails, `Affiliate Commission: ₹${commissionAmount.toFixed(2)} for ${partnerName}`, html, text).catch(console.error);
 }

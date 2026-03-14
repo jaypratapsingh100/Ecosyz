@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { isAdmin } from '@/lib/admin';
 import { prisma } from '@/lib/db';
+import { getTierDefinition, type PartnerTierName } from '@/lib/payments/partner-tiers';
 
 /**
  * GET: Return affiliate commission data with per-partner balances
@@ -26,6 +27,8 @@ export async function GET() {
         name: true,
         email: true,
         affiliateCode: true,
+        tier: true,
+        tierUpgradedAt: true,
         payoutVpa: true,
         payoutBeneficiaryName: true,
         payoutAccountNumber: true,
@@ -67,11 +70,19 @@ export async function GET() {
         .filter((c) => c.status === 'paid')
         .reduce((sum, c) => sum + c.amount, 0);
 
+      const tier = (p.tier as PartnerTierName) || 'BRONZE';
+      const tierDef = getTierDefinition(tier);
+
       return {
         id: p.id,
         name: p.name,
         email: p.email,
         affiliateCode: p.affiliateCode,
+        tier,
+        tierLabel: tierDef.label,
+        tierIcon: tierDef.icon,
+        commissionPercent: tierDef.commissionPercent,
+        tierUpgradedAt: p.tierUpgradedAt,
         hasPayoutDetails: !!(p.payoutVpa || p.payoutAccountNumber),
         payoutMethod: p.payoutVpa ? 'upi' : p.payoutAccountNumber ? 'bank' : null,
         eligibleBalance: parseFloat(eligibleBalance.toFixed(2)),

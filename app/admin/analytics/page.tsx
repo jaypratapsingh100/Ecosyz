@@ -209,7 +209,8 @@ export default function AdminAnalyticsPage() {
       try {
         const response = await fetch('/api/auth/session');
         if (response.ok) {
-          setIsAuthenticated(true);
+          const data = await response.json();
+          setIsAuthenticated(!!data.user);
         } else {
           setIsAuthenticated(false);
         }

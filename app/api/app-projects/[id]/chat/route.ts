@@ -589,6 +589,7 @@ export async function POST(
           const SCAFFOLD_PATHS_S = new Set([
             'index.html', 'src/App.jsx', 'src/App.tsx', 'src/main.jsx', 'src/main.tsx',
             'src/index.css', 'src/index.js', 'src/index.ts',
+            'README.md', 'package.json', 'vite.config.js', 'vite.config.ts',
           ]);
           const hasUserFiles = existingFilePaths.some((p: string) => !SCAFFOLD_PATHS_S.has(p));
 
@@ -608,6 +609,11 @@ export async function POST(
               });
               streamPlan = parsePlannerResponse(planRes.choices[0]?.message?.content || '');
 
+              // Send the plan to the client so user can see what will be built
+              if (streamPlan) {
+                emit({ type: 'plan', data: streamPlan });
+              }
+
               if (streamPlan?.files?.length) {
                 emit({ type: 'status', data: 'architecting' });
                 const archPrompt = buildArchitectPrompt(streamPlan, existingFilePaths);
@@ -621,7 +627,10 @@ export async function POST(
                   max_tokens: 1024,
                   stream: false,
                 });
-                parseArchitectResponse(archRes.choices[0]?.message?.content || '');
+                const archResult = parseArchitectResponse(archRes.choices[0]?.message?.content || '');
+                if (archResult) {
+                  emit({ type: 'architecture', data: archResult });
+                }
               }
             } catch (err) {
               console.warn('Planner/Architect failed in stream mode:', err);
@@ -902,6 +911,7 @@ export async function POST(
     const SCAFFOLD_PATHS = new Set([
       'index.html', 'src/App.jsx', 'src/App.tsx', 'src/main.jsx', 'src/main.tsx',
       'src/index.css', 'src/index.js', 'src/index.ts',
+      'README.md', 'package.json', 'vite.config.js', 'vite.config.ts',
     ]);
     const hasUserGeneratedFiles = existingFilePaths.some((p: string) => !SCAFFOLD_PATHS.has(p));
     if (!hasUserGeneratedFiles) {

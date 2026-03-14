@@ -62,15 +62,15 @@ export const UpdateProfile = z.object({
     .optional(),
   currentFocus: z
     .string()
-    .max(1000, 'Current focus must be less than 1000 characters')
+    .max(500, 'Current focus must be less than 500 characters')
     .optional(),
   lookingFor: z
     .string()
-    .max(1000, 'Looking for must be less than 1000 characters')
+    .max(500, 'Looking for must be less than 500 characters')
     .optional(),
   canHelpWith: z
     .string()
-    .max(1000, 'Can help with must be less than 1000 characters')
+    .max(500, 'Can help with must be less than 500 characters')
     .optional(),
 
   // Founder‑specific
