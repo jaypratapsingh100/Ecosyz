@@ -4,6 +4,8 @@ import { extractAgentResponse, type AgentFile } from '@/lib/app-builder/agentSch
 import { prisma } from '@/lib/db';
 import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
 
+export const maxDuration = 300;
+
 async function extractTextFromFile(file: Blob, fileName?: string): Promise<string> {
   const type = (file as { type?: string }).type || '';
   const name = fileName || (file as { name?: string }).name || '';

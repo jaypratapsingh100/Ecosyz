@@ -28,6 +28,8 @@ import { getStageParams } from '@/lib/app-builder/ai-params';
 import type { ChatMessage, ChatRequestBody, DatabaseError, QuestionnaireData, ProjectFile } from '@/app/types/app-builder';
 import type { PlannerPlan, ArchitectTaskPlan, AppProjectState } from '@/app/types/app-builder';
 
+export const maxDuration = 300;
+
 type FileCreationResult = { path: string; success: boolean; error?: string; validated?: boolean; validationError?: string; sandboxIssues?: string[] };
 
 // GET endpoint to fetch chat history
@@ -1885,7 +1887,7 @@ root.render(
     
     let timeoutId: NodeJS.Timeout | null = null;
     try {
-      // Add timeout for Groq requests (2 minutes)
+      // Abort before Vercel kills the function (2 min < 5 min maxDuration)
       const controller = new AbortController();
       timeoutId = setTimeout(() => {
         controller.abort();

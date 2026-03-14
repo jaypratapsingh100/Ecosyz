@@ -3,6 +3,8 @@ import { createAIClient, hasAIClient } from '@/lib/ai/provider';
 import { extractAgentResponse, type AgentFile } from '@/lib/app-builder/agentSchema';
 import { fetchLinkedInProfileImage } from '@/lib/linkedin/fetchProfileImage';
 
+export const maxDuration = 300;
+
 async function extractTextFromFile(file: Blob, fileName?: string): Promise<string> {
   const type = (file as any).type || '';
   const name = fileName || (file as any).name || '';

@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
+export const maxDuration = 300;
 
 // Simple in-memory cache (TTL 7 days)
 const CACHE_TTL = 7 * 24 * 60 * 60 * 1000;

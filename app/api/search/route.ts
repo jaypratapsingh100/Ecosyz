@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 export const revalidate = 0;
 export const runtime = 'nodejs';
+export const maxDuration = 300;
 import { searchOpenAlex } from './providers/openalex';
 import { searchArxiv } from './providers/arxiv';
 import { searchZenodo } from './providers/zenodo';
