@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db';
 import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
 import { deployToVercel, getClaimableDeploymentUrl } from '@/lib/vercel';
 import { buildDeployableHtml } from '@/app/lib/app-builder/build-deployable-html';
-import { validateFileSet } from '@/lib/app-builder/validate-files';
+
 
 /**
  * POST /api/app-projects/[id]/deploy/vercel
@@ -63,13 +63,37 @@ export async function POST(
           .map((f: { path: string; content: string }) => ({ path: f.path, content: f.content }));
 
         if (jsFiles.length > 0) {
-          const validation = await validateFileSet(jsFiles);
-          if (!validation.valid) {
-            console.warn('⚠️ Pre-deploy validation failed:', validation.errors.slice(0, 5));
+          // Validate syntax only (per-file checks) — always run
+          const { validateJSXSyntax } = await import('@/lib/app-builder/validate-files');
+          const syntaxErrors: string[] = [];
+          for (const f of jsFiles) {
+            const result = validateJSXSyntax(f.path, f.content);
+            if (!result.valid) {
+              syntaxErrors.push(...result.errors.map(e => `[syntax] ${f.path}: ${e}`));
+            }
+          }
+
+          // Import resolution: validate against ALL project files (not just JS files)
+          // This prevents false positives when files exist in DB but aren't in the JS filter
+          const allProjectFiles = project.files
+            .map((f: { path: string; content: string }) => ({ path: f.path, content: f.content }));
+          const { validateImportResolution } = await import('@/lib/app-builder/validate-files');
+          const importResult = validateImportResolution(allProjectFiles);
+
+          // Filter out import errors for entry files (they have non-local imports)
+          const importErrors = importResult.errors.filter(err => {
+            const filePath = err.split(':')[0];
+            return !ENTRY_FILE_PATTERN.test(filePath);
+          });
+
+          const allErrors = [...syntaxErrors, ...importErrors.map(e => `[import] ${e}`)];
+
+          if (allErrors.length > 0) {
+            console.warn('⚠️ Pre-deploy validation failed:', allErrors.slice(0, 5));
             return NextResponse.json(
               {
                 error: 'Project has validation errors. Fix them before deploying.',
-                validationErrors: validation.errors.slice(0, 10),
+                validationErrors: allErrors.slice(0, 10),
                 hint: 'Add ?force=true to deploy anyway.',
               },
               { status: 400 }
@@ -114,10 +138,13 @@ export async function POST(
       );
     }
 
-    // Ensure static-only deployment so no serverless function is invoked (avoids FUNCTION_INVOCATION_FAILED)
+    // Ensure static-only deployment so no serverless function is invoked (avoids FUNCTION_INVOCATION_FAILED).
+    // The "rewrites" rule sends ALL paths to index.html so client-side routing works
+    // (both hash-based and any absolute href paths like /articles/3 won't 404).
     const vercelJson = {
       version: 2,
       builds: [{ src: '**/*', use: '@vercel/static' }],
+      rewrites: [{ source: '/(.*)', destination: '/index.html' }],
     };
     const filesForDeploy = [
       { path: 'index.html', content: deployableIndexHtml },

@@ -5,7 +5,8 @@
  */
 
 import type { QuestionnaireData } from '@/app/types/app-builder';
-import { getThemePrompt, getCompactThemePrompt, mapDesignStyleToTheme } from './themePresets';
+import { getThemePrompt, getCompactThemePrompt, mapDesignStyleToTheme, getColorSchemeOverride } from './themePresets';
+import { generateDesignDNA, formatDesignDNAForPrompt } from './design-dna';
 
 const SCAFFOLD_HINT = 'Paths: package.json, vite.config.js, index.html, src/main.jsx, src/App.jsx, src/index.css, src/components/*.jsx';
 
@@ -38,82 +39,44 @@ SPACING SYSTEM (generous — this is what separates amateur from pro):
 - Hero to first section: at least py-20
 - Between heading and content: mb-12 sm:mb-16
 
-COMPONENT PATTERNS (use these exact structures):
+COMPONENT LAYOUT GUIDELINES (choose a DIFFERENT layout variant each time — DO NOT use the same structure for every website):
 
-1. STICKY NAV WITH BLUR:
-<nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
-  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
-    <span className="text-lg font-bold text-gray-900">{brandName}</span>
-    <div className="hidden md:flex items-center gap-8">
-      <a className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors">Link</a>
-      <button className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors">CTA</button>
-    </div>
-    {/* Mobile hamburger with useState toggle */}
-  </div>
-</nav>
+1. NAVBAR: Always sticky with backdrop-blur. Use max-w-7xl container with h-16. Must include mobile hamburger with useState toggle.
 
-2. HERO WITH GRADIENT TEXT:
-<section className="py-24 sm:py-32">
-  <div className="max-w-4xl mx-auto text-center px-4">
-    <p className="text-sm font-semibold uppercase tracking-wider mb-4" style of theme accent>Tagline</p>
-    <h1 className="text-5xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight leading-[1.1] mb-6">
-      Build something <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600">amazing</span>
-    </h1>
-    <p className="text-lg sm:text-xl text-gray-600 max-w-2xl mx-auto mb-10">Subheadline here</p>
-    <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-      <button className="bg-gray-900 text-white px-8 py-3.5 rounded-xl text-base font-semibold hover:bg-gray-800 shadow-lg hover:shadow-xl transition-all">Primary CTA</button>
-      <button className="border border-gray-300 text-gray-700 px-8 py-3.5 rounded-xl text-base font-semibold hover:bg-gray-50 transition-colors">Secondary</button>
-    </div>
-  </div>
-</section>
+2. HERO — pick ONE variant based on the app type (NEVER always use centered text):
+   A) SPLIT LAYOUT: 2-column grid (text left, image/illustration right) — best for products, e-commerce, portfolios
+   B) CENTERED TEXT: Full-width centered headline + CTA — best for SaaS landing pages, minimal sites
+   C) IMAGE BACKDROP: Full-bleed background image with dark overlay + white text — best for restaurants, travel, real estate
+   D) ASYMMETRIC: Off-center text with floating cards/badges — best for creative agencies, startups
+   E) MULTI-CTA: Centered text with multiple action cards below instead of buttons — best for marketplaces, platforms
 
-3. FEATURE CARDS WITH HOVER:
-<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-  <div className="group bg-white rounded-2xl p-8 border border-gray-100 hover:border-gray-200 hover:shadow-lg transition-all duration-300">
-    <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center mb-5 group-hover:scale-110 transition-transform duration-300">
-      <svg className="w-6 h-6 text-blue-600">...</svg>
-    </div>
-    <h3 className="text-lg font-semibold text-gray-900 mb-2">Feature</h3>
-    <p className="text-sm text-gray-600 leading-relaxed">Description</p>
-  </div>
-</div>
+3. FEATURES — pick ONE layout:
+   A) 3-COLUMN CARDS: Traditional grid with icon + title + description
+   B) ALTERNATING ROWS: Image left + text right, then swap — best for storytelling
+   C) BENTO GRID: Mixed-size cards (1 large + 2 small, or 2×2 + 1 wide) — modern, dynamic
+   D) ICON LIST: Compact list with inline icons — best for feature comparison
+   E) NUMBERED STEPS: Vertical timeline or horizontal steps with connecting lines
 
-4. STATS BAR:
-<div className="grid grid-cols-2 md:grid-cols-4 gap-8 py-12">
-  <div className="text-center">
-    <div className="text-3xl sm:text-4xl font-bold text-gray-900">10K+</div>
-    <div className="text-sm text-gray-500 mt-1">Active Users</div>
-  </div>
-</div>
+4. SOCIAL PROOF — pick ONE:
+   A) TESTIMONIAL CARDS: 3-column grid with quote, avatar, name
+   B) LOGO CLOUD: Trusted-by logos in a row
+   C) STATS BAR: 3-4 key metrics in a horizontal row
+   D) FEATURED REVIEW: One large testimonial with star rating, centered
+   E) COMBINED: Stats bar + single quote below
 
-5. TESTIMONIALS:
-<div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-  <div className="bg-gray-50 rounded-2xl p-8">
-    <p className="text-gray-600 leading-relaxed mb-6">"Quote text here"</p>
-    <div className="flex items-center gap-3">
-      <div className="w-10 h-10 bg-gray-300 rounded-full"></div>
-      <div><div className="text-sm font-semibold text-gray-900">Name</div><div className="text-xs text-gray-500">Title, Company</div></div>
-    </div>
-  </div>
-</div>
+5. CTA SECTION — pick ONE:
+   A) DARK BAND: Dark background with white text + prominent button
+   B) GRADIENT CARD: Rounded card with gradient background floating in white section
+   C) SPLIT CTA: Text left + email input right in a single row
+   D) MINIMAL: Just a headline + button centered with generous whitespace
 
-6. DARK CTA SECTION:
-<section className="bg-gray-900 py-20 sm:py-24">
-  <div className="max-w-4xl mx-auto text-center px-4">
-    <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">Ready to get started?</h2>
-    <p className="text-lg text-gray-400 mb-8">Description</p>
-    <button className="bg-white text-gray-900 px-8 py-3.5 rounded-xl font-semibold hover:bg-gray-100 transition-colors">Get Started</button>
-  </div>
-</section>
+6. FOOTER — pick ONE:
+   A) MULTI-COLUMN: 4-column links grid on dark background
+   B) MINIMAL: Single row with brand + links + social icons
+   C) NEWSLETTER FOOTER: Links columns + email signup form
+   D) CENTERED: Stacked logo + links + social + copyright
 
-7. FOOTER WITH COLUMNS:
-<footer className="bg-gray-900 text-gray-400 py-16">
-  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-2 md:grid-cols-4 gap-8">
-    <div><h4 className="text-sm font-semibold text-white mb-4">Product</h4>...</div>
-    <div><h4 className="text-sm font-semibold text-white mb-4">Company</h4>...</div>
-  </div>
-  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-12 pt-8 border-t border-gray-800 text-sm">&copy; 2025 Brand. All rights reserved.</div>
-</footer>
+IMPORTANT: Vary your choices across different projects. If the last website used a centered hero + 3-column features, use a split hero + bento grid next time. Each website should feel unique.
 
 MICRO-INTERACTIONS (add to every interactive element):
 - Buttons: hover:shadow-lg transition-all duration-200
@@ -138,15 +101,24 @@ ICON SYSTEM (inline SVG — icons are available via CDN):
 - Example check: <svg className="w-5 h-5 text-emerald-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
 
 IMAGE SYSTEM (use these reliable sources — NEVER use broken or fake URLs):
-- Hero/banner images: use https://picsum.photos/{width}/{height} (e.g. https://picsum.photos/1200/600)
-- For specific seeded images (consistent across reloads): https://picsum.photos/seed/{keyword}/{width}/{height} (e.g. https://picsum.photos/seed/office/800/400)
-- Avatar/profile images: use https://i.pravatar.cc/{size}?img={1-70} (e.g. https://i.pravatar.cc/150?img=3)
-- Product/placeholder images: use https://picsum.photos/seed/{product-name}/{width}/{height}
+- PRIORITY: If the user message includes a "REAL IMAGE URLs" section with Pexels URLs, use those EXACT URLs in your components. Map hero→hero image, product-N→product cards, feature→feature sections. These are real, relevant stock photos.
+- FALLBACK (only if no real URLs provided): use seeded picsum: https://picsum.photos/seed/{descriptive-keyword}/{width}/{height}
+- The {descriptive-keyword} MUST describe what the image should show based on the app's actual content. Examples:
+  - Bike shop hero: https://picsum.photos/seed/mountain-bike-trail/1200/600
+  - Bike product card: https://picsum.photos/seed/road-bicycle-red/400/300
+  - Temple app: https://picsum.photos/seed/hindu-temple-architecture/1200/600
+  - Restaurant menu item: https://picsum.photos/seed/pasta-dish-italian/400/300
+  - SaaS dashboard: https://picsum.photos/seed/analytics-dashboard-dark/1200/600
+  - Portfolio project: https://picsum.photos/seed/web-design-mockup/800/500
+- Use UNIQUE descriptive seeds for EACH image — never repeat the same seed. Add specifics: color, style, setting.
+  - Product 1: seed/leather-handbag-brown, Product 2: seed/canvas-backpack-blue, Product 3: seed/silk-scarf-red
+  - Team member 1: seed/professional-woman-office, Team member 2: seed/developer-man-laptop
+- Avatar/profile images: use https://i.pravatar.cc/{size}?img={1-70} (e.g. https://i.pravatar.cc/150?img=3). Use DIFFERENT img numbers for different people.
 - NEVER use unsplash.com URLs (they require API keys and often 404)
 - NEVER use via.placeholder.com (it's unreliable and slow)
-- NEVER use broken or made-up image URLs
+- NEVER use generic seeds like "product", "image", "photo", "hero" — always be specific to the content
 - For decorative backgrounds, prefer CSS gradients or Tailwind bg-gradient-to-* over images
-- Always add alt text to images for accessibility
+- Always add meaningful alt text that describes what the image depicts
 
 CONTENT QUALITY:
 - NEVER use "Lorem ipsum" or placeholder text. Write realistic, specific copy.
@@ -182,7 +154,15 @@ APP STRUCTURE (preview renders in iframe from these files):
 - Entry: src/App.jsx (or src/App.tsx). This file MUST export default App and is the main entry. Set isMain: true.
 - Styles: src/index.css (global). Component-specific: src/components/*.css or inline.
 - New components: src/components/ComponentName.jsx. Import in App and render inside App.
+- Pages: src/pages/PageName.jsx (e.g. src/pages/Home.jsx, src/pages/About.jsx).
+- State: src/store/storeName.js (e.g. src/store/cartStore.js).
+- Hooks: src/hooks/hookName.js (e.g. src/hooks/useCart.js).
+- Context: src/context/ContextName.jsx (e.g. src/context/AppProvider.jsx).
+- Utilities: src/lib/utilName.js or src/utils/utilName.js.
+- Nested components: src/components/ui/ComponentName.jsx, src/components/dashboard/ComponentName.jsx.
 - No Next.js, no React Router in preview. For links use <a href="..."> or window.Link (stub provided).
+
+CRITICAL: Every file you import MUST be included in your output. If App.jsx imports './pages/NotFound', you MUST generate src/pages/NotFound.jsx. Never import a file without generating it.
 `;
 
 /** File tree template so LLM outputs correct paths and types */
@@ -195,8 +175,23 @@ SCAFFOLD FILE TREE (create/update only these paths; use correct extension .${ext
     App.${ext}
     index.css
     components/
-      (e.g. Header.jsx, Hero.jsx, Footer.jsx)
-Output files with path exactly as above (e.g. "src/App.${ext}", "src/components/Header.${ext}").`;
+      (e.g. Header.${ext}, Hero.${ext}, Footer.${ext})
+      ui/
+        (e.g. LoadingSkeleton.${ext}, Button.${ext})
+      dashboard/
+        (e.g. Charts.${ext}, Stats.${ext})
+    pages/
+      (e.g. Home.${ext}, About.${ext}, NotFound.${ext})
+    store/
+      (e.g. cartStore.js, appStore.js)
+    hooks/
+      (e.g. useCart.js, useAuth.js)
+    context/
+      (e.g. AppProvider.${ext}, ThemeProvider.${ext})
+    lib/ or utils/
+      (e.g. helpers.js, api.js)
+Output files with path exactly as above (e.g. "src/App.${ext}", "src/components/Header.${ext}", "src/pages/Home.${ext}").
+IMPORTANT: You MUST generate EVERY file that you import. Do NOT import a file that you do not include in your output.`;
 }
 
 /** Build system prompt with scaffold context and Lovable-style rendering rules */
@@ -209,6 +204,10 @@ export function buildSystemPrompt(options: {
   themeId?: string | null;
   /** Design style from questionnaire (mapped to theme if no themeId) */
   designStyle?: string | null;
+  /** User's chosen color palette (e.g. 'Rose', 'Emerald', 'Blue') */
+  colorScheme?: string | null;
+  /** App type for layout variety (e.g. 'SaaS', 'E-commerce', 'Blog') */
+  appType?: string | null;
 }): string {
   const ext = options.language === 'typescript' ? 'tsx' : 'jsx';
   const paths =
@@ -220,6 +219,13 @@ export function buildSystemPrompt(options: {
   const resolvedTheme = options.themeId || mapDesignStyleToTheme(options.designStyle);
   const themePrompt = getThemePrompt(resolvedTheme);
 
+  // Color scheme override — maps user's palette selection to concrete Tailwind classes
+  const colorOverride = getColorSchemeOverride(options.colorScheme);
+
+  // Design DNA — unique layout blueprint for this generation
+  const dna = generateDesignDNA(options.appType || undefined, options.designStyle || undefined);
+  const dnaBlueprint = formatDesignDNAForPrompt(dna);
+
   return `You are a senior front-end engineer working inside a vibe coding platform.
 Build production-ready, professional React sites with modern, aesthetic UI that render in our in-browser preview (Lovable-style).
 Framework: ${options.framework}, Language: ${options.language}.
@@ -229,7 +235,10 @@ ${getScaffoldFileTree(ext)}
 
 Follow the PRODUCTION-GRADE DESIGN SYSTEM for layout, spacing, typography and component structure:
 ${VIBE_DESIGN_SYSTEM}
-${themePrompt ? `\n${themePrompt}\n` : ''}
+${themePrompt ? `\n${themePrompt}\n` : ''}${colorOverride}
+
+${dnaBlueprint}
+
 Allowed paths (use these exactly): ${paths}
 
 OUTPUT FORMAT (use one; both are accepted):
@@ -245,7 +254,9 @@ RULES:
 - NEVER return a partial app. At minimum include: src/App.${ext}, all components imported into App, and any shared layout/section components those depend on, plus required CSS files.
 - DO NOT return only a single file like src/App.${ext}; always return the complete, self-contained file set needed for the app to run without missing imports.
 - MINIMUM FILE COUNT: You MUST return at least 4 files: src/App.${ext}, src/index.css, and at least 2 component files in src/components/. A single-file response will be rejected.
-- CRITICAL for preview: (1) For any .map() always guard: (items || []).map(...) or useState([]). Never .map() on undefined. (2) Valid JSX only; use ESM import/export syntax ONLY — NEVER use require(), module.exports, or any CommonJS syntax. (3) For navigation use <a href="..."> or Link (stub provided in preview).
+- CRITICAL for preview: (1) For any .map() always guard: (items || []).map(...) or useState([]). Never .map() on undefined. (2) Valid JSX only; use ESM import/export syntax ONLY — NEVER use require(), module.exports, or any CommonJS syntax. (3) For navigation: use <button> with onClick for in-app state changes (NOT <a href="#">). Use <a href="#section-id"> only for scroll-to-section anchors. NEVER use <a href="#"> with onClick for navigation — it causes scroll-to-top bugs.
+- LINKS & BUTTONS: NEVER use absolute href paths like href="/articles/3" or href="/about" — the deployed app is a single HTML file and these cause 404 errors. For detail views, use onClick with state (e.g. setSelectedArticle(article)) to show/hide content. For section navigation, use href="#section-id". Every <button> MUST have an onClick handler or be inside a <form> — NEVER render dead buttons with no action. If a button has no real backend, show an alert or toggle state (e.g. alert('Coming soon!') or setShowModal(true)).
+- EXPORTS: Each component file MUST use "export default ComponentName" where ComponentName is PascalCase. NEVER export a data variable (camelCase array/object) when a component function exists in the same file. Wrong: "export default features;" when FeatureComparison exists. Correct: "export default FeatureComparison;".
 - DEPENDENCY WHITELIST: Only import from these packages: react, react-dom, react-router-dom, lucide-react. Use native fetch() instead of axios. Use Date instead of moment/dayjs. Use inline logic instead of lodash/underscore. Do NOT import any other npm packages — they are not available in the build.
 - SCAFFOLD PROTECTION: Do NOT generate or modify these files: package.json, vite.config.js, tsconfig.json, index.html, postcss.config.js, tailwind.config.js. These are managed by the platform. Only generate files under src/.
 
@@ -338,7 +349,7 @@ STRICT OUTPUT (retry - ensure complete response):
 - Return ALL files: src/App.${ext} plus every component (Header, Hero, Footer, etc.) as separate files.
 - Use either: (A) JSON {"files":[...]} OR (B) Markdown code blocks \`\`\`file:path/to/file.${ext}\`\`\`
 - Do NOT return only one file. Include the complete, self-contained file set.
-- Every component imported in App MUST have its own file in the output.`;
+- Every file imported anywhere MUST be included in the output. If App imports './pages/Home', you must generate src/pages/Home.${ext}. If a component imports '../store/cartStore', you must generate src/store/cartStore.js.`;
 }
 
 /**
@@ -352,6 +363,8 @@ export function buildCompactSystemPrompt(options: {
   /** Theme preset ID or design style for compact theme injection */
   themeId?: string | null;
   designStyle?: string | null;
+  colorScheme?: string | null;
+  appType?: string | null;
 }): string {
   const ext = options.language === 'typescript' ? 'tsx' : 'jsx';
   const paths = options.filePaths.length > 0 ? options.filePaths.slice(0, 10).join(', ') : SCAFFOLD_HINT;
@@ -359,32 +372,37 @@ export function buildCompactSystemPrompt(options: {
   // Resolve and inject compact theme if available
   const resolvedTheme = options.themeId || mapDesignStyleToTheme(options.designStyle);
   const compactTheme = getCompactThemePrompt(resolvedTheme);
+  const colorOverride = getColorSchemeOverride(options.colorScheme);
+
+  // Design DNA for compact prompt — same variety mechanism
+  const dna = generateDesignDNA(options.appType || undefined, options.designStyle || undefined);
+  const dnaBlueprint = formatDesignDNAForPrompt(dna);
 
   return `You are a senior React developer. Build complete, polished, production-grade React apps.
 
-STRUCTURE: Entry=src/App.${ext} (export default App, isMain:true). Components in src/components/. Styles in src/index.css. Tailwind CSS. No Next.js, no React Router.
+STRUCTURE: Entry=src/App.${ext} (export default App, isMain:true). Components in src/components/ (subdirs ok: ui/, dashboard/). Pages in src/pages/. State in src/store/. Hooks in src/hooks/. Context in src/context/. Utils in src/lib/ or src/utils/. Styles in src/index.css. Tailwind CSS. No Next.js, no React Router.
 
 OUTPUT: JSON {"files":[{"path":"src/App.${ext}","name":"App.${ext}","content":"...","language":"${ext === 'tsx' ? 'typescript' : 'javascript'}","isMain":true},...],"summary":"..."}
 
 DESIGN (production-grade quality):
 - Typography: Inter font. H1=text-5xl font-bold tracking-tight. H2=text-3xl font-bold. Body=text-base text-gray-600.
 - Spacing: py-20+ between sections. max-w-7xl mx-auto px-4 sm:px-6 lg:px-8. gap-8 for grids.
-- Nav: sticky top-0 bg-white/80 backdrop-blur-md border-b border-gray-100.
-- Hero: py-24+, text-5xl+ headline, gradient text accent (bg-clip-text), dual CTAs.
-- Cards: bg-white rounded-2xl p-8 border border-gray-100 hover:shadow-lg transition-all duration-300. group-hover:scale-110 on icons.
-- Footer: bg-gray-900 text-gray-400 py-16. Multi-column grid.
 - Micro-interactions: hover:shadow-lg, group-hover effects, transition-all duration-300.
 - Responsive: mobile-first. grid-cols-1→md:2→lg:3. Hamburger nav on mobile.
 - Icons: inline SVG (w-5 h-5 stroke-2).
-- Images: use https://picsum.photos/{w}/{h} for photos, https://picsum.photos/seed/{keyword}/{w}/{h} for seeded, https://i.pravatar.cc/{size}?img={1-70} for avatars. NEVER use unsplash.com or via.placeholder.com. Prefer CSS gradients for decorative backgrounds.
+- Images: ALWAYS use seeded picsum with descriptive keywords matching the app content: https://picsum.photos/seed/{descriptive-keyword}/{w}/{h}. Use UNIQUE seeds per image. Avatars: https://i.pravatar.cc/{size}?img={1-70}. NEVER use unsplash.com or via.placeholder.com.
 - Content: NEVER Lorem ipsum. Realistic copy with concrete numbers.
 - NEVER: bright red primary, missing hover states, inconsistent spacing, fewer than 4 files.
-${compactTheme ? `\n${compactTheme}` : ''}
+${compactTheme ? `\n${compactTheme}` : ''}${colorOverride}
+
+${dnaBlueprint}
 
 RULES:
 - Return ALL files in ONE response. Minimum 4 files: App.${ext}, index.css, + 2 components.
 - Guard .map(): (items||[]).map(). ESM only, no require()/module.exports.
+- EXPORTS: Each component file MUST "export default ComponentName" (PascalCase). NEVER export a data variable — always export the component function.
 - Components: Header, Hero, sections, Footer as separate files. App imports and renders them.
+- CRITICAL: Every file you import MUST be included in your output. Never import a file you don't generate.
 - ONLY import from: react, react-dom, react-router-dom, lucide-react. No other npm packages.
 - Do NOT generate package.json, vite.config, tsconfig, index.html — only files under src/.
 - Current files: ${paths}`;

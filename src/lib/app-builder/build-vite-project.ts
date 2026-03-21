@@ -262,7 +262,7 @@ createRoot(document.getElementById('root')).render(
     <meta property="og:title" content="${safeTitle}" />
     <meta property="og:description" content="${safeTitle} — A modern web application" />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="https://picsum.photos/seed/og/1200/630" />
+    <meta property="og:image" content="https://picsum.photos/seed/${safeTitle.replace(/\s+/g, '-').toLowerCase()}/1200/630" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="${safeTitle}" />
     <meta name="twitter:description" content="${safeTitle} — A modern web application" />
@@ -289,7 +289,7 @@ createRoot(document.getElementById('root')).render(
     <meta property="og:title" content="${safeTitle}" />
     <meta property="og:description" content="${safeTitle} — A modern web application" />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="https://picsum.photos/seed/og/1200/630" />
+    <meta property="og:image" content="https://picsum.photos/seed/${safeTitle.replace(/\s+/g, '-').toLowerCase()}/1200/630" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="${safeTitle}" />
     <meta name="twitter:description" content="${safeTitle} — A modern web application" />

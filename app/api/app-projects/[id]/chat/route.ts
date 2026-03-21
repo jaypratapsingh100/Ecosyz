@@ -8,10 +8,7 @@ import { trackApiRequest } from '@/lib/api-usage';
 import {
   extractAgentResponse,
   parseCodeBlocksToFiles,
-  ALLOWED_PATHS,
-  COMPONENT_PATH_PATTERN,
-  SRC_ROOT_COMPONENT_PATTERN,
-  CSS_PATH_PATTERN,
+  isAllowedPath,
 } from '@/lib/app-builder/agentSchema';
 import { buildRetryPrompt } from '@/lib/app-builder/promptBuilder';
 import { buildPlannerPrompt, parsePlannerResponse } from '@/lib/app-builder/agents/planner';
@@ -640,8 +637,27 @@ export async function POST(
           }
 
           emit({ type: 'status', data: 'coding' });
+
+          // ── Fetch relevant images from Pexels (runs for ALL generations, not just first) ──
+          let imagePromptSection = '';
+          if (process.env.PEXELS_API_KEY) {
+            try {
+              const { buildImageMap, formatImageMapForPrompt, clearImageCache } = await import('@/lib/app-builder/image-search');
+              clearImageCache();
+              const appType = questionnaireData?.appType || streamPlan?.name || message.slice(0, 50);
+              const brandName = questionnaireData?.brandName || streamPlan?.name || '';
+              const features: string[] = streamPlan?.features || questionnaireData?.requiredFeatures || [];
+              const imageMap = await buildImageMap(appType, brandName, features);
+              imagePromptSection = formatImageMapForPrompt(imageMap);
+              if (Object.keys(imageMap).length > 0) {
+                console.log(`🖼️ Fetched ${Object.keys(imageMap).length} real images from Pexels`);
+              }
+            } catch (imgErr) {
+              console.warn('Image search failed (non-blocking):', imgErr);
+            }
+          }
           promptRes = buildAppBuilderPrompts({
-            message,
+            message: message + imagePromptSection,
             questionnaireData,
             frameworkForScaffold,
             useTypeScript,
@@ -653,6 +669,11 @@ export async function POST(
             currentFilePath,
             projectFiles: project.files as unknown as { path: string; name: string; content: string }[],
           });
+
+          // Also inject image URLs into system prompt so AI can't miss them
+          if (imagePromptSection) {
+            promptRes.systemPrompt += '\n\n' + imagePromptSection;
+          }
 
           // ── Stream AI coder response (with fallback on failure) ──
           const coderParams = getStageParams('coder');
@@ -1283,17 +1304,13 @@ export async function POST(
           }
 
           // Sandbox: only allow paths that match scaffold + components (no arbitrary paths)
-          const pathAllowed =
-            ALLOWED_PATHS.includes(normalizedPath as (typeof ALLOWED_PATHS)[number]) ||
-            COMPONENT_PATH_PATTERN.test(normalizedPath) ||
-            SRC_ROOT_COMPONENT_PATTERN.test(normalizedPath) ||
-            CSS_PATH_PATTERN.test(normalizedPath);
+          const pathAllowed = isAllowedPath(normalizedPath);
           if (!pathAllowed) {
             console.log(`  ❌ SANDBOX: path not allowed - skipping: ${normalizedPath}`);
             createdFiles.push({
               path: filePath,
               success: false,
-              error: `Path not allowed. Use src/App.jsx, src/components/*.jsx, or src/*.css.`,
+              error: `Path not allowed. Use src/App.jsx, src/components/*.jsx, src/pages/*.jsx, src/store/*.js, src/hooks/*.js, src/context/*.jsx, src/lib/*.js, or src/*.css.`,
             });
             continue;
           }

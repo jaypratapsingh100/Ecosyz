@@ -123,6 +123,82 @@ PERSONALITY:
 - Section dividers: border-t border-gray-800. Alternate bg-gray-950 and bg-gray-900.`,
     compactSnippet: `THEME: Dark Elegance. Bg: gray-950 entire page (NEVER white). Cards: bg-gray-900 border-gray-800. Text: gray-100/400. Accent: emerald-400 (glow). Buttons: bg-emerald-500 text-gray-950. Borders glow on hover: emerald-500/30. Nav: bg-gray-950/80 backdrop-blur. Footer: bg-gray-950 border-gray-800.`,
   },
+
+  'glassmorphism': {
+    id: 'glassmorphism',
+    label: 'Glassmorphism',
+    description: 'Frosted glass, blur effects, layered depth — Apple Vision Pro quality',
+    promptSnippet: `THEME: GLASSMORPHISM (Apple Vision Pro / Figma aesthetic)
+COLOR SYSTEM:
+- Background: ALWAYS a rich gradient mesh background — e.g. bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 for the main page. NEVER plain white.
+- Cards: bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl. Content shows THROUGH the glass.
+- Text: text-white headings, text-white/70 body, text-white/50 muted
+- Accent: Use the user's color scheme for glowing accents — ring-{color}-500/30 on hover
+- Shadows: shadow-xl shadow-black/20. Cards cast depth shadows.
+PERSONALITY:
+- Layered, translucent, ethereal. Everything floats on glass.
+- Cards: bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-8. MUST use backdrop-blur.
+- Buttons: bg-white/20 backdrop-blur-md border border-white/30 text-white hover:bg-white/30. Primary: bg-white text-gray-900 hover:bg-white/90.
+- Nav: bg-white/10 backdrop-blur-xl border-b border-white/10. Fully translucent.
+- Hero: Large text-white with text-shadow effect. Gradient text for brand words.
+- Sections: Alternate bg-white/5 and transparent. NEVER use bg-white or bg-gray-50.
+- Add floating gradient blobs: absolute positioned divs with bg-gradient-to-r + rounded-full + blur-3xl + opacity-30 as decorative elements behind content.
+- Footer: bg-black/30 backdrop-blur-xl border-t border-white/10.
+- Inputs: bg-white/10 border-white/20 text-white placeholder-white/40.`,
+    compactSnippet: `THEME: Glassmorphism. Bg: gradient mesh (indigo-900 via purple-900 to pink-900). Cards: bg-white/10 backdrop-blur-xl border-white/20. Text: white/70. Buttons: bg-white/20 backdrop-blur. Nav: bg-white/10 backdrop-blur-xl. Floating gradient blobs for decoration. NEVER plain white bg. Everything translucent.`,
+  },
+
+  'creative-playful': {
+    id: 'creative-playful',
+    label: 'Creative Playful',
+    description: 'Asymmetric layouts, artistic flair — Notion / Framer quality',
+    promptSnippet: `THEME: CREATIVE PLAYFUL (Notion / Framer aesthetic)
+COLOR SYSTEM:
+- Background: white main with colorful accent sections (NOT all same bg)
+- Cards: Mix of bg-white rounded-3xl and bg-{accent}-50 rounded-2xl. Vary border-radius per card.
+- Text: gray-900 headings (some oversized text-6xl lg:text-8xl), gray-600 body
+- Accent: Use the user's color scheme boldly — large color blocks, not just small accents
+- Borders: border-2 (thicker than minimal), colorful border-{accent}-200
+PERSONALITY:
+- Playful, creative, dynamic. Break the grid intentionally.
+- Hero: Oversized heading (text-6xl lg:text-8xl), mix font weights (font-light + font-black on different lines).
+  Use -rotate-1 or rotate-1 on decorative elements. Scattered emoji or icons as decoration.
+- Cards: Mix sizes — some cards span 2 columns, some are small squares. Use rounded-3xl on some, rounded-xl on others.
+- Feature sections: Use asymmetric layouts — text at 60% width with image at 40%, not centered.
+- Buttons: rounded-full px-8 py-3 with bold colors. Mix solid + outlined styles.
+- Images: Some with rounded-3xl, some with rounded-full (circular crops). Mix aspect ratios.
+- Decorative: Add subtle transform rotate (-rotate-2 to rotate-2) on cards, stickers, or accent shapes.
+- Color blocks: Use full-width colored bands (bg-{accent}-500 py-20 text-white) between sections.
+- Footer: Colorful, NOT dark gray. Use bg-{accent}-50 with playful layout.
+- Typography: Mix weights dramatically — one word font-black, next word font-light.`,
+    compactSnippet: `THEME: Creative Playful. Oversized headings (text-6xl lg:text-8xl), mixed font weights. Cards: varied border-radius (rounded-3xl + rounded-xl), some rotated (-rotate-1). Asymmetric layouts. Colorful sections not all white. Buttons: rounded-full. Mix card sizes. Footer: colorful (bg-accent-50) not dark. Break the grid.`,
+  },
+
+  'neo-brutalism': {
+    id: 'neo-brutalism',
+    label: 'Neo Brutalism',
+    description: 'Thick borders, solid shadows, raw energy — Gumroad / Figma quality',
+    promptSnippet: `THEME: NEO BRUTALISM (Gumroad / indie aesthetic)
+COLOR SYSTEM:
+- Background: bg-[#FFFDF7] or bg-amber-50 main (warm off-white, NOT pure white)
+- Cards: bg-white border-2 border-black rounded-lg (NOT rounded-2xl — keep it chunky)
+- Shadows: shadow-[4px_4px_0_black] on cards and buttons (SOLID block shadows, not blurred)
+- Text: text-black headings (font-black weight), text-gray-700 body
+- Accent: Use bold flat colors from user's scheme — no gradients. bg-{accent}-400 for highlights.
+- Borders: border-2 border-black EVERYWHERE. This is the signature.
+PERSONALITY:
+- Raw, bold, unapologetic. Intentionally "imperfect" — this is a DESIGN CHOICE, not a bug.
+- Buttons: bg-{accent}-400 border-2 border-black shadow-[4px_4px_0_black] rounded-lg px-6 py-3 font-bold hover:shadow-[2px_2px_0_black] hover:translate-x-[2px] hover:translate-y-[2px] transition-all. Active press effect.
+- Cards: border-2 border-black rounded-lg shadow-[4px_4px_0_black]. Hover: shadow-[2px_2px_0_black] + translate.
+- Nav: bg-white border-b-2 border-black. Brand name in font-black uppercase.
+- Hero: Oversized text-5xl lg:text-7xl font-black. Some text highlighted with bg-{accent}-300 px-2 inline (marker highlight effect).
+- Sections: Alternate bg-white and bg-{accent}-100. Use border-t-2 border-black between sections.
+- Images: border-2 border-black rounded-lg. No soft shadows.
+- Inputs: border-2 border-black rounded-lg. Focus: ring-2 ring-{accent}-400.
+- Tags/badges: bg-{accent}-300 border-2 border-black rounded-full px-3 py-1 text-sm font-bold.
+- Footer: bg-black text-white border-t-2 border-black. Bold and simple.`,
+    compactSnippet: `THEME: Neo Brutalism. Bg: #FFFDF7 (warm off-white). Cards: border-2 border-black shadow-[4px_4px_0_black]. Buttons: same + hover translate effect. Nav: border-b-2 border-black. Hero: text-7xl font-black with bg-accent-300 marker highlights. Sections: border-t-2 between them. No gradients, no blur. Raw and bold.`,
+  },
 };
 
 /**
@@ -153,11 +229,53 @@ export function mapDesignStyleToTheme(designStyle: string | undefined | null): s
     'modern-minimal': 'modern-minimal',
     'professional': 'corporate-clean',
     'bold-colorful': 'bold-vibrant',
-    'creative': 'bold-vibrant',
+    'creative': 'creative-playful',
     'dark': 'dark-elegance',
-    'glassmorphism': 'dark-elegance',
+    'glassmorphism': 'glassmorphism',
+    'neo-brutalism': 'neo-brutalism',
   };
   return mapping[designStyle] ?? null;
+}
+
+/**
+ * Generate a color scheme override snippet that remaps the theme's primary/accent colors
+ * to the user's selected palette. Injected after the theme prompt in the system prompt.
+ */
+export function getColorSchemeOverride(colorScheme: string | undefined | null): string {
+  if (!colorScheme) return '';
+  const lower = colorScheme.toLowerCase();
+
+  // Map palette names to Tailwind color families
+  const COLOR_MAP: Record<string, { family: string; primary: string; light: string; dark: string }> = {
+    emerald: { family: 'emerald', primary: 'emerald-600', light: 'emerald-50', dark: 'emerald-900' },
+    blue: { family: 'blue', primary: 'blue-600', light: 'blue-50', dark: 'blue-900' },
+    purple: { family: 'purple', primary: 'purple-600', light: 'purple-50', dark: 'purple-900' },
+    violet: { family: 'violet', primary: 'violet-600', light: 'violet-50', dark: 'violet-900' },
+    rose: { family: 'rose', primary: 'rose-600', light: 'rose-50', dark: 'rose-900' },
+    amber: { family: 'amber', primary: 'amber-500', light: 'amber-50', dark: 'amber-900' },
+    cyan: { family: 'cyan', primary: 'cyan-600', light: 'cyan-50', dark: 'cyan-900' },
+    indigo: { family: 'indigo', primary: 'indigo-600', light: 'indigo-50', dark: 'indigo-900' },
+    slate: { family: 'slate', primary: 'slate-600', light: 'slate-50', dark: 'slate-900' },
+    red: { family: 'red', primary: 'red-600', light: 'red-50', dark: 'red-900' },
+    orange: { family: 'orange', primary: 'orange-500', light: 'orange-50', dark: 'orange-900' },
+    teal: { family: 'teal', primary: 'teal-600', light: 'teal-50', dark: 'teal-900' },
+    pink: { family: 'pink', primary: 'pink-600', light: 'pink-50', dark: 'pink-900' },
+  };
+
+  // Find matching palette
+  const match = Object.entries(COLOR_MAP).find(([key]) => lower.includes(key));
+  if (!match) return '';
+
+  const [, palette] = match;
+  return `\nCOLOR OVERRIDE (apply to ALL theme colors):
+Use ${palette.family} as the primary color family throughout. Specifically:
+- Primary/accent buttons and links: bg-${palette.primary}, text-${palette.primary}, hover:bg-${palette.family}-700
+- Light backgrounds for alternate sections: bg-${palette.light}
+- Card highlights and icon backgrounds: bg-${palette.family}-100
+- Dark sections (CTA, footer): bg-${palette.dark} or bg-gray-900
+- Gradient accents: from-${palette.family}-500 to-${palette.family}-700
+- Borders: border-${palette.family}-200 for cards, border-${palette.family}-500/30 for accents
+Replace ALL hardcoded color references (violet-600, blue-600, emerald-500, etc.) with the ${palette.family} equivalents above.`;
 }
 
 /** All available theme presets for UI display. */

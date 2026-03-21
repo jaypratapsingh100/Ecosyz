@@ -35,7 +35,7 @@ export function validateJSXCode(code: string, filename: string): ValidationResul
     });
   }
 
-  // Check 2: Orphaned export statements
+  // Check 2: Orphaned export statements + wrong export (data instead of component)
   const orphanedExports = code.match(/^\s*export\s+default\s+(\w+)\s*;?\s*$/gm);
   if (orphanedExports) {
     orphanedExports.forEach(exp => {
@@ -51,6 +51,22 @@ export function validateJSXCode(code: string, filename: string): ValidationResul
             message: `Orphaned export: "${exp.trim()}" - component ${componentName} not defined`,
             suggestion: `Define the component before exporting: "function ${componentName}() { ... }"`
           });
+        }
+
+        // Check if exporting a non-component (camelCase/lowercase) when a PascalCase component exists
+        const isNonComponentExport = componentDefined && /^[a-z]/.test(componentName);
+        if (isNonComponentExport) {
+          const pascalComponents = code.match(/(?:const|function|class)\s+([A-Z][a-zA-Z0-9]*)\s*[=(]/g);
+          if (pascalComponents && pascalComponents.length > 0) {
+            const firstComponent = pascalComponents[0].match(/(?:const|function|class)\s+([A-Z][a-zA-Z0-9]*)/)?.[1];
+            if (firstComponent) {
+              errors.push({
+                type: 'export',
+                message: `Wrong export: exporting data variable "${componentName}" instead of component "${firstComponent}"`,
+                suggestion: `Change to: export default ${firstComponent};`
+              });
+            }
+          }
         }
       }
     });
@@ -77,6 +93,17 @@ export function validateJSXCode(code: string, filename: string): ValidationResul
       });
     }
   });
+
+  // Check 3b: Absolute href paths that will cause 404 on deployed single-page apps
+  // Matches href="/path" but NOT href="#", href="#section", href="http://...", href="mailto:..."
+  const absoluteHrefs = code.match(/href\s*=\s*["']\/[a-zA-Z]/g) || [];
+  const templateHrefs = code.match(/href\s*=\s*\{\s*`\/[a-zA-Z]/g) || [];
+  if (absoluteHrefs.length > 0 || templateHrefs.length > 0) {
+    warnings.push({
+      type: 'best-practice',
+      message: 'Absolute href paths (e.g. href="/articles/3") will cause 404 on deployed single-page apps. Use onClick with state or href="#section-id" instead.',
+    });
+  }
 
   // Check 4: Missing component definition
   const hasComponentDefinition = code.match(/(?:function|const|class)\s+[A-Z][a-zA-Z0-9]*\s*[=(]/);

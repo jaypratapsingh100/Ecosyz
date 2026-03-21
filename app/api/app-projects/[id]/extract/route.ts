@@ -9,10 +9,7 @@ import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
 import {
   extractAgentResponse,
   parseCodeBlocksToFiles,
-  ALLOWED_PATHS,
-  COMPONENT_PATH_PATTERN,
-  SRC_ROOT_COMPONENT_PATTERN,
-  CSS_PATH_PATTERN,
+  isAllowedPath,
 } from '@/lib/app-builder/agentSchema';
 
 export async function POST(
@@ -61,11 +58,7 @@ export async function POST(
         const o = f as { path?: string; name?: string; content?: string; language?: string; isMain?: boolean };
         if (!o.path || typeof o.content !== 'string') continue;
         const path = o.path.replace(/\s+/g, '').replace(/\\/g, '/');
-        const valid =
-          ALLOWED_PATHS.includes(path as (typeof ALLOWED_PATHS)[number]) ||
-          COMPONENT_PATH_PATTERN.test(path) ||
-          SRC_ROOT_COMPONENT_PATTERN.test(path) ||
-          CSS_PATH_PATTERN.test(path);
+        const valid = isAllowedPath(path);
         if (!valid) continue;
         filesToSave.push({
           path,

@@ -50,11 +50,13 @@ export function buildAppBuilderPrompts(input: AppBuilderPromptInput): AppBuilder
 
   let { message } = input;
 
-  // Resolve theme from questionnaire data
+  // Resolve theme + color + app type from questionnaire data
   const themeId = (questionnaireData?.themePreset as string) || undefined;
   const designStyle = (questionnaireData?.designStyle as string) || undefined;
+  const colorScheme = (questionnaireData?.colorScheme as string) || undefined;
+  const appType = (questionnaireData?.appType as string) || undefined;
 
-  // Base Lovable/Replit-style system prompt with theme injection
+  // Base Lovable/Replit-style system prompt with theme + color + layout DNA injection
   let systemPrompt = buildSystemPrompt({
     framework: frameworkForScaffold,
     language: useTypeScript ? 'typescript' : 'javascript',
@@ -62,6 +64,8 @@ export function buildAppBuilderPrompts(input: AppBuilderPromptInput): AppBuilder
     filePaths: existingFilePaths,
     themeId,
     designStyle,
+    colorScheme,
+    appType,
   });
 
   // When project has scaffold files, add explicit entry/file list so LLM aligns output with preview
@@ -199,17 +203,21 @@ export function buildFastPathPrompts(input: Omit<AppBuilderPromptInput, 'plan' |
 
   let { message } = input;
 
-  // Resolve theme for compact prompt
+  // Resolve theme + color + app type for compact prompt
   const themeId = (questionnaireData?.themePreset as string) || undefined;
   const designStyle = (questionnaireData?.designStyle as string) || undefined;
+  const colorScheme = (questionnaireData?.colorScheme as string) || undefined;
+  const appType = (questionnaireData?.appType as string) || undefined;
 
-  // Compact system prompt with theme injection
+  // Compact system prompt with theme + color + layout DNA injection
   const systemPrompt = buildCompactSystemPrompt({
     framework: frameworkForScaffold,
     language: useTypeScript ? 'typescript' : 'javascript',
     filePaths: existingFilePaths,
     themeId,
     designStyle,
+    colorScheme,
+    appType,
   });
 
   // Streamlined user prompt — no separate plan/taskPlan sections

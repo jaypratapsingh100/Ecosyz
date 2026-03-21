@@ -336,6 +336,8 @@ Plan at least 8-12 files for a complete multi-page app.`;
     filePaths: allPlanPaths,
     themeId: questionnaireData?.themePreset ?? null,
     designStyle: questionnaireData?.designStyle ?? null,
+    colorScheme: questionnaireData?.colorScheme ?? null,
+    appType: questionnaireData?.appType ?? null,
   });
 
   const sharedSystemPrompt = `${designSystemPrompt}
@@ -443,7 +445,7 @@ Use Tailwind CSS for styling. Use functional components with hooks. Export defau
 Use ESM imports only. Guard .map() calls: (items || []).map(...).
 Allowed imports: react, react-dom, react-router-dom, lucide-react, react-icons, zustand, framer-motion, @tanstack/react-query, swr, react-hook-form, zod, date-fns, clsx, class-variance-authority, tailwind-merge, recharts, sonner, @supabase/supabase-js.
 Use realistic, professional content — never lorem ipsum.
-Images: use picsum.photos for photos, i.pravatar.cc for avatars.
+Images: ALWAYS use seeded picsum with descriptive keywords matching the content: https://picsum.photos/seed/{descriptive-keyword}/{w}/{h}. Use UNIQUE descriptive seeds per image (e.g. seed/mountain-bike-red/400/300, not seed/product/400/300). Avatars: i.pravatar.cc with different img numbers.
 
 OUTPUT FORMAT: Use this exact delimiter format (NOT JSON):
 --- FILE: src/pages/SomePage.jsx ---

@@ -8,16 +8,15 @@ import { prisma } from '@/lib/db';
 import {
   extractAgentResponse,
   parseCodeBlocksToFiles,
-  ALLOWED_PATHS,
-  COMPONENT_PATH_PATTERN,
-  SRC_ROOT_COMPONENT_PATTERN,
-  CSS_PATH_PATTERN,
+  isAllowedPath,
 } from '@/lib/app-builder/agentSchema';
 
 export interface FileCreationResult {
   path: string;
   success: boolean;
   error?: string;
+  /** Whether the file was newly created or an existing file was updated */
+  action?: 'created' | 'updated';
 }
 
 export interface ParsedFile {
@@ -101,14 +100,38 @@ function autoFixContent(content: string): string {
     fixed = fixed.replace(/\bclassname\s*=/gi, 'className=');
   }
 
-  // Fix export name mismatches
-  const componentMatch = fixed.match(/(?:const|function|var|let)\s+(\w+)\s*[=(]/);
+  // Fix export name mismatches — prefer PascalCase component name over data variables
   const exportMatch = fixed.match(/export\s+default\s+(\w+)\s*;/);
-  if (componentMatch && exportMatch && componentMatch[1] !== exportMatch[1]) {
-    fixed = fixed.replace(
-      /export\s+default\s+\w+\s*;/g,
-      `export default ${componentMatch[1]};`
-    );
+  if (exportMatch) {
+    const exportedName = exportMatch[1];
+    // Find all PascalCase declarations (component names like Header, FeatureComparison)
+    const componentDecls = [...fixed.matchAll(/(?:const|function|var|let)\s+([A-Z][a-zA-Z0-9]*)\s*[=(]/g)];
+    // Find all camelCase/lowercase declarations (data variables like features, pricingPlans)
+    const allDecls = [...fixed.matchAll(/(?:const|function|var|let)\s+(\w+)\s*[=(]/g)];
+
+    if (componentDecls.length > 0) {
+      // If exporting a non-component name but a PascalCase component exists, fix it
+      const exportedIsComponent = /^[A-Z]/.test(exportedName);
+      if (!exportedIsComponent) {
+        // Export the first PascalCase component instead
+        fixed = fixed.replace(
+          /export\s+default\s+\w+\s*;/g,
+          `export default ${componentDecls[0][1]};`
+        );
+      } else if (!allDecls.some(d => d[1] === exportedName)) {
+        // Exported name doesn't exist, use first component
+        fixed = fixed.replace(
+          /export\s+default\s+\w+\s*;/g,
+          `export default ${componentDecls[0][1]};`
+        );
+      }
+    } else if (allDecls.length > 0 && !allDecls.some(d => d[1] === exportedName)) {
+      // No PascalCase component found, but exported name doesn't match any declaration
+      fixed = fixed.replace(
+        /export\s+default\s+\w+\s*;/g,
+        `export default ${allDecls[0][1]};`
+      );
+    }
   }
 
   return fixed;
@@ -121,12 +144,7 @@ export function isPathAllowed(normalizedPath: string): boolean {
   if (normalizedPath.includes('..') || normalizedPath.startsWith('/') || normalizedPath.includes('://')) {
     return false;
   }
-  return (
-    ALLOWED_PATHS.includes(normalizedPath as (typeof ALLOWED_PATHS)[number]) ||
-    COMPONENT_PATH_PATTERN.test(normalizedPath) ||
-    SRC_ROOT_COMPONENT_PATTERN.test(normalizedPath) ||
-    CSS_PATH_PATTERN.test(normalizedPath)
-  );
+  return isAllowedPath(normalizedPath);
 }
 
 /**
@@ -156,6 +174,12 @@ export async function upsertFiles(
     }
 
     try {
+      // Check if file already exists to determine created vs updated
+      const existing = await prisma.appFile.findUnique({
+        where: { projectId_path: { projectId, path: file.path } },
+        select: { id: true },
+      });
+
       await prisma.appFile.upsert({
         where: {
           projectId_path: { projectId, path: file.path },
@@ -177,7 +201,11 @@ export async function upsertFiles(
         },
       });
 
-      const result: FileCreationResult = { path: file.path, success: true };
+      const result: FileCreationResult = {
+        path: file.path,
+        success: true,
+        action: existing ? 'updated' : 'created',
+      };
       results.push(result);
       options?.onFileCreated?.(result);
     } catch (err) {

@@ -177,29 +177,30 @@ export default function PreviewPanel({
   }, [generatePreview, projectId]);
 
   return (
-    <div className="h-full flex flex-col bg-[#0a0a0a] relative">
-      {/* Refresh button - always show when we have a project so user can force re-render */}
+    <div className="h-full flex flex-col bg-[#0a0a0a]">
+      {/* Preview header bar */}
       {projectId && (
-        <div className="absolute top-2 right-2 z-10 flex-shrink-0">
+        <div className="flex-shrink-0 px-3 py-1.5 border-b border-white/10 bg-[#0d0d0d] flex items-center justify-between">
+          <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Preview</span>
           <button
             type="button"
             onClick={() => generatePreview()}
             disabled={loading}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/10 hover:bg-emerald-500/20 border border-white/20 text-gray-300 hover:text-emerald-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+            className="px-2 py-1 rounded-md text-[11px] font-medium hover:bg-emerald-500/20 text-gray-400 hover:text-emerald-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
             title="Refresh preview"
           >
             {loading ? (
-              <span className="inline-block w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
             ) : (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
             )}
-            <span>{loading ? 'Loading…' : 'Refresh preview'}</span>
+            <span>{loading ? 'Loading…' : 'Refresh'}</span>
           </button>
         </div>
       )}
-      <div className="w-full h-full relative">
+      <div className="w-full flex-1 min-h-0 relative">
         {loading && !previewHtml ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#050505]">
             <div className="relative flex flex-col items-center gap-4">

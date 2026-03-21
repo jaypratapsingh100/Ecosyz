@@ -118,9 +118,24 @@ export async function runGenerationPipeline(
   let wasFixed = false;
 
   // Step 4: Validate syntax and imports
+  // Merge with existing project files so cross-batch imports resolve correctly.
+  // E.g., if CartPage.jsx (new) imports ../store/cartStore (already in DB), we
+  // need cartStore in the validation set so the import doesn't flag as unresolved.
   if (!skipValidation) {
     onStatus?.('validating');
-    const validation = await validateFileSet(sanitizedFiles);
+
+    // Build the full file set: new files take precedence over existing DB files
+    const newPathSet = new Set(sanitizedFiles.map(f => f.path));
+    const existingForValidation = (existingFiles || [])
+      .filter(f => !newPathSet.has(f.path))  // don't duplicate files being updated
+      .filter(f => /\.(jsx?|tsx?)$/.test(f.path));  // only JS/TS files matter for import resolution
+
+    const fullFileSet = [
+      ...sanitizedFiles,
+      ...existingForValidation.map(f => ({ ...f, name: f.path.split('/').pop() || f.path, language: 'javascript', isMain: false })),
+    ];
+
+    const validation = await validateFileSet(fullFileSet);
 
     if (!validation.valid) {
       console.warn(`⚠️ Pipeline: Validation found ${validation.errors.length} errors`);
@@ -137,7 +152,8 @@ export async function runGenerationPipeline(
           model,
           systemPrompt,
           maxFixRetries,
-          fixContext
+          fixContext,
+          existingForValidation,
         );
         finalFiles = fixResult.files;
         fixLoopAttempts = fixResult.attempts;

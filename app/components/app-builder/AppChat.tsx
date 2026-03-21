@@ -59,9 +59,22 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
   const [selectedProvider, setSelectedProvider] = useState<string>('groq');
   const [selectedModel, setSelectedModel] = useState<string>('');
 
-  const [extractingMessageId, setExtractingMessageId] = useState<string | null>(null);
-  const [extractingFileKey, setExtractingFileKey] = useState<string | null>(null);
-  const [streamingStatus, setStreamingStatus] = useState<string | null>(null);
+  // streamingStatus removed — progress tracker handles all display
+
+  // ── Generation progress tracker ──
+  interface ProgressStep {
+    id: string;
+    label: string;
+    status: 'pending' | 'active' | 'done';
+    detail?: string;
+  }
+  const [progressSteps, setProgressSteps] = useState<ProgressStep[]>([]);
+  const [planData, setPlanData] = useState<{ name?: string; features?: string[]; files?: { path: string; purpose: string }[] } | null>(null);
+  const [createdFiles, setCreatedFiles] = useState<{ path: string; action: 'created' | 'updated' }[]>([]);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [generationComplete, setGenerationComplete] = useState(false);
+  const [generationTruncated, setGenerationTruncated] = useState(false);
+  const generationStartRef = useRef<number>(0);
 
   const hasNoFiles = projectFiles.length === 0;
   const canGenerate = projectId && message.trim() && !loading;
@@ -75,7 +88,8 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
     return () => window.removeEventListener('files-updated', reset);
   }, []);
 
-  const { handleExtractFiles } = useFileExtraction({ projectId, onFilesCreated });
+  // File extraction hook — kept for potential manual extraction needs
+  useFileExtraction({ projectId, onFilesCreated });
 
   // Load available AI providers/models
   useEffect(() => {
@@ -286,6 +300,28 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
         let streamProvider = '';
         let streamModel = '';
 
+        // Reset progress tracker for new generation
+        setCreatedFiles([]);
+        setValidationErrors([]);
+        setPlanData(null);
+        setGenerationComplete(false);
+        setGenerationTruncated(false);
+        generationStartRef.current = Date.now();
+        // For first generation (no files yet): show all steps including planning
+        // For follow-ups (files exist): skip planning/architecting since server skips them
+        const isFirstGeneration = projectFiles.length === 0;
+        setProgressSteps(isFirstGeneration ? [
+          { id: 'planning', label: 'Planning app structure', status: 'pending' },
+          { id: 'architecting', label: 'Designing architecture', status: 'pending' },
+          { id: 'coding', label: 'Generating code', status: 'pending' },
+          { id: 'validating', label: 'Validating & fixing', status: 'pending' },
+          { id: 'saving', label: 'Saving files', status: 'pending' },
+        ] : [
+          { id: 'coding', label: 'Generating code', status: 'pending' },
+          { id: 'validating', label: 'Validating & fixing', status: 'pending' },
+          { id: 'saving', label: 'Saving files', status: 'pending' },
+        ]);
+
         // Add placeholder assistant message
         setMessages((prev) => [...prev, {
           id: assistantId,
@@ -316,24 +352,41 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
                   planning: 'Planning app structure...',
                   architecting: 'Designing architecture...',
                   coding: 'Writing code...',
-                  'creating-files': 'Saving files...',
-                  parsing: 'Parsing response...',
+                  'creating-files': 'Processing files...',
+                  parsing: 'Parsing generated code...',
                   filtering: 'Filtering files...',
                   sanitizing: 'Sanitizing imports...',
                   validating: 'Validating code...',
                   fixing: 'Auto-fixing issues...',
-                  saving: 'Saving files...',
+                  saving: 'Saving to project...',
+                  retrying: 'Retrying (missing files)...',
                 };
                 const label = statusLabels[event.data] || event.data;
-                setStreamingStatus(label);
-                // Also update message if no content streamed yet
-                if (!streamedContent) {
-                  setMessages((prev) => prev.map((m) =>
-                    m.id === assistantId ? { ...m, content: `_${label}_` } : m
-                  ));
+                // streamingStatus removed — progress steps handle display
+
+                // Map status events to progress step updates
+                const statusToStep: Record<string, string> = {
+                  planning: 'planning', architecting: 'architecting',
+                  coding: 'coding', 'creating-files': 'coding',
+                  parsing: 'validating', filtering: 'validating',
+                  sanitizing: 'validating', validating: 'validating',
+                  fixing: 'validating', saving: 'saving', retrying: 'coding',
+                };
+                const activeStepId = statusToStep[event.data];
+                if (activeStepId) {
+                  setProgressSteps(prev => prev.map(s => ({
+                    ...s,
+                    status: s.id === activeStepId ? 'active'
+                      : prev.findIndex(p => p.id === activeStepId) > prev.findIndex(p => p.id === s.id) ? 'done'
+                      : s.status,
+                    detail: s.id === activeStepId ? label : s.detail,
+                  })));
                 }
+
+                // Don't set status labels as message content — the progress tracker component handles display
               } else if (event.type === 'plan') {
                 const p = event.data;
+                setPlanData(p);
                 let planText = `**Plan: ${p.name || 'App'}**\n${p.description || ''}\n`;
                 if (p.techstack) planText += `\n**Tech:** ${p.techstack}`;
                 if (p.features?.length) planText += `\n**Features:**\n${p.features.map((f: string) => `- ${f}`).join('\n')}`;
@@ -358,7 +411,6 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
                 }
               } else if (event.type === 'token') {
                 streamedContent += event.data;
-                // Update message with streamed content (throttled)
                 const content = streamedContent;
                 setMessages((prev) => prev.map((m) =>
                   m.id === assistantId ? { ...m, content } : m
@@ -366,23 +418,38 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
               } else if (event.type === 'file-created') {
                 if (event.data?.success) {
                   streamedFiles.push(event.data.path);
-                  toast.success(`Created: ${event.data.path}`, { duration: 2000 });
+                  setCreatedFiles(prev => [...prev, { path: event.data.path, action: event.data.action || 'created' }]);
                 }
               } else if (event.type === 'done') {
-                setStreamingStatus(null);
+                // streamingStatus cleared
+                // Mark all steps as done
+                setProgressSteps(prev => prev.map(s => ({ ...s, status: 'done' as const })));
                 streamProvider = event.data?.summary?.provider || '';
                 streamModel = event.data?.summary?.model || '';
                 const finalContent = event.data?.response || streamedContent;
+                const elapsedSec = Math.round((Date.now() - generationStartRef.current) / 1000);
                 const fileSummary = streamedFiles.length > 0
-                  ? `\n\n**Added ${streamedFiles.length} file(s):** ${streamedFiles.join(', ')}`
+                  ? `\n\n**${streamedFiles.length} file(s) created** in ${elapsedSec}s: ${streamedFiles.join(', ')}`
                   : '';
                 setMessages((prev) => prev.map((m) =>
                   m.id === assistantId
                     ? { ...m, content: finalContent + fileSummary, provider: streamProvider, model: streamModel }
                     : m
                 ));
+                setGenerationComplete(true);
+
+                // Detect truncated response — if AI stopped mid-code block or ended abruptly
+                const trimmed = (finalContent || '').trimEnd();
+                const openBlocks = (trimmed.match(/```/g) || []).length;
+                const isTruncated = openBlocks % 2 !== 0
+                  || /[,{(\[]\s*$/.test(trimmed)
+                  || (streamedFiles.length === 0 && trimmed.length > 500);
+                setGenerationTruncated(isTruncated);
               } else if (event.type === 'error') {
-                setStreamingStatus(null);
+                // streamingStatus cleared
+                setProgressSteps(prev => prev.map(s =>
+                  s.status === 'active' ? { ...s, status: 'done' as const, detail: 'Error' } : s
+                ));
                 setError(event.data?.message || 'Generation failed');
                 toast.error('Generation Error', { description: event.data?.message, duration: 5000 });
               }
@@ -458,7 +525,7 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
       setMessages((prev) => prev.filter((msg) => msg.id !== userMessage.id));
     } finally {
       setLoading(false);
-      setStreamingStatus(null);
+      // streamingStatus cleared
     }
   };
 
@@ -490,13 +557,42 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
         <div className={`flex-1 ${isUser ? 'text-right' : ''}`}>
           <div className={`text-sm font-semibold mb-1 flex items-center gap-2 ${isUser ? 'text-blue-400' : 'text-white'}`}>
             {isUser ? 'You' : 'Assistant'}
-            {!isUser && loading && streamingStatus && (
-              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2.5 py-0.5 animate-pulse">
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                {streamingStatus}
-              </span>
-            )}
           </div>
+          {/* Generation Progress Tracker — shown during AND after generation */}
+          {!isUser && progressSteps.some(s => s.status !== 'pending') && (
+            <div className="mb-2 bg-black/30 border border-white/10 rounded-xl px-3 py-2.5 space-y-1.5 text-[12px]">
+              {progressSteps.map(step => (
+                <div key={step.id} className="flex items-center gap-2">
+                  {step.status === 'done' ? (
+                    <svg className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                  ) : step.status === 'active' ? (
+                    <span className="w-3.5 h-3.5 flex-shrink-0 flex items-center justify-center"><span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" /></span>
+                  ) : (
+                    <span className="w-3.5 h-3.5 flex-shrink-0 flex items-center justify-center"><span className="w-1.5 h-1.5 rounded-full bg-gray-600" /></span>
+                  )}
+                  <span className={step.status === 'active' ? 'text-blue-300 font-medium' : step.status === 'done' ? 'text-gray-400' : 'text-gray-600'}>
+                    {step.label}
+                  </span>
+                  {step.status === 'active' && step.detail && step.detail !== step.label && (
+                    <span className="text-gray-500 truncate">— {step.detail}</span>
+                  )}
+                </div>
+              ))}
+              {createdFiles.length > 0 && (
+                <div className="mt-1.5 pt-1.5 border-t border-white/5 space-y-0.5">
+                  <span className="text-gray-500 font-medium">Files ({createdFiles.length}):</span>
+                  {createdFiles.map(f => (
+                    <div key={f.path} className={`flex items-center gap-1.5 pl-1 ${f.action === 'created' ? 'text-emerald-400/80' : 'text-amber-400/80'}`}>
+                      <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                      <span className="truncate">{f.path}</span>
+                      <span className={`text-[9px] flex-shrink-0 ${f.action === 'created' ? 'text-emerald-500' : 'text-amber-500'}`}>{f.action === 'created' ? 'NEW' : 'MOD'}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {(hasFiles || msg.content) && (
           <div className={`rounded-2xl px-4 py-3 shadow-lg ${
             isUser
               ? 'bg-gradient-to-r from-blue-500/20 to-indigo-500/20 border border-blue-500/30'
@@ -504,196 +600,81 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
           }`}>
             {hasFiles ? (
               <div className="space-y-3">
+                {/* AI summary text */}
                 {parsedAgent?.summary && (
                   <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap break-words">
                     {parsedAgent.summary}
                   </p>
                 )}
-                {projectId && (
-                  <div className="flex items-center gap-2 text-xs text-gray-400">
-                    <button
-                      type="button"
-                      disabled={!!extractingMessageId || !projectId}
-                      onClick={async () => {
-                        if (!projectId || structuredFiles.length === 0) return;
-                        setExtractingMessageId(msg.id);
-                        try {
-                          const result = await handleExtractFiles(msg.content, structuredFiles);
-                          if (result.ok) {
-                            toast.success('Files extracted', {
-                              description: result.message,
-                              duration: 4000,
-                            });
-                          } else {
-                            toast.error('Extract failed', {
-                              description: result.message,
-                              duration: 4000,
-                            });
-                          }
-                        } finally {
-                          setExtractingMessageId(null);
-                        }
-                      }}
-                      className="inline-flex items-center gap-1 rounded-md border border-emerald-500/40 bg-emerald-500/15 px-2.5 py-1 font-medium text-emerald-300 hover:bg-emerald-500/25 hover:border-emerald-400/60 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {extractingMessageId === msg.id ? (
-                        <span className="inline-block w-3 h-3 border-2 border-emerald-300/40 border-t-emerald-300 rounded-full animate-spin" />
-                      ) : (
-                        <svg
-                          className="w-3 h-3"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            d="M4 4h16v4H4zM4 16h16v4H4zM4 8h2v8H4zM18 8h2v8h-2z"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                      )}
-                      <span>Extract all</span>
-                    </button>
-                    <span>
-                      {structuredFiles.length} file{structuredFiles.length === 1 ? '' : 's'} ready to
-                      extract.
+                {/* File summary bar — shows all files with NEW/MOD */}
+                <details className="group" open>
+                  <summary className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer select-none hover:text-gray-300 transition-colors list-none">
+                    <svg className="w-3 h-3 transition-transform group-open:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>
+                    <span>{structuredFiles.length} file{structuredFiles.length === 1 ? '' : 's'} generated</span>
+                    <span className="text-[10px] text-gray-600">
+                      ({structuredFiles.filter(f => createdFiles.find(cf => cf.path === f.path)?.action === 'created').length} new,{' '}
+                      {structuredFiles.filter(f => createdFiles.find(cf => cf.path === f.path)?.action === 'updated').length} modified)
                     </span>
-                  </div>
-                )}
-                <div className="space-y-3">
-                  {structuredFiles.map((file) => {
-                    const fileKey = `${msg.id}:${file.path}`;
-                    const isExtractingThisFile = extractingFileKey === fileKey;
-                    return (
-                      <div
-                        key={file.path}
-                        className="rounded-xl border border-white/10 bg-black/40 overflow-hidden"
-                      >
-                        <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 bg-white/5">
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                try {
-                                  if (
-                                    typeof navigator !== 'undefined' &&
-                                    navigator.clipboard &&
-                                    navigator.clipboard.writeText
-                                  ) {
-                                    await navigator.clipboard.writeText(file.content || '');
-                                    toast.success('Copied file to clipboard', {
-                                      description: file.path,
-                                      duration: 2000,
-                                    });
-                                  } else {
-                                    throw new Error('Clipboard API not available');
-                                  }
-                                } catch (err) {
-                                  toast.error('Failed to copy', {
-                                    description:
-                                      err instanceof Error ? err.message : 'Please copy manually.',
-                                    duration: 3000,
-                                  });
-                                }
-                              }}
-                              className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-medium text-gray-200 hover:bg-emerald-500/20 hover:border-emerald-400/40"
-                            >
-                              <svg
-                                className="w-3 h-3"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <rect
-                                  x="9"
-                                  y="9"
-                                  width="13"
-                                  height="13"
-                                  rx="2"
-                                  ry="2"
-                                  strokeWidth="2"
-                                />
-                                <path
-                                  d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                />
-                              </svg>
-                              <span>Copy</span>
-                            </button>
-                            {projectId && (
-                              <button
-                                type="button"
-                                disabled={isExtractingThisFile || !!extractingMessageId}
-                                onClick={async () => {
-                                  if (!projectId) return;
-                                  setExtractingFileKey(fileKey);
-                                  try {
-                                    const result = await handleExtractFiles(msg.content, [file]);
-                                    if (result.ok) {
-                                      toast.success('File extracted', {
-                                        description: result.message,
-                                        duration: 4000,
-                                      });
-                                    } else {
-                                      toast.error('Extract failed', {
-                                        description: result.message,
-                                        duration: 4000,
-                                      });
-                                    }
-                                  } finally {
-                                    setExtractingFileKey(null);
-                                  }
-                                }}
-                                className="inline-flex items-center gap-1 rounded-md border border-emerald-500/40 bg-emerald-500/15 px-2 py-1 text-[10px] font-medium text-emerald-300 hover:bg-emerald-500/25 hover:border-emerald-400/60 disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                {isExtractingThisFile ? (
-                                  <span className="inline-block w-3 h-3 border-2 border-emerald-300/40 border-t-emerald-300 rounded-full animate-spin" />
-                                ) : (
-                                  <svg
-                                    className="w-3 h-3"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <path
-                                      d="M12 3v12m0 0-4-4m4 4 4-4M4 21h16"
-                                      strokeWidth="2"
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                    />
-                                  </svg>
-                                )}
-                                <span>Extract</span>
-                              </button>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-xs font-mono text-emerald-300 truncate">
-                              {file.path}
+                  </summary>
+                  <div className="mt-1.5 space-y-0.5 pl-5">
+                    {structuredFiles.map((file) => {
+                      const fileAction = createdFiles.find(cf => cf.path === file.path)?.action;
+                      return (
+                        <div
+                          key={file.path}
+                          className="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-white/5 transition-colors group"
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                            fileAction === 'created' ? 'bg-emerald-400' : fileAction === 'updated' ? 'bg-amber-400' : 'bg-gray-500'
+                          }`} />
+                          <span className="text-xs font-mono text-gray-300 truncate flex-1 min-w-0">{file.path}</span>
+                          {fileAction && (
+                            <span className={`text-[9px] font-medium flex-shrink-0 ${
+                              fileAction === 'created' ? 'text-emerald-500' : 'text-amber-500'
+                            }`}>
+                              {fileAction === 'created' ? 'NEW' : 'MOD'}
                             </span>
-                            {file.language && (
-                              <span className="text-[10px] uppercase text-gray-400 flex-shrink-0">
-                                {file.language}
-                              </span>
-                            )}
-                          </div>
+                          )}
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(file.content || '');
+                                toast.success('Copied', { description: file.path, duration: 1500 });
+                              } catch {
+                                toast.error('Copy failed');
+                              }
+                            }}
+                            className="p-1 rounded text-gray-600 hover:text-white hover:bg-white/10 transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0"
+                            title="Copy code"
+                          >
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" strokeWidth="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                          </button>
                         </div>
-                        <pre className="max-h-64 overflow-auto text-xs text-gray-100 px-3 py-2 whitespace-pre">
-                          {file.content}
-                        </pre>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                </details>
+                {/* Actual streamed code — collapsible, shown by default during generation */}
+                <details className="group" open={loading}>
+                  <summary className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer select-none hover:text-gray-300 transition-colors list-none">
+                    <svg className="w-3 h-3 transition-transform group-open:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" /></svg>
+                    <span>{loading ? 'Generating code...' : 'View generated code'}</span>
+                  </summary>
+                  <div className="mt-2 max-h-[500px] overflow-y-auto rounded-lg bg-black/40 border border-white/5">
+                    <pre className="text-[11px] text-gray-300 p-3 whitespace-pre-wrap break-words font-mono leading-relaxed">
+                      {msg.content}
+                    </pre>
+                  </div>
+                </details>
               </div>
-            ) : (
+            ) : msg.content ? (
               <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap break-words">
                 {msg.content}
               </p>
-            )}
+            ) : null}
             <div className="flex items-center gap-2 mt-2 flex-wrap">
               <p className="text-xs text-gray-500">
                 {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -715,6 +696,7 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
               )}
             </div>
           </div>
+          )}
         </div>
       </div>
     );
@@ -781,27 +763,7 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
         ) : (
           <>
             {messages.map(renderMessage)}
-            {loading && (
-              <div className="flex gap-3 items-start">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-r from-emerald-400 to-cyan-400 flex items-center justify-center flex-shrink-0 mt-1">
-                  <div className="w-4 h-4 border-2 border-gray-900 border-t-transparent rounded-full animate-spin"></div>
-                </div>
-                <div className="flex-1">
-                  <div className="text-white font-semibold text-sm mb-1 flex items-center gap-2">
-                    Assistant
-                    {streamingStatus && (
-                      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2.5 py-0.5 animate-pulse">
-                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                        {streamingStatus}
-                      </span>
-                    )}
-                  </div>
-                  <div className="bg-[#1a1a1a] border border-white/10 rounded-2xl px-4 py-3 shadow-lg">
-                    <p className="text-sm text-gray-400">{streamingStatus || 'Thinking...'}</p>
-                  </div>
-                </div>
-              </div>
-            )}
+            {/* Auto-scroll anchor during loading — progress is shown inside the message above */}
           </>
         )}
         {error && (
@@ -829,6 +791,62 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
             </div>
           </div>
         )}
+        {/* ── Generation Complete Banner ── */}
+        {generationComplete && !loading && (
+          <div className="mx-2 mb-3">
+            {/* Truncated response — Continue button */}
+            {generationTruncated && (
+              <button
+                onClick={() => {
+                  // Build a smart continuation prompt with context about what already exists
+                  const existingPaths = projectFiles.map(f => f.name).join(', ');
+                  const lastFiles = createdFiles.slice(-3).map(f => f.path).join(', ');
+                  const continueMsg = `continue generating the REMAINING files. Do NOT regenerate or rewrite files that already exist. Already created: ${existingPaths || 'none'}. Last files created: ${lastFiles || 'unknown'}. Generate ONLY the missing files that were not completed.`;
+                  setMessage(continueMsg);
+                  setGenerationTruncated(false);
+                  setTimeout(() => {
+                    const form = document.querySelector('[data-chat-form]') as HTMLFormElement;
+                    form?.requestSubmit();
+                  }, 50);
+                }}
+                className="w-full mb-2 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-300 text-sm font-medium hover:bg-amber-500/20 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" /></svg>
+                Response was truncated — Click to continue generating
+              </button>
+            )}
+
+            {/* Follow-up suggestions */}
+            <div className="bg-[#111] border border-white/10 rounded-xl p-3">
+              <p className="text-xs text-gray-400 mb-2 font-medium">What would you like to do next?</p>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  ...(createdFiles.length > 0 ? [
+                    { label: 'Add dark mode', prompt: 'Add a dark mode toggle that switches between light and dark themes' },
+                    { label: 'Add animations', prompt: 'Add smooth scroll animations and micro-interactions to all sections' },
+                    { label: 'Improve mobile', prompt: 'Improve the mobile responsive design for all components' },
+                    { label: 'Add more pages', prompt: 'Add About, FAQ, and Terms pages with navigation links' },
+                  ] : []),
+                  ...(planData?.features?.some(f => /auth|login/i.test(f)) ? [] : [
+                    { label: 'Add login page', prompt: 'Add a login and signup page with form validation' },
+                  ]),
+                ].slice(0, 4).map(suggestion => (
+                  <button
+                    key={suggestion.label}
+                    onClick={() => {
+                      setMessage(suggestion.prompt);
+                      setGenerationComplete(false);
+                    }}
+                    className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white/5 border border-white/10 text-gray-300 hover:bg-emerald-500/15 hover:border-emerald-500/30 hover:text-emerald-300 transition-colors"
+                  >
+                    {suggestion.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         <div ref={messagesEndRef} />
       </div>
 
@@ -881,7 +899,7 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
                 type="text"
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                placeholder={hasNoFiles ? 'e.g. Professional business website with Hero, Services, Contact' : 'Ask me to generate code...'}
+                placeholder={hasNoFiles ? 'e.g. Professional business website with Hero, Services, Contact' : 'e.g. Add dark mode, fix the navbar, add a login page...'}
                 disabled={loading}
                 className="flex-1 bg-transparent text-white placeholder-gray-400 focus:outline-none text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               />

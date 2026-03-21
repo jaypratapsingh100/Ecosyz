@@ -22,10 +22,35 @@ export const ALLOWED_PATHS = [
   'src/main.tsx',
 ] as const;
 
-/** Paths matching src/components/*.jsx | *.tsx */
-export const COMPONENT_PATH_PATTERN = /^src\/components\/[A-Z][a-zA-Z0-9]*\.(jsx|tsx)$/;
+/** Paths matching src/components/ (including subdirectories like ui/, dashboard/) */
+export const COMPONENT_PATH_PATTERN = /^src\/components\/(?:[a-zA-Z0-9-]+\/)*[A-Z][a-zA-Z0-9]*\.(jsx|tsx)$/;
 /** Paths for components at src root: src/Header.jsx, src/Hero.jsx */
 export const SRC_ROOT_COMPONENT_PATTERN = /^src\/[A-Z][a-zA-Z0-9]*\.(jsx|tsx)$/;
+/** Paths matching src/pages/*.jsx | *.tsx */
+export const PAGES_PATH_PATTERN = /^src\/pages\/[A-Z][a-zA-Z0-9]*\.(jsx|tsx)$/;
+/** Paths matching src/store/*.js(x) | *.ts(x) — state management files */
+export const STORE_PATH_PATTERN = /^src\/store\/[a-zA-Z][a-zA-Z0-9]*\.(jsx?|tsx?)$/;
+/** Paths matching src/hooks/*.js(x) | *.ts(x) — custom hooks */
+export const HOOKS_PATH_PATTERN = /^src\/hooks\/[a-zA-Z][a-zA-Z0-9]*\.(jsx?|tsx?)$/;
+/** Paths matching src/context/*.jsx | *.tsx — React context providers */
+export const CONTEXT_PATH_PATTERN = /^src\/context\/[A-Z][a-zA-Z0-9]*\.(jsx|tsx)$/;
+/** Paths matching src/lib/*.js(x) | *.ts(x) or src/utils/*.js(x) | *.ts(x) — utilities */
+export const UTILS_PATH_PATTERN = /^src\/(lib|utils)\/[a-zA-Z][a-zA-Z0-9]*\.(jsx?|tsx?)$/;
+
+/** Check if a normalized path is allowed by the sandbox. */
+export function isAllowedPath(path: string): boolean {
+  return (
+    ALLOWED_PATHS.includes(path as (typeof ALLOWED_PATHS)[number]) ||
+    COMPONENT_PATH_PATTERN.test(path) ||
+    SRC_ROOT_COMPONENT_PATTERN.test(path) ||
+    CSS_PATH_PATTERN.test(path) ||
+    PAGES_PATH_PATTERN.test(path) ||
+    STORE_PATH_PATTERN.test(path) ||
+    HOOKS_PATH_PATTERN.test(path) ||
+    CONTEXT_PATH_PATTERN.test(path) ||
+    UTILS_PATH_PATTERN.test(path)
+  );
+}
 /** CSS files under src/ or at root */
 export const CSS_PATH_PATTERN = /^(src\/.+\.css|styles\.css)$/;
 
@@ -84,10 +109,7 @@ function extractFilesLoosely(text: string): AgentFile[] {
     const [, pathRaw, nameRaw, contentRaw, languageRaw, isMainRaw] = match;
     const path = pathRaw.replace(/\s+/g, '').replace(/\\/g, '/');
     const valid =
-      ALLOWED_PATHS.includes(path as (typeof ALLOWED_PATHS)[number]) ||
-      COMPONENT_PATH_PATTERN.test(path) ||
-      SRC_ROOT_COMPONENT_PATTERN.test(path) ||
-      CSS_PATH_PATTERN.test(path);
+      isAllowedPath(path);
     if (!valid) continue;
 
     const content = contentRaw
@@ -170,11 +192,7 @@ export function extractAgentResponse(text: string): AgentResponse | null {
       if (!o.path || typeof o.content !== 'string') continue;
 
       const path = o.path.replace(/\s+/g, '').replace(/\\/g, '/');
-      const valid =
-        ALLOWED_PATHS.includes(path as (typeof ALLOWED_PATHS)[number]) ||
-        COMPONENT_PATH_PATTERN.test(path) ||
-        SRC_ROOT_COMPONENT_PATTERN.test(path) ||
-        CSS_PATH_PATTERN.test(path);
+      const valid = isAllowedPath(path);
 
       if (!valid) {
         rejectedPaths.push(path);
@@ -316,10 +334,7 @@ export function parseCodeBlocksToFiles(text: string): AgentFile[] {
     if (filePath) {
       const normalized = normalizePath(filePath);
       const valid =
-        ALLOWED_PATHS.includes(normalized as (typeof ALLOWED_PATHS)[number]) ||
-        COMPONENT_PATH_PATTERN.test(normalized) ||
-        SRC_ROOT_COMPONENT_PATTERN.test(normalized) ||
-        CSS_PATH_PATTERN.test(normalized);
+        isAllowedPath(normalized);
       if (valid) {
         const existing = allMatches.findIndex((m) => m.path === normalized);
         if (existing >= 0 && content.length > allMatches[existing].content.length) {
@@ -351,10 +366,7 @@ export function parseCodeBlocksToFiles(text: string): AgentFile[] {
     if (inferredPath) {
       const normalized = normalizePath(inferredPath);
       const valid =
-        ALLOWED_PATHS.includes(normalized as (typeof ALLOWED_PATHS)[number]) ||
-        COMPONENT_PATH_PATTERN.test(normalized) ||
-        SRC_ROOT_COMPONENT_PATTERN.test(normalized) ||
-        CSS_PATH_PATTERN.test(normalized);
+        isAllowedPath(normalized);
       if (valid) {
         const existing = allMatches.findIndex((m) => m.path === normalized);
         if (existing >= 0 && content.length > allMatches[existing].content.length) {

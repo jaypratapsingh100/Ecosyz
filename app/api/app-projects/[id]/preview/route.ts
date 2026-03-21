@@ -229,21 +229,25 @@ export async function POST(
     // so link/button clicks never navigate the iframe away from srcdoc.
     const navigationGuard = `<script>
     (function() {
-      // Intercept all <a> navigation so preview never leaves srcdoc
+      // Intercept only external <a> navigation so preview never leaves srcdoc.
+      // IMPORTANT: Use bubble phase (not capture) so React's onClick handlers fire first.
+      // Only block links that would navigate away (external URLs, not hash/anchor links).
       document.addEventListener('click', function(e) {
         var el = e.target;
         while (el && el !== document.body) {
           if (el.tagName === 'A') {
             var href = el.getAttribute('href') || '';
-            if (href && href !== '#' && !href.startsWith('#') && !href.startsWith('javascript:')) {
-              e.preventDefault();
-              e.stopPropagation();
+            // Allow hash links (#, #section, #/route), javascript:, and empty hrefs
+            if (!href || href === '#' || href.startsWith('#') || href.startsWith('javascript:')) {
+              return; // Let the event bubble normally — React onClick handles it
             }
+            // Block external navigation (http, absolute paths, etc.)
+            e.preventDefault();
             return;
           }
           el = el.parentElement;
         }
-      }, true);
+      }, false);
       // Intercept form submissions
       document.addEventListener('submit', function(e) {
         e.preventDefault();
@@ -422,45 +426,123 @@ export async function POST(
 </script>`;
         }).join('\n');
 
-        // Stub Link for preview: created code (e.g. Header) often uses Link; imports are stripped and Next/router aren't in iframe
+        // Router stubs for preview: hash-based routing so Link clicks show the right page
         const linkStubScript = `
   <script>
     (function() {
       var R = window.React;
-      if (R && R.createElement) {
-        // Basic Link stub so Next.js style <Link> components don't break the preview
-        if (typeof window.Link === 'undefined') {
-          window.Link = function Link(props) {
-            var href = props.href, children = props.children, rest = {};
-            for (var k in props) { if (k !== 'href' && k !== 'children' && Object.prototype.hasOwnProperty.call(props, k)) rest[k] = props[k]; }
-            return R.createElement('a', Object.assign({ href: href || '#' }, rest), children);
-          };
-        }
+      if (!R || !R.createElement) return;
 
-        // Global React Router stubs so code using <Router>, <Routes>, <Route> or Router
-        // identifiers doesn't crash the preview when imports are stripped.
-        if (typeof window.Router === 'undefined') {
-          window.Router = function Router(props) {
-            return R.createElement(R.Fragment, null, props && props.children);
-          };
-        }
-        if (typeof window.Routes === 'undefined') {
-          window.Routes = function Routes(props) {
-            return R.createElement(R.Fragment, null, props && props.children);
-          };
-        }
-        if (typeof window.Route === 'undefined') {
-          window.Route = function Route(props) {
-            return props && props.element ? props.element : null;
-          };
-        }
+      // Simple hash-based router state
+      window.__ROUTER_PATH__ = window.location.hash.replace('#', '') || '/';
+      window.__ROUTER_LISTENERS__ = [];
+      function navigateTo(path) {
+        window.__ROUTER_PATH__ = path;
+        window.location.hash = path;
+        window.__ROUTER_LISTENERS__.forEach(function(fn) { fn(path); });
+      }
+      window.addEventListener('hashchange', function() {
+        window.__ROUTER_PATH__ = window.location.hash.replace('#', '') || '/';
+        window.__ROUTER_LISTENERS__.forEach(function(fn) { fn(window.__ROUTER_PATH__); });
+      });
 
-        // Minimal "Home" stub: avoid runtime ReferenceError without rendering a fallback page
-        if (typeof window.Home === 'undefined') {
-          window.Home = function Home(props) {
-            return R.createElement(R.Fragment, null, props && props.children ? props.children : null);
-          };
-        }
+      // useNavigate hook stub
+      if (typeof window.useNavigate === 'undefined') {
+        window.useNavigate = function useNavigate() {
+          return function(path) { navigateTo(path); };
+        };
+      }
+
+      // useLocation hook stub
+      if (typeof window.useLocation === 'undefined') {
+        window.useLocation = function useLocation() {
+          return { pathname: window.__ROUTER_PATH__, search: '', hash: '' };
+        };
+      }
+
+      // useParams hook stub
+      if (typeof window.useParams === 'undefined') {
+        window.useParams = function useParams() { return {}; };
+      }
+
+      // Link: supports both 'to' (React Router) and 'href' props
+      if (typeof window.Link === 'undefined') {
+        window.Link = function Link(props) {
+          var to = props.to || props.href || '#';
+          var children = props.children;
+          var rest = {};
+          for (var k in props) {
+            if (k !== 'to' && k !== 'href' && k !== 'children' && Object.prototype.hasOwnProperty.call(props, k)) rest[k] = props[k];
+          }
+          return R.createElement('a', Object.assign({
+            href: '#' + to,
+            onClick: function(e) {
+              if (to.startsWith('http') || to.startsWith('mailto:')) return;
+              e.preventDefault();
+              navigateTo(to);
+            }
+          }, rest), children);
+        };
+      }
+
+      // NavLink: same as Link
+      if (typeof window.NavLink === 'undefined') {
+        window.NavLink = window.Link;
+      }
+
+      // BrowserRouter / HashRouter / Router wrapper
+      if (typeof window.BrowserRouter === 'undefined') {
+        window.BrowserRouter = function BrowserRouter(props) {
+          var _React = React;
+          var _s = _React.useState(window.__ROUTER_PATH__), path = _s[0], setPath = _s[1];
+          _React.useEffect(function() {
+            window.__ROUTER_LISTENERS__.push(setPath);
+            return function() {
+              window.__ROUTER_LISTENERS__ = window.__ROUTER_LISTENERS__.filter(function(fn) { return fn !== setPath; });
+            };
+          }, []);
+          return R.createElement(R.Fragment, null, props && props.children);
+        };
+      }
+      if (typeof window.HashRouter === 'undefined') window.HashRouter = window.BrowserRouter;
+      if (typeof window.Router === 'undefined') window.Router = window.BrowserRouter;
+
+      // Routes: renders only the matching Route child based on current hash path
+      if (typeof window.Routes === 'undefined') {
+        window.Routes = function Routes(props) {
+          var _React = React;
+          var _s = _React.useState(window.__ROUTER_PATH__), currentPath = _s[0], setPath = _s[1];
+          _React.useEffect(function() {
+            window.__ROUTER_LISTENERS__.push(setPath);
+            return function() {
+              window.__ROUTER_LISTENERS__ = window.__ROUTER_LISTENERS__.filter(function(fn) { return fn !== setPath; });
+            };
+          }, []);
+          var children = R.Children.toArray(props.children);
+          var match = null;
+          for (var i = 0; i < children.length; i++) {
+            var child = children[i];
+            if (!child || !child.props) continue;
+            var routePath = child.props.path;
+            if (routePath === '*') { if (!match) match = child; continue; }
+            if (routePath === currentPath || routePath === currentPath + '/') { match = child; break; }
+            if (routePath === '/' && currentPath === '') { match = child; break; }
+          }
+          if (match && match.props && match.props.element) return match.props.element;
+          return null;
+        };
+      }
+
+      // Route: data carrier rendered by Routes
+      if (typeof window.Route === 'undefined') {
+        window.Route = function Route(props) {
+          return props && props.element ? props.element : null;
+        };
+      }
+
+      // Outlet stub for nested routes
+      if (typeof window.Outlet === 'undefined') {
+        window.Outlet = function Outlet() { return null; };
       }
     })();
   </script>`;
@@ -488,11 +570,20 @@ export async function POST(
           ].join('\n') + '\n' + appContent;
         }
         // If app uses React Router but imports were stripped, provide Router/Routes/Route stubs so "Router is not defined" doesn't occur
-        const usesReactRouter = /<Router[\s>]|<Routes[\s>]|<Route\s/.test(appContent);
+        const usesReactRouter = /<(?:Browser)?Router[\s>]|<Routes[\s>]|<Route\s|useNavigate|useLocation|useParams/.test(appContent);
         if (usesReactRouter) {
-          const routerStub = `const Router = function Router(props) { return React.createElement(React.Fragment, null, props.children); };
-const Routes = function Routes(props) { return React.createElement(React.Fragment, null, props.children); };
-const Route = function Route(props) { return props.element ?? null; };
+          // Reference the global hash-based router stubs instead of broken local stubs
+          const routerStub = `const BrowserRouter = window.BrowserRouter;
+const HashRouter = window.HashRouter;
+const Router = window.Router;
+const Routes = window.Routes;
+const Route = window.Route;
+const Link = window.Link;
+const NavLink = window.NavLink;
+const Outlet = window.Outlet;
+const useNavigate = window.useNavigate;
+const useLocation = window.useLocation;
+const useParams = window.useParams;
 `;
           appContent = routerStub + appContent;
         }

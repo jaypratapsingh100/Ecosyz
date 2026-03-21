@@ -28,17 +28,17 @@ function AppBuilderPageContent() {
   
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
-  const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
-  const [leftSidebarTab, setLeftSidebarTab] = useState<'projects' | 'code' | 'chat' | 'deploy'>('projects');
-  const [sidebarWidth, setSidebarWidth] = useState(() => {
+  const [activeToolTab, setActiveToolTab] = useState<'files' | 'chat' | 'code' | 'deploy'>('chat');
+  // 3-panel widths as percentages of available space (after activity bar)
+  const [panelSizes, setPanelSizes] = useState<[number, number, number]>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('sidebarWidth');
-      return saved ? parseInt(saved, 10) : 320;
+      const saved = localStorage.getItem('panelSizes');
+      if (saved) try { const p = JSON.parse(saved); if (Array.isArray(p) && p.length === 3) return p as [number, number, number]; } catch {}
     }
-    return 320;
+    return [25, 50, 25]; // Chat 25%, Preview 50%, Code/Files 25%
   });
-  const [isResizing, setIsResizing] = useState(false);
-  const [showTabMenu, setShowTabMenu] = useState(false);
+  const [resizingHandle, setResizingHandle] = useState<0 | 1 | null>(null); // 0 = left handle, 1 = right handle
+  const mainRowRef = useRef<HTMLDivElement>(null);
   const [isCreatingEcommerceSample, setIsCreatingEcommerceSample] = useState(false);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
@@ -51,6 +51,7 @@ function AppBuilderPageContent() {
   const [projectFiles, setProjectFiles] = useState<{ id: string; path: string; name: string; content: string; language?: string; isMain?: boolean }[]>([]);
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
   const [selectedFile, setSelectedFile] = useState<{ id: string; path: string; name: string; content: string; language?: string; isMain?: boolean } | null>(null);
+  const [recentlyChangedFiles, setRecentlyChangedFiles] = useState<Set<string>>(new Set());
 
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -119,6 +120,39 @@ function AppBuilderPageContent() {
       setIsLoadingProject(false);
     }
   }, []);
+
+  // Refresh file list in real-time when files are created/updated (e.g. during generation)
+  useEffect(() => {
+    const prevPaths = new Set(projectFiles.map(f => f.path));
+    const handleFilesUpdated = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.projectId === selectedProjectId && selectedProjectId) {
+        fetchProjectFiles(selectedProjectId, selectedFile?.path).then(() => {
+          // After fetch, mark new/changed files
+          setProjectFiles(current => {
+            const changedPaths = new Set<string>();
+            for (const f of current) {
+              if (!prevPaths.has(f.path)) changedPaths.add(f.path);
+            }
+            if (changedPaths.size > 0) {
+              setRecentlyChangedFiles(prev => new Set([...prev, ...changedPaths]));
+              // Clear highlight after 4 seconds
+              setTimeout(() => {
+                setRecentlyChangedFiles(prev => {
+                  const next = new Set(prev);
+                  changedPaths.forEach(p => next.delete(p));
+                  return next;
+                });
+              }, 4000);
+            }
+            return current;
+          });
+        });
+      }
+    };
+    window.addEventListener('files-updated', handleFilesUpdated);
+    return () => window.removeEventListener('files-updated', handleFilesUpdated);
+  }, [selectedProjectId, selectedFile?.path, fetchProjectFiles, projectFiles]);
 
   // Select project from URL (?project=id) when projects load
   const projectFromUrl = searchParams.get('project');
@@ -283,8 +317,7 @@ function AppBuilderPageContent() {
         }
 
         setSelectedProjectId(project.id);
-        setLeftSidebarOpen(true);
-        setLeftSidebarTab('chat');
+        setActiveToolTab('chat');
         await fetchProjects();
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to create new project. Please try again.';
@@ -364,22 +397,46 @@ function AppBuilderPageContent() {
     [projectToDelete, fetchProjects, selectedProjectId],
   );
 
-  // Sidebar resize handlers
+  // 3-panel resize handlers — two draggable dividers
+  const ACTIVITY_BAR_WIDTH = 48;
+  const MIN_PANEL_PCT = 15; // minimum 15% for any panel
+
   useEffect(() => {
-    if (!isResizing) return;
+    if (resizingHandle === null) return;
 
     const handleMouseMove = (e: MouseEvent) => {
-      const newWidth = e.clientX;
-      const minWidth = 256;
-      const maxWidth = 800;
-      const clampedWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
-      setSidebarWidth(clampedWidth);
+      const container = mainRowRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const availableWidth = rect.width;
+      if (availableWidth <= 0) return;
+
+      const mouseX = e.clientX - rect.left;
+      const mousePct = (mouseX / availableWidth) * 100;
+
+      setPanelSizes(prev => {
+        const next: [number, number, number] = [...prev] as [number, number, number];
+        if (resizingHandle === 0) {
+          // Dragging left handle — adjusts panel[0] (Chat) and panel[1] (Preview)
+          const newLeft = Math.max(MIN_PANEL_PCT, Math.min(mousePct, 100 - prev[2] - MIN_PANEL_PCT));
+          next[0] = newLeft;
+          next[1] = 100 - newLeft - prev[2];
+        } else {
+          // Dragging right handle — adjusts panel[1] (Preview) and panel[2] (Code)
+          const newRight = Math.max(MIN_PANEL_PCT, Math.min(100 - mousePct, 100 - prev[0] - MIN_PANEL_PCT));
+          next[2] = newRight;
+          next[1] = 100 - prev[0] - newRight;
+        }
+        // Enforce minimums
+        if (next[0] < MIN_PANEL_PCT || next[1] < MIN_PANEL_PCT || next[2] < MIN_PANEL_PCT) return prev;
+        return next;
+      });
     };
 
     const handleMouseUp = () => {
-      setIsResizing(false);
+      setResizingHandle(null);
       if (typeof window !== 'undefined') {
-        localStorage.setItem('sidebarWidth', sidebarWidth.toString());
+        localStorage.setItem('panelSizes', JSON.stringify(panelSizes));
       }
     };
 
@@ -394,14 +451,14 @@ function AppBuilderPageContent() {
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
-  }, [isResizing, sidebarWidth]);
+  }, [resizingHandle, panelSizes]);
 
-  // Save sidebar width to localStorage when it changes
+  // Persist panel sizes
   useEffect(() => {
-    if (typeof window !== 'undefined' && !isResizing) {
-      localStorage.setItem('sidebarWidth', sidebarWidth.toString());
+    if (typeof window !== 'undefined' && resizingHandle === null) {
+      localStorage.setItem('panelSizes', JSON.stringify(panelSizes));
     }
-  }, [sidebarWidth, isResizing]);
+  }, [panelSizes, resizingHandle]);
 
   // Show loading state while checking auth
   if (isLoading || isAuthenticated === null) {
@@ -492,242 +549,273 @@ function AppBuilderPageContent() {
         }}
       >
         {selectedProjectId ? (
-        <div style={{ display: 'flex', height: '100%', overflow: 'hidden', position: 'relative' }}>
-          {/* Left Sidebar - Collapsible */}
-          <div 
-            className="border-r border-white/10 bg-[#0a0a0a] overflow-hidden relative"
-            style={{ 
-              width: leftSidebarOpen ? `${sidebarWidth}px` : '0px',
-              flexShrink: 0,
-              transition: leftSidebarOpen && !isResizing ? 'none' : leftSidebarOpen ? 'none' : 'width 300ms ease-in-out',
-              zIndex: 10
-            }}
-          >
-            {leftSidebarOpen && (
-              <div className="h-full flex flex-col" style={{ position: 'relative', zIndex: 10 }}>
-                {/* Sidebar Tabs */}
-                <div className="flex border-b border-white/10 bg-[#0d0d0d] flex-shrink-0 overflow-x-auto" style={{ position: 'relative', zIndex: 10 }}>
-                  <button
-                    onClick={() => setLeftSidebarTab('projects')}
-                    className={`px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
-                      leftSidebarTab === 'projects'
-                        ? 'text-emerald-400 border-b-2 border-emerald-400 bg-[#0a0a0a]'
-                        : 'text-gray-400 hover:text-gray-300'
-                    }`}
-                  >
-                    Projects
-                  </button>
-                  <button
-                    onClick={() => setLeftSidebarTab('code')}
-                    className={`px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
-                      leftSidebarTab === 'code'
-                        ? 'text-emerald-400 border-b-2 border-emerald-400 bg-[#0a0a0a]'
-                        : 'text-gray-400 hover:text-gray-300'
-                    }`}
-                  >
-                    Code
-                  </button>
-                  <button
-                    onClick={() => setLeftSidebarTab('chat')}
-                    className={`px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
-                      leftSidebarTab === 'chat'
-                        ? 'text-emerald-400 border-b-2 border-emerald-400 bg-[#0a0a0a]'
-                        : 'text-gray-400 hover:text-gray-300'
-                    }`}
-                  >
-                    Chat
-                  </button>
-                  <button
-                    onClick={() => setLeftSidebarTab('deploy')}
-                    className={`px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
-                      leftSidebarTab === 'deploy'
-                        ? 'text-emerald-400 border-b-2 border-emerald-400 bg-[#0a0a0a]'
-                        : 'text-gray-400 hover:text-gray-300'
-                    }`}
-                  >
-                    Deploy
-                  </button>
-                </div>
+        <div className="flex flex-col" style={{ height: '100%', overflow: 'hidden' }}>
 
-                {/* Sidebar Content */}
-                <div className="flex-1 overflow-hidden">
-                  {leftSidebarTab === 'projects' && (
-                    <ProjectManager
-                      onSelectProject={setSelectedProjectId}
-                      selectedProjectId={selectedProjectId}
-                      projects={projects}
-                      onDeleteProject={handleDeleteProject}
-                      onDeleteMultipleProjects={handleDeleteMultipleProjects}
-                      onCreateNewProject={handleCreateNewProject}
-                      isCreatingNewProject={isCreatingNew}
-                      onProjectUpdated={fetchProjects}
-                    />
-                  )}
-                  {leftSidebarTab === 'code' && (
-                    <ErrorBoundary componentName="Code Editor">
-                      <CodeEditor
-                        file={selectedFile}
-                        projectId={selectedProjectId}
-                        onChange={handleEditorChange}
-                        files={projectFiles}
-                        onFileSelect={setSelectedFile}
-                      />
-                    </ErrorBoundary>
-                  )}
-                  {leftSidebarTab === 'chat' && (
-                    <ErrorBoundary componentName="App Chat">
-                      <AppChat
-                        projectId={selectedProjectId || ''}
-                        currentFile={undefined}
-                        projectFiles={projectFiles}
-                        onFilesCreated={() => {
-                        if (!selectedProjectId) return;
-                        const pathToPreserve = selectedFile?.path;
-                        setTimeout(() => fetchProjectFiles(selectedProjectId, pathToPreserve), 200);
-                        setPreviewRefreshKey(k => k + 1);
-                      }}
-                        projectTitle="New Project"
-                        projectFramework="react"
-                      />
-                    </ErrorBoundary>
-                  )}
-                  {leftSidebarTab === 'deploy' && (
-                    <ErrorBoundary componentName="Deployment Panel">
-                      <DeploymentPanel
-                        projectId={selectedProjectId}
-                        projectName="Untitled Project"
-                      />
-                    </ErrorBoundary>
-                  )}
-                </div>
-              </div>
-            )}
-            
-            {/* Resize Handle */}
-            {leftSidebarOpen && (
-              <div
-                className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-400/50 transition-colors group z-20"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setIsResizing(true);
-                }}
-                style={{ touchAction: 'none' }}
-              >
-                <div className={`absolute right-0 top-1/2 -translate-y-1/2 w-1 h-12 transition-all rounded-full ${
-                  isResizing ? 'bg-emerald-400' : 'bg-emerald-400/30 group-hover:bg-emerald-400'
-                }`} />
-              </div>
-            )}
-          </div>
+          {/* ═══ Desktop: 3-Panel Layout with Activity Bar ═══ */}
+          {!isMobile ? (
+            <div className="flex flex-1 min-h-0">
 
-          {/* Main Content Area - Full Width Preview */}
-          <div className="flex-1 overflow-hidden relative">
-            {/* Sidebar Toggle */}
-            <div 
-              className="absolute left-0 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2 group/menu"
-              onMouseEnter={() => setShowTabMenu(true)}
-              onMouseLeave={() => setShowTabMenu(false)}
-            >
-              {!leftSidebarOpen && showTabMenu && (
-                <>
-                  <div className="flex flex-col gap-1 animate-in fade-in slide-in-from-left-2 duration-200">
-                    {[
-                      { id: 'projects', label: 'Projects', icon: '📁' },
-                      { id: 'code', label: 'Code', icon: '💻' }
-                    ].map((tab) => (
-                      <div key={tab.id} className="relative group/tooltip">
-                        <button
-                          onClick={() => {
-                            setLeftSidebarTab(tab.id as any);
-                            setLeftSidebarOpen(true);
-                            setShowTabMenu(false);
-                          }}
-                          className="bg-[#0d0d0d] border border-white/10 rounded-r-lg p-2.5 text-xl transition-all hover:bg-emerald-500/20 hover:scale-110 shadow-lg"
-                        >
-                          {tab.icon}
-                        </button>
-                        <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none">
-                          <div className="bg-[#0d0d0d] border border-white/10 rounded-lg px-3 py-1.5 shadow-xl whitespace-nowrap">
-                            <span className="text-sm font-medium text-gray-200">{tab.label}</span>
-                          </div>
-                        </div>
+              {/* ── Activity Bar (48px) ── */}
+              <div className="w-12 flex-shrink-0 bg-[#080808] border-r border-white/10 flex flex-col items-center py-2 gap-1">
+                {([
+                  { id: 'chat' as const, label: 'Chat',
+                    icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 20.25v-3.527a8.25 8.25 0 1113.091-2.382L21 20.25l-4.659-1.553a8.232 8.232 0 01-4.341.303H3.75z" /></svg> },
+                  { id: 'deploy' as const, label: 'Deploy',
+                    icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 00-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 01-2.448-2.448 14.9 14.9 0 01.06-.312m-2.24 2.39a4.493 4.493 0 00-1.757 4.306 4.493 4.493 0 004.306-1.758M16.5 9a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" /></svg> },
+                ]).map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveToolTab(tab.id)}
+                    className={`w-10 h-10 flex items-center justify-center rounded-lg transition-all relative group/ab ${
+                      activeToolTab === tab.id ? 'bg-emerald-500/15 text-emerald-400' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+                    }`}
+                    title={tab.label}
+                  >
+                    {tab.icon}
+                    {activeToolTab === tab.id && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-emerald-400 rounded-r" />}
+                    <div className="absolute left-full ml-2.5 top-1/2 -translate-y-1/2 opacity-0 group-hover/ab:opacity-100 transition-opacity pointer-events-none z-50">
+                      <div className="bg-[#1a1a1a] border border-white/10 rounded-lg px-2.5 py-1.5 shadow-xl whitespace-nowrap">
+                        <span className="text-xs font-medium text-gray-200">{tab.label}</span>
                       </div>
-                    ))}
-                  </div>
-                </>
-              )}
-
-              <div className="relative group/tooltip">
+                    </div>
+                  </button>
+                ))}
+                <div className="flex-1" />
                 <button
-                  onClick={() => setLeftSidebarOpen(!leftSidebarOpen)}
-                  className="bg-[#0d0d0d] border border-white/10 rounded-r-lg p-2.5 hover:bg-[#1a1a1a] transition-all shadow-lg"
+                  onClick={() => setSelectedProjectId('')}
+                  className="w-10 h-10 flex items-center justify-center rounded-lg text-gray-600 hover:text-gray-300 hover:bg-white/5 transition-all relative group/ab"
+                  title="All Projects"
                 >
-                  <img 
-                    src="/icon.svg" 
-                    alt="OpenIdea" 
-                    className={`w-6 h-6 transition-transform duration-300 ${leftSidebarOpen ? 'rotate-90' : ''}`}
-                  />
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" /></svg>
+                  <div className="absolute left-full ml-2.5 top-1/2 -translate-y-1/2 opacity-0 group-hover/ab:opacity-100 transition-opacity pointer-events-none z-50">
+                    <div className="bg-[#1a1a1a] border border-white/10 rounded-lg px-2.5 py-1.5 shadow-xl whitespace-nowrap">
+                      <span className="text-xs font-medium text-gray-200">All Projects</span>
+                    </div>
+                  </div>
                 </button>
-                <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none">
-                  <div className="bg-[#0d0d0d] border border-white/10 rounded-lg px-3 py-1.5 shadow-xl whitespace-nowrap">
-                    <span className="text-sm font-medium text-gray-200">
-                      {leftSidebarOpen ? 'Close Sidebar' : 'Open Sidebar'}
+              </div>
+
+              {/* ── 3 Panels + 2 Resize Handles ── */}
+              <div ref={mainRowRef} className="flex-1 flex min-w-0 h-full">
+
+                {/* Panel 1: Chat (or Deploy) */}
+                <div className="h-full overflow-hidden bg-[#0a0a0a] flex flex-col relative" style={{ width: `${panelSizes[0]}%`, minWidth: 200 }}>
+                  {resizingHandle !== null && (
+                    <div className="absolute inset-0 z-10" style={{ cursor: 'col-resize' }} />
+                  )}
+                  <div className="flex-shrink-0 px-3 py-1.5 border-b border-white/10 bg-[#0d0d0d] flex items-center gap-2">
+                    <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+                      {activeToolTab === 'deploy' ? 'Deploy' : 'Chat'}
                     </span>
                   </div>
+                  <div className="flex-1 overflow-hidden">
+                    {activeToolTab === 'deploy' ? (
+                      <ErrorBoundary componentName="Deployment Panel">
+                        <DeploymentPanel projectId={selectedProjectId} projectName="Untitled Project" />
+                      </ErrorBoundary>
+                    ) : (
+                      <ErrorBoundary componentName="App Chat">
+                        <AppChat
+                          projectId={selectedProjectId || ''}
+                          currentFile={undefined}
+                          projectFiles={projectFiles}
+                          onFilesCreated={() => {
+                            if (!selectedProjectId) return;
+                            const pathToPreserve = selectedFile?.path;
+                            setTimeout(() => fetchProjectFiles(selectedProjectId, pathToPreserve), 200);
+                            setPreviewRefreshKey(k => k + 1);
+                          }}
+                          projectTitle="New Project"
+                          projectFramework="react"
+                        />
+                      </ErrorBoundary>
+                    )}
+                  </div>
+                </div>
+
+                {/* Resize Handle 1 (between Chat and Preview) */}
+                <div
+                  className="w-1 flex-shrink-0 cursor-col-resize hover:bg-emerald-400/50 bg-white/5 transition-colors relative group z-10"
+                  onMouseDown={(e) => { e.preventDefault(); setResizingHandle(0); }}
+                  style={{ touchAction: 'none' }}
+                >
+                  <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 h-16 rounded-full transition-all ${
+                    resizingHandle === 0 ? 'bg-emerald-400' : 'bg-transparent group-hover:bg-emerald-400/60'
+                  }`} />
+                </div>
+
+                {/* Panel 2: Preview (center, always visible) */}
+                <div className="h-full overflow-hidden relative" style={{ width: `${panelSizes[1]}%`, minWidth: 200 }}>
+                  {/* Transparent overlay while resizing — prevents iframe from stealing mouse events */}
+                  {resizingHandle !== null && (
+                    <div className="absolute inset-0 z-10" style={{ cursor: 'col-resize' }} />
+                  )}
+                  <ErrorBoundary componentName="Preview Panel">
+                    <PreviewPanel
+                      projectId={selectedProjectId}
+                      projectType="web"
+                      onRefresh={() => {}}
+                      refreshKey={previewRefreshKey}
+                    />
+                  </ErrorBoundary>
+                </div>
+
+                {/* Resize Handle 2 (between Preview and Code/Files) */}
+                <div
+                  className="w-1 flex-shrink-0 cursor-col-resize hover:bg-emerald-400/50 bg-white/5 transition-colors relative group z-10"
+                  onMouseDown={(e) => { e.preventDefault(); setResizingHandle(1); }}
+                  style={{ touchAction: 'none' }}
+                >
+                  <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 h-16 rounded-full transition-all ${
+                    resizingHandle === 1 ? 'bg-emerald-400' : 'bg-transparent group-hover:bg-emerald-400/60'
+                  }`} />
+                </div>
+
+                {/* Panel 3: Code Editor + File Explorer */}
+                <div className="h-full overflow-hidden bg-[#0a0a0a] flex flex-col relative" style={{ width: `${panelSizes[2]}%`, minWidth: 200 }}>
+                  {resizingHandle !== null && (
+                    <div className="absolute inset-0 z-10" style={{ cursor: 'col-resize' }} />
+                  )}
+                  {/* Tab bar for panel 3 */}
+                  <div className="flex-shrink-0 border-b border-white/10 bg-[#0d0d0d] flex">
+                    <button
+                      onClick={() => setActiveToolTab('code')}
+                      className={`px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider transition-colors ${
+                        activeToolTab !== 'files' ? 'text-emerald-400 border-b border-emerald-400' : 'text-gray-500 hover:text-gray-300'
+                      }`}
+                    >
+                      Editor
+                    </button>
+                    <button
+                      onClick={() => setActiveToolTab('files')}
+                      className={`px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider transition-colors ${
+                        activeToolTab === 'files' ? 'text-emerald-400 border-b border-emerald-400' : 'text-gray-500 hover:text-gray-300'
+                      }`}
+                    >
+                      Files <span className="text-[9px] text-gray-600 font-normal ml-1">{projectFiles.filter(f => /\.(jsx?|tsx?|css)$/.test(f.path)).length}</span>
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-hidden">
+                    {activeToolTab === 'files' ? (
+                      <div className="h-full overflow-y-auto py-1">
+                        {projectFiles.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center h-full text-center px-4 gap-2">
+                            <svg className="w-6 h-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>
+                            <p className="text-xs text-gray-500">No files yet</p>
+                          </div>
+                        ) : (
+                          projectFiles
+                            .filter(f => !['package.json', 'vite.config.js', 'vite.config.ts', 'tsconfig.json', 'postcss.config.js', 'tailwind.config.js', 'README.md'].includes(f.name))
+                            .sort((a, b) => {
+                              const order = (p: string) => p.includes('App.') ? 0 : p.includes('/pages/') ? 1 : p.includes('/components/') ? 2 : 3;
+                              return order(a.path) - order(b.path) || a.path.localeCompare(b.path);
+                            })
+                            .map(file => {
+                              const isCSS = file.path.endsWith('.css');
+                              const isMainFile = file.path.includes('App.') || file.path.includes('main.');
+                              return (
+                                <button
+                                  key={file.id}
+                                  onClick={() => { setSelectedFile(file); setActiveToolTab('code'); }}
+                                  className={`w-full flex items-center gap-2 px-3 py-1.5 text-left transition-all group ${
+                                    recentlyChangedFiles.has(file.path)
+                                      ? 'bg-emerald-500/10 border-l-2 border-emerald-400'
+                                      : selectedFile?.id === file.id ? 'bg-white/5 border-l-2 border-emerald-400/50' : 'hover:bg-white/5 border-l-2 border-transparent'
+                                  }`}
+                                >
+                                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                                    recentlyChangedFiles.has(file.path) ? 'bg-emerald-400 animate-pulse'
+                                    : isMainFile ? 'bg-blue-400' : isCSS ? 'bg-purple-400' : 'bg-emerald-400'
+                                  }`} />
+                                  <div className="flex-1 min-w-0">
+                                    <div className={`text-xs truncate transition-colors ${
+                                      recentlyChangedFiles.has(file.path) ? 'text-emerald-300 font-medium' : 'text-gray-300 group-hover:text-white'
+                                    }`}>
+                                      {file.name}
+                                      {recentlyChangedFiles.has(file.path) && <span className="ml-1.5 text-[9px] text-emerald-400 font-normal">NEW</span>}
+                                    </div>
+                                    <div className="text-[10px] text-gray-600 truncate">{file.path}</div>
+                                  </div>
+                                </button>
+                              );
+                            })
+                        )}
+                      </div>
+                    ) : (
+                      <ErrorBoundary componentName="Code Editor">
+                        <CodeEditor
+                          file={selectedFile}
+                          projectId={selectedProjectId}
+                          onChange={handleEditorChange}
+                          files={projectFiles}
+                          onFileSelect={setSelectedFile}
+                        />
+                      </ErrorBoundary>
+                    )}
+                  </div>
                 </div>
               </div>
-
-              {!leftSidebarOpen && showTabMenu && (
-                <>
-                  <div className="flex flex-col gap-1 animate-in fade-in slide-in-from-left-2 duration-200">
-                    {[
-                      { id: 'chat', label: 'Chat', icon: '💬' },
-                      { id: 'deploy', label: 'Deploy', icon: '🚀' }
-                    ].map((tab) => (
-                      <div key={tab.id} className="relative group/tooltip">
-                        <button
-                          onClick={() => {
-                            setLeftSidebarTab(tab.id as any);
-                            setLeftSidebarOpen(true);
-                            setShowTabMenu(false);
-                          }}
-                          className="bg-[#0d0d0d] border border-white/10 rounded-r-lg p-2.5 text-xl transition-all hover:bg-emerald-500/20 hover:scale-110 shadow-lg"
-                        >
-                          {tab.icon}
-                        </button>
-                        <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none">
-                          <div className="bg-[#0d0d0d] border border-white/10 rounded-lg px-3 py-1.5 shadow-xl whitespace-nowrap">
-                            <span className="text-sm font-medium text-gray-200">{tab.label}</span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
             </div>
-
-            {/* Preview - Full Width */}
-            <div className="h-full overflow-hidden">
-              {selectedProjectId ? (
-                <ErrorBoundary componentName="Preview Panel">
-                  <PreviewPanel
-                    projectId={selectedProjectId}
-                    projectType="web"
-                    onRefresh={() => {}}
-                    refreshKey={previewRefreshKey}
-                  />
-                </ErrorBoundary>
-              ) : (
-                <div className="h-full flex items-center justify-center bg-[#0a0a0a] text-gray-400">
-                  <div className="text-center">
-                    <p className="text-sm">Please select a project to preview</p>
-                  </div>
-                </div>
-              )}
+          ) : (
+            /* ═══ Mobile: Tab-based stacked layout ═══ */
+            <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div className="flex border-b border-white/10 bg-[#0d0d0d] flex-shrink-0 overflow-x-auto">
+                {(['chat', 'preview', 'code', 'deploy'] as const).map(tab => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveToolTab(tab === 'preview' ? 'files' : tab)}
+                    className={`px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap capitalize ${
+                      (tab === 'preview' ? activeToolTab === 'files' : activeToolTab === tab) ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-gray-400'
+                    }`}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
+              <div className="flex-1 overflow-hidden">
+                {activeToolTab === 'chat' ? (
+                  <ErrorBoundary componentName="App Chat">
+                    <AppChat projectId={selectedProjectId || ''} currentFile={undefined} projectFiles={projectFiles}
+                      onFilesCreated={() => { if (!selectedProjectId) return; setTimeout(() => fetchProjectFiles(selectedProjectId, selectedFile?.path), 200); setPreviewRefreshKey(k => k + 1); }}
+                      projectTitle="New Project" projectFramework="react" />
+                  </ErrorBoundary>
+                ) : activeToolTab === 'code' ? (
+                  <ErrorBoundary componentName="Code Editor">
+                    <CodeEditor file={selectedFile} projectId={selectedProjectId} onChange={handleEditorChange} files={projectFiles} onFileSelect={setSelectedFile} />
+                  </ErrorBoundary>
+                ) : activeToolTab === 'deploy' ? (
+                  <ErrorBoundary componentName="Deployment Panel">
+                    <DeploymentPanel projectId={selectedProjectId} projectName="Untitled Project" />
+                  </ErrorBoundary>
+                ) : (
+                  <ErrorBoundary componentName="Preview Panel">
+                    <PreviewPanel projectId={selectedProjectId} projectType="web" onRefresh={() => {}} refreshKey={previewRefreshKey} />
+                  </ErrorBoundary>
+                )}
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* ═══ Status Bar (36px) ═══ */}
+          {!isMobile && (
+            <div className="h-9 flex-shrink-0 bg-[#080808] border-t border-white/10 flex items-center px-3 gap-4 text-[11px] select-none">
+              <div className="flex items-center gap-2 text-gray-500">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" /></svg>
+                <span className="text-gray-300 font-medium truncate max-w-[180px]">{projects.find(p => p.id === selectedProjectId)?.title || 'Untitled'}</span>
+              </div>
+              <span className="text-white/10">|</span>
+              <span className="text-gray-500">{projectFiles.filter(f => /\.(jsx?|tsx?|css)$/.test(f.path)).length} files</span>
+              <div className="flex-1" />
+              <button onClick={() => setPreviewRefreshKey(k => k + 1)} className="flex items-center gap-1.5 px-2 py-1 text-gray-400 hover:text-white transition-colors rounded hover:bg-white/5" title="Refresh Preview">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" /></svg>
+                <span>Refresh</span>
+              </button>
+              <button onClick={() => setActiveToolTab('deploy')} className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 rounded text-[11px] font-medium transition-colors">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 00-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 01-2.448-2.448 14.9 14.9 0 01.06-.312m-2.24 2.39a4.493 4.493 0 00-1.757 4.306 4.493 4.493 0 004.306-1.758M16.5 9a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" /></svg>
+                Deploy
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="flex flex-col h-auto md:h-full w-full overflow-visible md:overflow-hidden relative min-h-0">
@@ -751,10 +839,10 @@ function AppBuilderPageContent() {
           <div 
             className="border-r border-white/10 bg-[#0a0a0a] overflow-y-auto md:overflow-hidden relative flex-shrink-0 w-full max-h-[45vh] md:max-h-none"
             style={{ 
-              width: isMobile ? '100%' : `${Math.min(sidebarWidth, Math.max(256, sidebarWidth))}px`,
-              minWidth: isMobile ? undefined : 256,
+              width: isMobile ? '100%' : '320px',
+              minWidth: isMobile ? undefined : 240,
               maxWidth: isMobile ? undefined : '50%',
-              transition: !isResizing ? 'width 300ms ease-in-out' : 'none',
+              transition: resizingHandle === null ? 'width 300ms ease-in-out' : 'none',
               zIndex: 10
             }}
           >
@@ -777,12 +865,12 @@ function AppBuilderPageContent() {
               onMouseDown={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                setIsResizing(true);
+                setResizingHandle(0);
               }}
               style={{ touchAction: 'none' }}
             >
               <div className={`absolute right-0 top-1/2 -translate-y-1/2 w-1 h-12 transition-all rounded-full ${
-                isResizing ? 'bg-emerald-400' : 'bg-emerald-400/30 group-hover:bg-emerald-400'
+                resizingHandle !== null ? 'bg-emerald-400' : 'bg-emerald-400/30 group-hover:bg-emerald-400'
               }`} />
             </div>
             )}

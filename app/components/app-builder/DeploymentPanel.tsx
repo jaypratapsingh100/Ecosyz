@@ -198,10 +198,21 @@ export default function DeploymentPanel({ projectId, projectName, onAuthRequired
       }
       const url = (data as { url?: string }).url;
       const liveUrl = url?.startsWith('http') ? url : url ? `https://${url}` : null;
+      const finalUrl = liveUrl || (url ? `https://${url}` : '');
       setDeployResult({
-        url: liveUrl || url || '',
+        url: finalUrl,
         claimUrl: (data as { claimUrl?: string }).claimUrl || '',
       });
+      if (finalUrl) {
+        toast.success('Deployed successfully!', {
+          description: 'Your site is live.',
+          duration: 6000,
+          action: {
+            label: 'Open Site',
+            onClick: () => window.open(finalUrl, '_blank', 'noopener,noreferrer'),
+          },
+        });
+      }
     } catch (e) {
       console.error(e);
       let errorMessage = 'Unable to deploy to Vercel';
