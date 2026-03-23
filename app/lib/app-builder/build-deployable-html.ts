@@ -6,6 +6,7 @@
 
 import { SCAFFOLD_STYLES, PREVIEW_BASE_CSS } from './scaffolds';
 import { stripForBrowser, sortComponentsByDependency } from './strip-for-browser';
+import { detectRequiredPackages, generateCDNScripts } from '@/lib/app-builder/cdn-packages';
 
 /**
  * Extract PascalCase component names from source code so we can register them on window.
@@ -13,14 +14,43 @@ import { stripForBrowser, sortComponentsByDependency } from './strip-for-browser
 function extractComponentNames(code: string): string[] {
   const names: string[] = [];
   const patterns = [
+    // PascalCase: React components, Context objects (Header, CartContext, etc.)
     /(?:function)\s+([A-Z][a-zA-Z0-9]*)\s*\(/g,
     /(?:const|let|var)\s+([A-Z][a-zA-Z0-9]*)\s*=/g,
     /(?:class)\s+([A-Z][a-zA-Z0-9]*)\s+/g,
+    // camelCase hooks: useCart, useAuth, useDarkMode, etc.
+    /(?:const|let|var|function)\s+(use[A-Z][a-zA-Z0-9]*)\s*[=(]/g,
+    // camelCase variables: formatPrice, cartStore, initialProducts, etc.
+    /(?:const|let|var)\s+([a-z][a-zA-Z0-9]*)\s*=/g,
+    /function\s+([a-z][a-zA-Z0-9]*)\s*\(/g,
   ];
   for (const pat of patterns) {
     let m;
     while ((m = pat.exec(code)) !== null) {
-      names.push(m[1]);
+      const name = m[1];
+      // Skip React built-in hooks (already available via destructuring)
+      if (/^use(State|Effect|Ref|Context|Reducer|Callback|Memo|Id|LayoutEffect|DeferredValue|Transition)$/.test(name)) continue;
+      // Skip short names (1-2 chars) — almost always local variables
+      if (name.length <= 2) continue;
+      // Skip common JS local variables, loop vars, destructured vars
+      const SKIP_NAMES = new Set([
+        'idx','key','val','ref','obj','arr','str','num','len','pos','col','row','map','set',
+        'acc','cur','sum','min','max','tmp','buf','msg','txt','src','dst','cls','tag','doc',
+        'win','nav','btn','img','svg','url','api','ctx','cfg','opt','arg','err','res','req',
+        'item','elem','node','list','name','type','path','file','line','char','word','text',
+        'body','head','root','base','self','args','opts','conf','spec','desc','meta','info',
+        'data','result','error','index','event','value','label','title','input','field',
+        'param','props','state','style','child','count','total','start','entry','query',
+        'timer','scope','store','cache','limit','model','token','match','block','level',
+        'width','height','length','color','status','option','config','format','handle',
+        'update','change','toggle','submit','render','create','remove','delete','filter',
+        'reduce','select','method','action','detail','target','source','origin','parent',
+        'prefix','suffix','cursor','offset','signal','promise','callback','response',
+        'resolve','reject','timeout','interval','boolean','number','string','symbol',
+        'object','module','window','global','import','export','return',
+      ]);
+      if (SKIP_NAMES.has(name)) continue;
+      names.push(name);
     }
   }
   return [...new Set(names)];
@@ -121,12 +151,19 @@ export function buildDeployableHtml(
   }
 
   // Tailwind CDN for utility classes
-  const tailwindCdn = `<script src="https://cdn.tailwindcss.com"></script>`;
+  const tailwindCdn = `<script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config={darkMode:'class',theme:{extend:{fontFamily:{sans:['Inter','system-ui','sans-serif']},colors:{gray:{950:'#030712'}}}}}</script>
+<script>document.addEventListener('DOMContentLoaded',function(){var b=document.body,h=document.documentElement;var d=b.className&&/bg-(gray|slate)-(800|900|950)|bg-black/.test(b.className);if(!d){var f=b.firstElementChild;if(f)d=/bg-(gray|slate)-(800|900|950)|bg-black/.test(f.className||'');}if(d||h.classList.contains('dark'))h.classList.add('dark');})</script>`;
   if (html.includes('</head>')) {
     html = html.replace('</head>', `${tailwindCdn}\n</head>`);
   } else {
     html = tailwindCdn + html;
   }
+
+  // Detect CDN packages needed — injection happens after React scripts to ensure deps load first
+  const requiredPkgs = detectRequiredPackages(
+    project.files.map((f) => ({ content: f.content || '' }))
+  );
 
   // Base CSS
   const baseCss = `<style id="preview-base">${SCAFFOLD_STYLES}${PREVIEW_BASE_CSS}</style>`;
@@ -217,10 +254,15 @@ export function buildDeployableHtml(
         (f) =>
           (f.language === 'jsx' ||
             f.language === 'tsx' ||
+            f.language === 'javascript' ||
+            f.language === 'typescript' ||
             f.path.endsWith('.jsx') ||
-            f.path.endsWith('.tsx')) &&
+            f.path.endsWith('.tsx') ||
+            f.path.endsWith('.js') ||
+            f.path.endsWith('.ts')) &&
           f.path !== mainJsFile.path &&
-          !f.path.match(/^src\/main\.(jsx|tsx)$/)
+          !f.path.match(/^src\/main\.(jsx?|tsx?)$/) &&
+          !f.path.match(/^(package\.json|vite\.config\.|tsconfig\.|postcss\.config\.|tailwind\.config\.)/)
       );
       const sortedComponents = sortComponentsByDependency(componentFiles);
       const componentScripts = sortedComponents
@@ -358,13 +400,45 @@ export function buildDeployableHtml(
 
       ensureReactAndRoot();
 
+      // Inject CDN packages AFTER React so deps (React.forwardRef etc.) are available
+      if (requiredPkgs.length > 0) {
+        const cdnScripts = generateCDNScripts(requiredPkgs);
+        if (html.includes('</head>')) {
+          html = html.replace('</head>', `${cdnScripts}\n</head>`);
+        } else {
+          html = cdnScripts + '\n' + html;
+        }
+      }
+
+      // BEFORE stripping: extract import aliases for window registration
+      const importAliases: Array<{alias: string; source: string}> = [];
+      const aliasRegex = /import\s+(\w+)\s+from\s+['"]\.\/(?:components|pages|hooks|context|store|lib|utils)\/(\w+)(?:\.jsx?|\.tsx?)?['"]/g;
+      let aliasMatch;
+      while ((aliasMatch = aliasRegex.exec(mainJsFile.content)) !== null) {
+        if (aliasMatch[1] !== aliasMatch[2]) {
+          importAliases.push({ alias: aliasMatch[1], source: aliasMatch[2] });
+        }
+      }
+
+      // CDN package exports are registered on window by CDN scripts (lucide-react, recharts, etc.)
+      // No need to extract import names — window globals are accessible in browser JS.
+
       let appContent = mainJsFile.content
         .replace(/export\s+default\s+/g, '')
         .replace(/export\s+(?:const|let|var|function|class)\s+/g, (m) => m.replace(/^export\s+/, ''))
         .replace(/import\s+[\s\S]*?from\s+['"][^'"]*['"]\s*;?\s*/g, '')
-        .replace(/import\s+['"][^'"]*['"]\s*;?\s*/g, '') // Remove bare side-effect imports
+        .replace(/import\s+['"][^'"]*['"]\s*;?\s*/g, '')
         .replace(/(?:const|let|var)\s+\w+\s*=\s*require\s*\(\s*['"][^'"]*['"]\s*\)\s*;?\s*/g, '')
         .replace(/require\s*\(\s*['"][^'"]*['"]\s*\)\s*;?\s*/g, '');
+
+      // Register import aliases on window
+      if (importAliases.length > 0) {
+        const aliasLines = importAliases
+          .map(a => `if (typeof window["${a.source}"] !== "undefined" && typeof ${a.alias} === "undefined") { var ${a.alias} = window["${a.source}"]; window["${a.alias}"] = ${a.alias}; }`)
+          .join('\n');
+        appContent = aliasLines + '\n' + appContent;
+      }
+
       appContent = appContent.trim();
       if (
         (appContent.includes('useState(') || appContent.includes('useEffect(')) &&
@@ -395,6 +469,8 @@ const useLocation = window.useLocation;
 const useParams = window.useParams;
 ` + appContent;
       }
+
+      // CDN exports accessible via window globals — no explicit declarations needed.
 
       appContent = appContent.replace(/<\/script>/gi, '<\\/script>');
       appContent = appContent.replace(/\$\{/g, '\\${');

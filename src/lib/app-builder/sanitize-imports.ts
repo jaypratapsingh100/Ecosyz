@@ -1,18 +1,25 @@
 /**
- * Import Sanitizer — strips disallowed 3rd-party imports from AI-generated code.
+ * Import Sanitizer — strips only DANGEROUS imports from AI-generated code.
  *
- * The scaffold only includes a fixed set of dependencies (react, react-dom, etc.).
- * AI-generated imports for packages like axios, moment, lodash will fail at build time,
- * so we strip them and log warnings.
+ * Uses a BLOCKLIST approach: allow all npm packages (they'll be stripped by
+ * stripForBrowser and loaded via CDN if available), but block Node.js built-in
+ * modules and filesystem access that could be security risks.
  */
 
-/** Packages available in the scaffold (from package.json). */
-export const ALLOWED_PACKAGES = new Set([
-  'react',
-  'react-dom',
-  'react-dom/client',
-  'react-router-dom',
-  'lucide-react',
+/** Dangerous packages that should NEVER be in frontend code */
+const BLOCKED_PACKAGES = new Set([
+  // Node.js built-ins (security risk)
+  'fs', 'path', 'child_process', 'os', 'net', 'http', 'https', 'crypto',
+  'stream', 'zlib', 'cluster', 'dgram', 'dns', 'tls', 'vm', 'worker_threads',
+  'fs/promises', 'node:fs', 'node:path', 'node:child_process', 'node:os',
+  'node:crypto', 'node:http', 'node:https', 'node:net',
+  // Server-only packages
+  'express', 'koa', 'fastify', 'next', 'next/server',
+  // Blocked CDN packages (cause runtime errors, use Tailwind CSS alternatives instead)
+  'recharts', 'chart.js', 'd3', 'lucide-react', 'react-icons', '@heroicons/react',
+  'framer-motion', '@headlessui/react',
+  'pg', 'mysql', 'mysql2', 'mongodb', 'mongoose', 'prisma', '@prisma/client',
+  'dotenv', 'bcrypt', 'bcryptjs', 'jsonwebtoken',
 ]);
 
 /** Bare import pattern: import ... from 'package-name' or import 'package-name' */
@@ -26,8 +33,6 @@ const REQUIRE_REGEX = /(?:const|let|var)\s+\w+\s*=\s*require\s*\(\s*['"]([^./][^
 
 /**
  * Extract the package name from a module specifier.
- * Handles scoped packages: '@scope/package/subpath' → '@scope/package'
- * Handles normal packages: 'lodash/merge' → 'lodash'
  */
 function getPackageName(specifier: string): string {
   if (specifier.startsWith('@')) {
@@ -38,16 +43,16 @@ function getPackageName(specifier: string): string {
 }
 
 /**
- * Check if a module specifier is allowed.
+ * Check if a module specifier is blocked (dangerous).
  */
-function isAllowedImport(specifier: string): boolean {
+function isBlockedImport(specifier: string): boolean {
   const pkg = getPackageName(specifier);
-  return ALLOWED_PACKAGES.has(pkg) || ALLOWED_PACKAGES.has(specifier);
+  return BLOCKED_PACKAGES.has(pkg) || BLOCKED_PACKAGES.has(specifier);
 }
 
 /**
- * Remove disallowed imports from a source file.
- * Returns the cleaned content and a list of removed imports.
+ * Remove only dangerous imports from a source file.
+ * All other npm imports are KEPT — they'll be handled by stripForBrowser + CDN.
  */
 export function sanitizeImports(content: string): {
   content: string;
@@ -55,25 +60,31 @@ export function sanitizeImports(content: string): {
 } {
   const removed: string[] = [];
 
-  // Remove static imports of disallowed packages
+  // Remove static imports of blocked packages
   let cleaned = content.replace(IMPORT_REGEX, (match, specifier) => {
-    if (isAllowedImport(specifier)) return match;
-    removed.push(specifier);
-    return `// [removed] import from '${specifier}' — not in allowed dependencies`;
+    if (isBlockedImport(specifier)) {
+      removed.push(specifier);
+      return `// [blocked] import from '${specifier}' — server-only package`;
+    }
+    return match; // Keep all other imports
   });
 
-  // Remove dynamic imports of disallowed packages
+  // Remove dynamic imports of blocked packages
   cleaned = cleaned.replace(DYNAMIC_IMPORT_REGEX, (match, specifier) => {
-    if (isAllowedImport(specifier)) return match;
-    removed.push(specifier);
-    return `Promise.resolve({}) /* [removed] dynamic import('${specifier}') */`;
+    if (isBlockedImport(specifier)) {
+      removed.push(specifier);
+      return `Promise.resolve({}) /* [blocked] import('${specifier}') */`;
+    }
+    return match;
   });
 
-  // Remove require() of disallowed packages
+  // Remove require() of blocked packages
   cleaned = cleaned.replace(REQUIRE_REGEX, (match, specifier) => {
-    if (isAllowedImport(specifier)) return match;
-    removed.push(specifier);
-    return `// [removed] require('${specifier}') — not in allowed dependencies`;
+    if (isBlockedImport(specifier)) {
+      removed.push(specifier);
+      return `// [blocked] require('${specifier}') — server-only package`;
+    }
+    return match;
   });
 
   return { content: cleaned, removed: [...new Set(removed)] };

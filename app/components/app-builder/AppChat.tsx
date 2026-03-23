@@ -39,13 +39,15 @@ interface AIOptionsState {
 interface AppChatProps {
   projectId?: string;
   currentFile?: { id: string; path: string; name: string };
-  projectFiles?: Array<{ path: string; name: string }>;
+  projectFiles?: Array<{ path: string; name: string; content?: string }>;
   onFilesCreated?: () => void;
+  /** Called with in-progress files as AI streams them — for real-time editor preview */
+  onStreamingFiles?: (files: Array<{ path: string; content: string; complete: boolean }>) => void;
   projectTitle?: string;
   projectFramework?: string;
 }
 
-export default function AppChat({ projectId = '', currentFile, projectFiles = [], onFilesCreated, projectTitle = 'My App', projectFramework = 'react' }: AppChatProps) {
+export default function AppChat({ projectId = '', currentFile, projectFiles = [], onFilesCreated, onStreamingFiles, projectTitle = 'My App', projectFramework = 'react' }: AppChatProps) {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -79,14 +81,11 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
   const hasNoFiles = projectFiles.length === 0;
   const canGenerate = projectId && message.trim() && !loading;
 
-  // Track whether we already auto-sent a fix for the current preview cycle
-  const autoFixSentRef = useRef(false);
-  // Reset auto-fix flag when files are updated (new generation)
-  useEffect(() => {
-    const reset = () => { autoFixSentRef.current = false; };
-    window.addEventListener('files-updated', reset);
-    return () => window.removeEventListener('files-updated', reset);
-  }, []);
+  // Track auto-fix attempts to prevent infinite loops (max 2 attempts per error)
+  const autoFixCountRef = useRef(0);
+  const lastAutoFixErrorRef = useRef<string>('');
+  // Reset counter only on NEW user-initiated generation (not on fix-loop responses)
+  const resetAutoFixOnUserAction = () => { autoFixCountRef.current = 0; lastAutoFixErrorRef.current = ''; };
 
   // File extraction hook — kept for potential manual extraction needs
   useFileExtraction({ projectId, onFilesCreated });
@@ -194,20 +193,34 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
   useEffect(() => {
     const handlePreviewError = (e: Event) => {
       const detail = (e as CustomEvent<{ projectId?: string; errors: string[] }>).detail;
-      // Only handle errors for our project, and only once per generation cycle
       if (!projectId || detail.projectId !== projectId) return;
-      if (autoFixSentRef.current || loading) return;
+      if (loading) return;
       const errors = detail.errors;
       if (!errors || errors.length === 0) return;
 
-      autoFixSentRef.current = true;
       const errorText = errors.join('\n');
-      const fixMessage = `The preview has a runtime error:\n\`\`\`\n${errorText}\n\`\`\`\nPlease fix this error in the code.`;
 
-      // Store in ref and set in state, then trigger submit
+      // Prevent infinite loop: max 2 auto-fix attempts per unique error
+      if (autoFixCountRef.current >= 2) return;
+      // If same error as last time, don't retry — the fix didn't work
+      if (lastAutoFixErrorRef.current === errorText) return;
+
+      autoFixCountRef.current += 1;
+      lastAutoFixErrorRef.current = errorText;
+
+      // Build a smarter fix prompt that tells the AI exactly what to do
+      const isUndefinedError = /is not defined/.test(errorText);
+      const undefinedName = errorText.match(/(\w+) is not defined/)?.[1];
+
+      let fixMessage: string;
+      if (isUndefinedError && undefinedName) {
+        fixMessage = `The preview has a runtime error:\n\`\`\`\n${errorText}\n\`\`\`\nThe component "${undefinedName}" is referenced but its file is missing or not exported correctly. Please create the missing file src/components/${undefinedName}.jsx with "export default ${undefinedName}". Do NOT regenerate existing files — ONLY create the missing file.`;
+      } else {
+        fixMessage = `The preview has a runtime error:\n\`\`\`\n${errorText}\n\`\`\`\nPlease fix ONLY this error. Do NOT rewrite or regenerate files that are working. Make the minimal change needed.`;
+      }
+
       pendingAutoFixRef.current = fixMessage;
       setMessage(fixMessage);
-      // Small delay so React flushes the state, then trigger submit
       setTimeout(() => {
         const form = document.querySelector('[data-chat-form]') as HTMLFormElement | null;
         if (form) form.requestSubmit();
@@ -225,6 +238,8 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
     pendingAutoFixRef.current = null;
     const effectiveMessage = message.trim() || (autoFixMsg || '').trim();
     if (!projectId || !effectiveMessage || loading) return;
+    // Reset auto-fix counter only on user-initiated messages (not auto-fix)
+    if (!autoFixMsg) resetAutoFixOnUserAction();
     const description = effectiveMessage;
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
@@ -299,6 +314,61 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
         const streamedFiles: string[] = [];
         let streamProvider = '';
         let streamModel = '';
+        let fileRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+        let streamParseTimer: ReturnType<typeof setTimeout> | null = null;
+
+        // Incremental parser: extract files from partial JSON/markdown as AI streams
+        const parseStreamingFiles = (text: string) => {
+          if (!onStreamingFiles || text.length < 50) return;
+          const files: Array<{ path: string; content: string; complete: boolean }> = [];
+
+          // Try JSON format: find "path":"..." , "content":"..." pairs
+          // Limit gap between path and content to 500 chars to avoid crossing file boundaries
+          const jsonFilePattern = /"path"\s*:\s*"([^"]+)"[^"]{0,500}"content"\s*:\s*"/g;
+          let match;
+          while ((match = jsonFilePattern.exec(text)) !== null) {
+            const path = match[1];
+            const contentStart = match.index + match[0].length;
+            // Find where content string ends — look for unescaped closing quote
+            let end = contentStart;
+            let complete = false;
+            while (end < text.length) {
+              if (text[end] === '\\') { end += 2; continue; }
+              if (text[end] === '"') { complete = true; break; }
+              end++;
+            }
+            const rawContent = text.slice(contentStart, end);
+            // Unescape JSON string
+            try {
+              const content = JSON.parse(`"${rawContent.replace(/\n/g, '\\n')}"`);
+              files.push({ path, content, complete });
+            } catch {
+              // Partial content — unescape in correct order (backslash first!)
+              const content = rawContent.replace(/\\\\/g, '\\').replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"');
+              files.push({ path, content, complete: false });
+            }
+          }
+
+          // Try markdown format: ```jsx:path or ```file:path blocks
+          if (files.length === 0) {
+            const mdPattern = /```(?:jsx|tsx|javascript|typescript|css|file):?\s*(\S+\.(?:jsx?|tsx?|css))\n([\s\S]*?)(?:```|$)/g;
+            let mdMatch;
+            while ((mdMatch = mdPattern.exec(text)) !== null) {
+              const path = mdMatch[1].startsWith('src/') ? mdMatch[1] : `src/${mdMatch[1]}`;
+              const content = mdMatch[2];
+              const complete = text.indexOf('```', mdMatch.index + mdMatch[0].length - 3) > mdMatch.index;
+              files.push({ path, content, complete });
+            }
+          }
+
+          if (files.length > 0) {
+            // Deduplicate by path, keeping the last (most complete) entry
+            const deduped = Array.from(
+              files.reduce((map, f) => map.set(f.path, f), new Map<string, typeof files[0]>()).values()
+            );
+            onStreamingFiles(deduped);
+          }
+        };
 
         // Reset progress tracker for new generation
         setCreatedFiles([]);
@@ -415,10 +485,26 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
                 setMessages((prev) => prev.map((m) =>
                   m.id === assistantId ? { ...m, content } : m
                 ));
+                // Debounced: parse streaming content for real-time file preview in editor
+                if (onStreamingFiles && !streamParseTimer) {
+                  streamParseTimer = setTimeout(() => {
+                    parseStreamingFiles(streamedContent);
+                    streamParseTimer = null;
+                  }, 300);
+                }
               } else if (event.type === 'file-created') {
                 if (event.data?.success) {
                   streamedFiles.push(event.data.path);
                   setCreatedFiles(prev => [...prev, { path: event.data.path, action: event.data.action || 'created' }]);
+
+                  // Real-time file list refresh: debounce to avoid flooding DB
+                  // Dispatch files-updated so editor/files panel refreshes incrementally
+                  if (!fileRefreshTimer) {
+                    fileRefreshTimer = setTimeout(() => {
+                      window.dispatchEvent(new CustomEvent('files-updated', { detail: { projectId, incremental: true } }));
+                      fileRefreshTimer = null;
+                    }, 800);
+                  }
                 }
               } else if (event.type === 'done') {
                 // streamingStatus cleared
@@ -442,9 +528,10 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
                 const trimmed = (finalContent || '').trimEnd();
                 const openBlocks = (trimmed.match(/```/g) || []).length;
                 const isTruncated = openBlocks % 2 !== 0
-                  || /[,{(\[]\s*$/.test(trimmed)
-                  || (streamedFiles.length === 0 && trimmed.length > 500);
-                setGenerationTruncated(isTruncated);
+                  || /[,{(\[]\s*$/.test(trimmed);
+                // Don't show truncation for continuation responses that generated at least some files
+                const createdCount = event.data?.filesCreated?.length || streamedFiles.length;
+                setGenerationTruncated(isTruncated && createdCount === 0);
               } else if (event.type === 'error') {
                 // streamingStatus cleared
                 setProgressSteps(prev => prev.map(s =>
@@ -459,17 +546,24 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
           }
         }
 
-        // Notify parent and trigger preview refresh
+        // Clear pending timers — the final refresh below is authoritative
+        if (fileRefreshTimer) { clearTimeout(fileRefreshTimer); fileRefreshTimer = null; }
+        if (streamParseTimer) { clearTimeout(streamParseTimer); streamParseTimer = null; }
+        // DON'T clear streaming files here — they stay visible until DB files load
+        // The parent clears them after fetchProjectFiles completes (see page.tsx files-updated handler)
+
+        // ALWAYS notify parent and refresh — even if streamedFiles is empty
+        // (files might have been saved to DB via pipeline even without file-created events)
+        onFilesCreated?.();
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('files-updated', { detail: { projectId } }));
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('auto-refresh-preview', { detail: { projectId } }));
+          }, 400);
+        }
         if (streamedFiles.length > 0) {
-          onFilesCreated?.();
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('files-updated', { detail: { projectId } }));
-            setTimeout(() => {
-              window.dispatchEvent(new CustomEvent('auto-refresh-preview', { detail: { projectId } }));
-            }, 400);
-          }
-          toast.success('Files extracted', {
-            description: `Created ${streamedFiles.length} files: ${streamedFiles.join(', ')}`,
+          toast.success('Files generated', {
+            description: `${streamedFiles.length} files: ${streamedFiles.slice(0, 5).join(', ')}${streamedFiles.length > 5 ? '...' : ''}`,
             duration: 4000,
           });
         }
@@ -581,7 +675,8 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
               {createdFiles.length > 0 && (
                 <div className="mt-1.5 pt-1.5 border-t border-white/5 space-y-0.5">
                   <span className="text-gray-500 font-medium">Files ({createdFiles.length}):</span>
-                  {createdFiles.map(f => (
+                  {/* Deduplicate by path — keep last action for each path */}
+                  {[...new Map(createdFiles.map(f => [f.path, f])).values()].map(f => (
                     <div key={f.path} className={`flex items-center gap-1.5 pl-1 ${f.action === 'created' ? 'text-emerald-400/80' : 'text-amber-400/80'}`}>
                       <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                       <span className="truncate">{f.path}</span>
@@ -606,6 +701,134 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
                     {parsedAgent.summary}
                   </p>
                 )}
+                {/* Website Walkthrough — auto-generated from App.jsx content */}
+                {/* Use createdFiles (from SSE events = actually saved) OR structuredFiles (from parsing) */}
+                {!loading && (createdFiles.length > 2 || structuredFiles.length > 3) && (() => {
+                  // Try to find App.jsx content from structured files first, then from projectFiles (DB)
+                  const appFile = structuredFiles.find(f => f.path === 'src/App.jsx' || f.path === 'src/App.tsx')
+                    || projectFiles.find(f => f.path === 'src/App.jsx' || f.path === 'src/App.tsx');
+                  if (!appFile?.content) return null;
+                  const content = appFile.content;
+
+                  // Extract pages from navigateTo/setCurrentPage calls
+                  const pageMatches = [...content.matchAll(/case\s+['"]([^'"]+)['"]\s*:/g)];
+                  const pages = pageMatches.map(m => m[1]).filter(p => p !== 'default');
+
+                  // Extract component imports to understand what exists
+                  const importMatches = [...content.matchAll(/import\s+(\w+)\s+from\s+['"]\.\/(components|pages)\/(\w+)/g)];
+                  const components = importMatches.map(m => ({ name: m[1], type: m[2], file: m[3] }));
+
+                  // Detect features from code patterns
+                  const features: string[] = [];
+                  if (content.includes('navigateTo')) features.push('Page navigation (click menu items to browse)');
+                  if (content.includes('Modal') || content.includes('modal') || content.includes('isOpen')) features.push('Modal dialogs (login, signup, etc.)');
+                  if (content.includes('dark') || content.includes('Dark') || content.includes('theme')) features.push('Dark mode toggle');
+                  if (content.includes('search') || content.includes('Search')) features.push('Search functionality');
+                  if (content.includes('notification') || content.includes('Notification')) features.push('Notification system');
+                  if (content.includes('scrollTo') || content.includes('scrollIntoView')) features.push('Smooth scroll navigation');
+
+                  // Format page names nicely
+                  const formatPage = (p: string) => p.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+                  // Detect which pages have files vs which are missing
+                  const savedPaths = new Set(createdFiles.filter(f => f.action === 'created' || f.action === 'updated').map(f => f.path));
+                  const importedPaths = [...content.matchAll(/import\s+\w+\s+from\s+['"]\.\/([^'"]+)['"]/g)]
+                    .map(m => {
+                      let p = `src/${m[1]}`;
+                      if (!p.match(/\.(jsx?|tsx?)$/)) p += '.jsx';
+                      return p;
+                    });
+                  const missingFiles = importedPaths.filter(p => !savedPaths.has(p) && !projectFiles.some(pf => pf.path === p || pf.name === p.split('/').pop()));
+                  const isTruncated = generationTruncated || missingFiles.length > 0;
+
+                  const savedCount = createdFiles.filter(f => f.action === 'created').length;
+                  const modifiedCount = createdFiles.filter(f => f.action === 'updated').length;
+
+                  if (pages.length === 0 && components.length === 0 && savedCount === 0) return null;
+
+                  return (
+                    <div className={`border rounded-xl p-4 space-y-3 ${
+                      isTruncated
+                        ? 'bg-gradient-to-r from-amber-500/5 to-orange-500/5 border-amber-500/20'
+                        : 'bg-gradient-to-r from-emerald-500/5 to-cyan-500/5 border-emerald-500/20'
+                    }`}>
+                      <div className="flex items-center gap-2">
+                        {isTruncated ? (
+                          <>
+                            <svg className="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
+                            <span className="text-sm font-semibold text-amber-300">Partially generated — click Continue below</span>
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                            <span className="text-sm font-semibold text-emerald-300">Your website is ready!</span>
+                          </>
+                        )}
+                      </div>
+
+                      {/* What was saved */}
+                      {(savedCount > 0 || modifiedCount > 0) && (
+                        <div>
+                          <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1.5">
+                            {isTruncated ? 'Saved so far' : 'Files created'}
+                          </p>
+                          <div className="flex items-center gap-3 text-[11px] text-gray-400">
+                            {savedCount > 0 && <span className="text-emerald-400">{savedCount} new files</span>}
+                            {modifiedCount > 0 && <span className="text-amber-400">{modifiedCount} modified</span>}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Missing files (truncated) */}
+                      {missingFiles.length > 0 && (
+                        <div>
+                          <p className="text-[11px] font-medium text-amber-400 uppercase tracking-wider mb-1.5">Still needed</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {missingFiles.map(p => (
+                              <span key={p} className="px-2 py-0.5 text-[11px] rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-300">
+                                {p.split('/').pop()}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Pages */}
+                      {pages.length > 0 && (
+                        <div>
+                          <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1.5">
+                            {isTruncated ? 'Pages planned' : 'Pages you can visit'}
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {pages.map(p => (
+                              <span key={p} className="px-2 py-0.5 text-[11px] rounded-md bg-white/5 border border-white/10 text-gray-300">
+                                {formatPage(p)}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {features.length > 0 && (
+                        <div>
+                          <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1.5">What you can do</p>
+                          <ul className="space-y-1">
+                            {features.map((f, i) => (
+                              <li key={i} className="flex items-start gap-1.5 text-[11px] text-gray-400">
+                                <span className="text-emerald-500 mt-0.5">•</span>
+                                {f}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      <p className="text-[10px] text-gray-600 pt-1 border-t border-white/5">
+                        Click the preview to interact with your website. Use the nav menu to browse pages.
+                      </p>
+                    </div>
+                  );
+                })()}
                 {/* File summary bar — shows all files with NEW/MOD */}
                 <details className="group" open>
                   <summary className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer select-none hover:text-gray-300 transition-colors list-none">
@@ -618,7 +841,8 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
                     </span>
                   </summary>
                   <div className="mt-1.5 space-y-0.5 pl-5">
-                    {structuredFiles.map((file) => {
+                    {/* Deduplicate structured files by path */}
+                    {[...new Map(structuredFiles.map(f => [f.path, f])).values()].map((file) => {
                       const fileAction = createdFiles.find(cf => cf.path === file.path)?.action;
                       return (
                         <div
@@ -656,19 +880,21 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
                     })}
                   </div>
                 </details>
-                {/* Actual streamed code — collapsible, shown by default during generation */}
-                <details className="group" open={loading}>
-                  <summary className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer select-none hover:text-gray-300 transition-colors list-none">
-                    <svg className="w-3 h-3 transition-transform group-open:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" /></svg>
-                    <span>{loading ? 'Generating code...' : 'View generated code'}</span>
-                  </summary>
-                  <div className="mt-2 max-h-[500px] overflow-y-auto rounded-lg bg-black/40 border border-white/5">
-                    <pre className="text-[11px] text-gray-300 p-3 whitespace-pre-wrap break-words font-mono leading-relaxed">
-                      {msg.content}
-                    </pre>
-                  </div>
-                </details>
+                {/* Raw code — only visible AFTER generation, collapsed by default */}
+                {!loading && (
+                  <details className="group">
+                    <summary className="flex items-center gap-2 text-xs text-gray-500 cursor-pointer select-none hover:text-gray-400 transition-colors list-none">
+                      <svg className="w-3 h-3 transition-transform group-open:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" /></svg>
+                      <span>View raw output</span>
+                    </summary>
+                    <div className="mt-2 max-h-[400px] overflow-y-auto rounded-lg bg-black/40 border border-white/5">
+                      <pre className="text-[11px] text-gray-400 p-3 whitespace-pre-wrap break-words font-mono leading-relaxed">
+                        {msg.content}
+                      </pre>
+                    </div>
+                  </details>
+                )}
               </div>
             ) : msg.content ? (
               <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap break-words">
@@ -798,10 +1024,43 @@ export default function AppChat({ projectId = '', currentFile, projectFiles = []
             {generationTruncated && (
               <button
                 onClick={() => {
-                  // Build a smart continuation prompt with context about what already exists
-                  const existingPaths = projectFiles.map(f => f.name).join(', ');
-                  const lastFiles = createdFiles.slice(-3).map(f => f.path).join(', ');
-                  const continueMsg = `continue generating the REMAINING files. Do NOT regenerate or rewrite files that already exist. Already created: ${existingPaths || 'none'}. Last files created: ${lastFiles || 'unknown'}. Generate ONLY the missing files that were not completed.`;
+                  // Merge project files (from DB) with files created in this session
+                  const dbPaths = projectFiles.map(f => f.path || f.name);
+                  const sessionPaths = createdFiles.map(f => f.path);
+                  const allExistingPaths = [...new Set([...dbPaths, ...sessionPaths])];
+                  // Normalize: ensure all paths have src/ prefix for comparison
+                  const normalizedExisting = new Set(allExistingPaths.map(p =>
+                    p.startsWith('src/') ? p : `src/${p}`
+                  ));
+
+                  // Detect missing files from App.jsx imports
+                  const appFile = projectFiles.find(f => f.path === 'src/App.jsx' || f.path === 'src/App.tsx' || f.name === 'App.jsx');
+                  const appContent = appFile?.content || '';
+                  const importedPaths = [...appContent.matchAll(/import\s+\w+\s+from\s+['"]\.\/([^'"]+)['"]/g)]
+                    .map(m => {
+                      let p = `src/${m[1]}`;
+                      if (!p.match(/\.(jsx?|tsx?|css)$/)) p += '.jsx';
+                      return p;
+                    });
+                  const missingFiles = importedPaths.filter(p => !normalizedExisting.has(p));
+
+                  const existingStr = allExistingPaths.filter(p => p.startsWith('src/')).join('\n');
+                  const missingStr = missingFiles.length > 0
+                    ? `\n\nMISSING FILES (these are imported in App.jsx but don't exist yet — generate these):\n${missingFiles.map(f => `- ${f}`).join('\n')}`
+                    : '';
+
+                  const continueMsg = `[CONTINUE] The previous generation was truncated. Generate ONLY the missing files listed below.
+
+EXISTING FILES (already saved — do NOT regenerate or modify ANY of these):
+${existingStr}
+${missingStr}
+
+RULES FOR CONTINUATION:
+- Generate ONLY the missing files listed above. Do NOT output any file that already exists.
+- Each file must use "export default ComponentName" matching the filename.
+- Match the SAME design system, theme, color scheme, and component patterns as existing files.
+- The App.jsx already imports these components — just create the component files.`;
+
                   setMessage(continueMsg);
                   setGenerationTruncated(false);
                   setTimeout(() => {

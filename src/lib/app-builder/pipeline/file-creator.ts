@@ -50,7 +50,13 @@ export function parseResponseToFiles(responseText: string): ParsedFile[] {
     : parseCodeBlocksToFiles(responseText);
 
   for (const f of rawFiles) {
-    const normalizedPath = f.path.replace(/\.\./g, '').replace(/^\//, '');
+    let normalizedPath = f.path.replace(/\.\./g, '').replace(/^\//, '');
+    // Add src/ prefix if missing — AI sometimes returns "App.jsx" or "components/Header.jsx"
+    if (!normalizedPath.startsWith('src/') && !['index.html', 'package.json', 'vite.config.js', 'README.md', 'styles.css'].includes(normalizedPath)) {
+      if (normalizedPath.match(/\.(jsx?|tsx?|css)$/)) {
+        normalizedPath = 'src/' + normalizedPath;
+      }
+    }
     const ext = normalizedPath.split('.').pop()?.toLowerCase() || '';
     const lang = f.language || LANGUAGE_MAP[ext] || ext;
     const name = f.name || normalizedPath.split('/').pop() || normalizedPath;
@@ -94,6 +100,22 @@ function autoFixContent(content: string): string {
   fixed = fixed.replace(/\breutrn\b/g, 'return');
   fixed = fixed.replace(/\bimprot\b/g, 'import');
   fixed = fixed.replace(/\bexprot\b/g, 'export');
+
+  // Fix stray backslashes from malformed JSON unescaping (e.g., ',\        subject' → newline)
+  fixed = fixed.replace(/,\\\s{2,}/g, ',\n');
+  fixed = fixed.replace(/'\\\s{2,}/g, "'\n");
+  fixed = fixed.replace(/;\\\s{2,}/g, ';\n');
+
+  // Fix unescaped apostrophes inside single-quoted strings (common AI mistake)
+  // e.g., 'team's productivity' → 'team\\'s productivity'
+  // Only fix inside string literals that are clearly broken (quote mismatch)
+  fixed = fixed.replace(/'([^']*?)\b(\w)'(\w)\b([^']*?)'/g, (match, before, w1, w2, after) => {
+    // Common contractions: it's, don't, team's, what's, we're, you'll, etc.
+    if (/^[a-z]$/.test(w2)) {
+      return `'${before}${w1}\\'${w2}${after}'`;
+    }
+    return match;
+  });
 
   // Fix classname → className
   if (fixed.includes('classname=') && !fixed.includes('className=')) {
@@ -173,12 +195,65 @@ export async function upsertFiles(
       continue;
     }
 
+    // Skip truncated files — incomplete code that would break the preview
+    // Strip comments and strings before counting braces to avoid false positives
+    if (file.path.match(/\.(jsx?|tsx?)$/) && file.content.length > 50) {
+      const trimmed = file.content.trimEnd();
+      // Remove single-line comments, multi-line comments, and string literals before counting
+      const codeOnly = trimmed
+        .replace(/\/\/[^\n]*/g, '')           // single-line comments
+        .replace(/\/\*[\s\S]*?\*\//g, '')     // multi-line comments
+        .replace(/'(?:[^'\\]|\\.)*'/g, '""')  // single-quoted strings → empty
+        .replace(/"(?:[^"\\]|\\.)*"/g, '""')  // double-quoted strings → empty
+        .replace(/`(?:[^`\\]|\\.)*`/g, '""'); // template literals → empty
+      const openBraces = (codeOnly.match(/\{/g) || []).length;
+      const closeBraces = (codeOnly.match(/\}/g) || []).length;
+      const openParens = (codeOnly.match(/\(/g) || []).length;
+      const closeParens = (codeOnly.match(/\)/g) || []).length;
+      // More lenient: JSX components naturally have brace imbalances in templates
+      const isTruncated = (openBraces - closeBraces > 5) || (openParens - closeParens > 5)
+        || /[,{(\[]\s*$/.test(trimmed);
+
+      if (isTruncated) {
+        console.warn(`⚠️ Skipping truncated file: ${file.path} (${openBraces} open vs ${closeBraces} close braces)`);
+        const result: FileCreationResult = {
+          path: file.path,
+          success: false,
+          error: 'File appears truncated (incomplete code)',
+        };
+        results.push(result);
+        options?.onFileCreated?.(result);
+        continue;
+      }
+    }
+
     try {
       // Check if file already exists to determine created vs updated
       const existing = await prisma.appFile.findUnique({
         where: { projectId_path: { projectId, path: file.path } },
-        select: { id: true },
+        select: { id: true, content: true },
       });
+
+      // Save previous version before overwriting (enables undo)
+      if (existing && existing.content) {
+        try {
+          const lastVersion = await prisma.appFileVersion.findFirst({
+            where: { fileId: existing.id },
+            orderBy: { version: 'desc' },
+            select: { version: true },
+          });
+          await prisma.appFileVersion.create({
+            data: {
+              fileId: existing.id,
+              content: existing.content,
+              version: (lastVersion?.version ?? 0) + 1,
+            },
+          });
+        } catch (versionErr) {
+          // Non-blocking: don't fail the upsert if version save fails
+          console.warn('⚠️ Failed to save file version:', file.path, versionErr);
+        }
+      }
 
       await prisma.appFile.upsert({
         where: {

@@ -22,20 +22,20 @@ export const ALLOWED_PATHS = [
   'src/main.tsx',
 ] as const;
 
-/** Paths matching src/components/ (including subdirectories like ui/, dashboard/) */
-export const COMPONENT_PATH_PATTERN = /^src\/components\/(?:[a-zA-Z0-9-]+\/)*[A-Z][a-zA-Z0-9]*\.(jsx|tsx)$/;
+/** Paths matching src/components/ (including subdirectories like ui/, dashboard/) — .js/.jsx/.ts/.tsx */
+export const COMPONENT_PATH_PATTERN = /^src\/components\/(?:[a-zA-Z0-9-]+\/)*[a-zA-Z][a-zA-Z0-9]*\.(jsx?|tsx?)$/;
 /** Paths for components at src root: src/Header.jsx, src/Hero.jsx */
-export const SRC_ROOT_COMPONENT_PATTERN = /^src\/[A-Z][a-zA-Z0-9]*\.(jsx|tsx)$/;
-/** Paths matching src/pages/*.jsx | *.tsx */
-export const PAGES_PATH_PATTERN = /^src\/pages\/[A-Z][a-zA-Z0-9]*\.(jsx|tsx)$/;
+export const SRC_ROOT_COMPONENT_PATTERN = /^src\/[A-Z][a-zA-Z0-9]*\.(jsx?|tsx?)$/;
+/** Paths matching src/pages/*.jsx|tsx|js|ts */
+export const PAGES_PATH_PATTERN = /^src\/pages\/(?:[a-zA-Z0-9-]+\/)*[A-Z][a-zA-Z0-9]*\.(jsx?|tsx?)$/;
 /** Paths matching src/store/*.js(x) | *.ts(x) — state management files */
 export const STORE_PATH_PATTERN = /^src\/store\/[a-zA-Z][a-zA-Z0-9]*\.(jsx?|tsx?)$/;
 /** Paths matching src/hooks/*.js(x) | *.ts(x) — custom hooks */
 export const HOOKS_PATH_PATTERN = /^src\/hooks\/[a-zA-Z][a-zA-Z0-9]*\.(jsx?|tsx?)$/;
-/** Paths matching src/context/*.jsx | *.tsx — React context providers */
-export const CONTEXT_PATH_PATTERN = /^src\/context\/[A-Z][a-zA-Z0-9]*\.(jsx|tsx)$/;
-/** Paths matching src/lib/*.js(x) | *.ts(x) or src/utils/*.js(x) | *.ts(x) — utilities */
-export const UTILS_PATH_PATTERN = /^src\/(lib|utils)\/[a-zA-Z][a-zA-Z0-9]*\.(jsx?|tsx?)$/;
+/** Paths matching src/context/*.jsx|tsx|js|ts — React context providers */
+export const CONTEXT_PATH_PATTERN = /^src\/context\/[a-zA-Z][a-zA-Z0-9]*\.(jsx?|tsx?)$/;
+/** Paths matching src/lib|utils|data|services|config/*.js(x)|*.ts(x) */
+export const UTILS_PATH_PATTERN = /^src\/(lib|utils|data|services|config|api)\/[a-zA-Z][a-zA-Z0-9]*\.(jsx?|tsx?)$/;
 
 /** Check if a normalized path is allowed by the sandbox. */
 export function isAllowedPath(path: string): boolean {
@@ -96,37 +96,76 @@ export const AGENT_RESPONSE_JSON_SCHEMA = {
  */
 function extractFilesLoosely(text: string): AgentFile[] {
   const normalized: AgentFile[] = [];
-  const filesStart = text.indexOf('"files"');
-  if (filesStart === -1) return normalized;
 
-  const slice = text.slice(filesStart);
-  // Match each file object: path, name, content (multiline; content may contain \" so we don't stop at first ")
-  const fileBlockRegex =
-    /\{\s*"path":\s*"([^"]+)"[\s\S]*?"name":\s*"([^"]+)"[\s\S]*?"content":\s*"((?:[^"\\]|\\.)*)"\s*,\s*[\s\n]*"language":\s*"([^"]+)"[\s\S]*?"isMain":\s*(true|false)/g;
+  // Strategy: find each "path":"..." occurrence, then extract its "content":"..." value
+  // This works even on truncated JSON — we extract every COMPLETE file entry
+  const pathMatches = [...text.matchAll(/"path"\s*:\s*"([^"]+)"/g)];
 
-  let match: RegExpExecArray | null;
-  while ((match = fileBlockRegex.exec(slice)) !== null) {
-    const [, pathRaw, nameRaw, contentRaw, languageRaw, isMainRaw] = match;
+  for (const pathMatch of pathMatches) {
+    const pathRaw = pathMatch[1];
     const path = pathRaw.replace(/\s+/g, '').replace(/\\/g, '/');
-    const valid =
-      isAllowedPath(path);
-    if (!valid) continue;
+    if (!isAllowedPath(path)) continue;
 
-    const content = contentRaw
-      .replace(/\\n/g, '\n')
-      .replace(/\\t/g, '\t')
-      .replace(/\\"/g, '"');
+    // Find the "content":"..." for this file entry
+    // Look ahead from the path match position for the content field
+    const searchStart = pathMatch.index!;
+    const searchSlice = text.slice(searchStart, searchStart + 200000); // 200KB window for large files
+
+    // Find "content":" and then walk char-by-char to find the end of the escaped string
+    const contentIdx = searchSlice.indexOf('"content"');
+    if (contentIdx === -1) continue;
+
+    const colonIdx = searchSlice.indexOf(':', contentIdx + 9);
+    if (colonIdx === -1) continue;
+
+    // Find opening quote of content value
+    let openQuote = colonIdx + 1;
+    while (openQuote < searchSlice.length && searchSlice[openQuote] !== '"') openQuote++;
+    if (openQuote >= searchSlice.length) continue;
+
+    // Walk to find closing quote (handling escaped quotes)
+    let end = openQuote + 1;
+    let complete = false;
+    while (end < searchSlice.length) {
+      if (searchSlice[end] === '\\') { end += 2; continue; }
+      if (searchSlice[end] === '"') { complete = true; break; }
+      end++;
+    }
+
+    if (!complete) {
+      // This file's content was truncated — skip it
+      // Truncated file detected — skip silently (logged once during pipeline, not on every render)
+      continue;
+    }
+
+    const rawContent = searchSlice.slice(openQuote + 1, end);
+    let content: string;
+    try {
+      content = JSON.parse(`"${rawContent}"`);
+    } catch {
+      // Unescape in correct order: backslash first, then others
+      content = rawContent
+        .replace(/\\\\/g, '\\')
+        .replace(/\\n/g, '\n')
+        .replace(/\\t/g, '\t')
+        .replace(/\\"/g, '"');
+    }
+
+    // Extract optional fields
+    const langMatch = searchSlice.match(/"language"\s*:\s*"([^"]+)"/);
+    const isMainMatch = searchSlice.match(/"isMain"\s*:\s*(true|false)/);
+    const nameMatch = searchSlice.match(/"name"\s*:\s*"([^"]+)"/);
+    const ext = path.split('.').pop()?.toLowerCase();
 
     normalized.push({
       path,
-      name: nameRaw || path.split('/').pop() || path,
+      name: nameMatch?.[1] || path.split('/').pop() || path,
       content,
-      language:
-        languageRaw ||
-        (path.endsWith('.tsx') ? 'tsx' : path.endsWith('.jsx') ? 'jsx' : path.endsWith('.css') ? 'css' : 'html'),
-      isMain: isMainRaw === 'true' || path === 'src/App.jsx' || path === 'src/App.tsx',
+      language: langMatch?.[1] || (ext === 'tsx' ? 'tsx' : ext === 'jsx' ? 'jsx' : ext === 'css' ? 'css' : ext === 'ts' ? 'typescript' : 'javascript'),
+      isMain: isMainMatch?.[1] === 'true' || path === 'src/App.jsx' || path === 'src/App.tsx',
     });
   }
+
   return normalized;
 }
 

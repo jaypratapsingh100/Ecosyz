@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
+import StreamingCodeView from '../components/app-builder/StreamingCodeView';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import Header from '../components/Header';
@@ -51,7 +52,11 @@ function AppBuilderPageContent() {
   const [projectFiles, setProjectFiles] = useState<{ id: string; path: string; name: string; content: string; language?: string; isMain?: boolean }[]>([]);
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
   const [selectedFile, setSelectedFile] = useState<{ id: string; path: string; name: string; content: string; language?: string; isMain?: boolean } | null>(null);
-  const [recentlyChangedFiles, setRecentlyChangedFiles] = useState<Set<string>>(new Set());
+  const [recentlyChangedFiles, setRecentlyChangedFiles] = useState<Map<string, 'created' | 'updated'>>(new Map());
+  // Streaming files: in-progress file contents from AI streaming (before saved to DB)
+  const [streamingFiles, setStreamingFiles] = useState<Array<{ path: string; content: string; complete: boolean }>>([]);
+  const [activeStreamingFile, setActiveStreamingFile] = useState<string | null>(null);
+  // StreamingCodeView component handles editor ref and auto-scroll internally
 
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -122,29 +127,63 @@ function AppBuilderPageContent() {
   }, []);
 
   // Refresh file list in real-time when files are created/updated (e.g. during generation)
+  // Track content snapshots to detect modifications (not just new files)
+  const prevContentRef = useRef<Map<string, string>>(new Map());
   useEffect(() => {
-    const prevPaths = new Set(projectFiles.map(f => f.path));
+    // Update content snapshots when projectFiles change
+    const map = new Map<string, string>();
+    for (const f of projectFiles) map.set(f.path, f.content || '');
+    prevContentRef.current = map;
+  }, [projectFiles]);
+
+  useEffect(() => {
     const handleFilesUpdated = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (detail?.projectId === selectedProjectId && selectedProjectId) {
+        const prevContent = prevContentRef.current;
+        const isIncremental = detail?.incremental === true;
         fetchProjectFiles(selectedProjectId, selectedFile?.path).then(() => {
-          // After fetch, mark new/changed files
           setProjectFiles(current => {
-            const changedPaths = new Set<string>();
+            const changes = new Map<string, 'created' | 'updated'>();
             for (const f of current) {
-              if (!prevPaths.has(f.path)) changedPaths.add(f.path);
+              const prev = prevContent.get(f.path);
+              if (prev === undefined) {
+                changes.set(f.path, 'created');
+              } else if (prev !== (f.content || '')) {
+                changes.set(f.path, 'updated');
+              }
             }
-            if (changedPaths.size > 0) {
-              setRecentlyChangedFiles(prev => new Set([...prev, ...changedPaths]));
-              // Clear highlight after 4 seconds
+            if (changes.size > 0) {
+              setRecentlyChangedFiles(prev => {
+                const next = new Map(prev);
+                changes.forEach((action, path) => next.set(path, action));
+                return next;
+              });
               setTimeout(() => {
                 setRecentlyChangedFiles(prev => {
-                  const next = new Set(prev);
-                  changedPaths.forEach(p => next.delete(p));
+                  const next = new Map(prev);
+                  changes.forEach((_, path) => next.delete(path));
                   return next;
                 });
-              }, 4000);
+              }, 6000);
             }
+
+            // Clear streaming files AFTER DB files are loaded (not before)
+            // Only clear on final refresh (not incremental updates during generation)
+            if (!isIncremental && current.length > 0) {
+              setStreamingFiles([]);
+              setActiveStreamingFile(null);
+
+              // Auto-select App.jsx (or first source file) so editor isn't empty
+              setSelectedFile(prev => {
+                if (prev) return prev; // Already have a file selected
+                const appFile = current.find(f => f.path === 'src/App.jsx' || f.path === 'src/App.tsx');
+                if (appFile) return appFile;
+                const firstSrcFile = current.find(f => f.path.startsWith('src/') && /\.(jsx?|tsx?)$/.test(f.path));
+                return firstSrcFile || prev;
+              });
+            }
+
             return current;
           });
         });
@@ -625,6 +664,20 @@ function AppBuilderPageContent() {
                             setTimeout(() => fetchProjectFiles(selectedProjectId, pathToPreserve), 200);
                             setPreviewRefreshKey(k => k + 1);
                           }}
+                          onStreamingFiles={(files) => {
+                            setStreamingFiles(files);
+                            if (files.length > 0) {
+                              // Auto-select first file ONLY on first arrival (null → first file)
+                              setActiveStreamingFile(prev => {
+                                if (prev === null) {
+                                  // First streaming file arrived — switch to editor tab to show it
+                                  setActiveToolTab(t => t === 'files' ? 'code' : t);
+                                  return files[0].path;
+                                }
+                                return prev;
+                              });
+                            }
+                          }}
                           projectTitle="New Project"
                           projectFramework="react"
                         />
@@ -694,11 +747,67 @@ function AppBuilderPageContent() {
                     >
                       Files <span className="text-[9px] text-gray-600 font-normal ml-1">{projectFiles.filter(f => /\.(jsx?|tsx?|css)$/.test(f.path)).length}</span>
                     </button>
+                    {streamingFiles.length > 0 && (
+                      <span className="ml-auto px-2 py-1 text-[9px] font-medium text-cyan-400 bg-cyan-500/10 rounded-full animate-pulse flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                        Generating...
+                      </span>
+                    )}
                   </div>
                   <div className="flex-1 overflow-hidden">
                     {activeToolTab === 'files' ? (
                       <div className="h-full overflow-y-auto py-1">
-                        {projectFiles.length === 0 ? (
+                        {/* Streaming files — shown during generation */}
+                        {streamingFiles.length > 0 && (
+                          <div className="mb-2 border-b border-white/5 pb-2">
+                            <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                              Generating ({streamingFiles.length} files)
+                            </div>
+                            {streamingFiles.map((sf) => {
+                              const sfIsExisting = projectFiles.some(pf => pf.path === sf.path);
+                              return (
+                                <button
+                                  key={sf.path}
+                                  onClick={() => {
+                                    setActiveStreamingFile(sf.path);
+                                    setActiveToolTab('code');
+                                  }}
+                                  className={`w-full flex items-center gap-2 px-3 py-1.5 text-left transition-all group ${
+                                    activeStreamingFile === sf.path
+                                      ? sfIsExisting ? 'bg-amber-500/10 border-l-2 border-amber-400' : 'bg-cyan-500/10 border-l-2 border-cyan-400'
+                                      : 'hover:bg-white/5 border-l-2 border-transparent'
+                                  }`}
+                                >
+                                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                                    sf.complete ? 'bg-emerald-400'
+                                    : sfIsExisting ? 'bg-amber-400 animate-pulse'
+                                    : 'bg-cyan-400 animate-pulse'
+                                  }`} />
+                                  <div className="flex-1 min-w-0">
+                                    <div className={`text-xs truncate font-medium ${sfIsExisting ? 'text-amber-300' : 'text-cyan-300'}`}>
+                                      {sf.path.split('/').pop()}
+                                      <span className={`ml-1.5 text-[9px] font-normal ${
+                                        sf.complete ? 'text-emerald-400'
+                                        : sfIsExisting ? 'text-amber-500' : 'text-cyan-500'
+                                      }`}>
+                                        {sf.complete ? 'DONE' : sfIsExisting ? 'UPDATING...' : 'CREATING...'}
+                                      </span>
+                                    </div>
+                                    <div className="text-[10px] text-gray-600 truncate">{sf.path}</div>
+                                  </div>
+                                  {/* NEW vs MOD badge */}
+                                  <span className={`text-[8px] font-bold flex-shrink-0 ${
+                                    sfIsExisting ? 'text-amber-500' : 'text-emerald-500'
+                                  }`}>
+                                    {sfIsExisting ? 'MOD' : 'NEW'}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {projectFiles.length === 0 && streamingFiles.length === 0 ? (
                           <div className="flex flex-col items-center justify-center h-full text-center px-4 gap-2">
                             <svg className="w-6 h-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>
                             <p className="text-xs text-gray-500">No files yet</p>
@@ -716,23 +825,38 @@ function AppBuilderPageContent() {
                               return (
                                 <button
                                   key={file.id}
-                                  onClick={() => { setSelectedFile(file); setActiveToolTab('code'); }}
+                                  onClick={() => { setSelectedFile(file); setActiveStreamingFile(null); setActiveToolTab('code'); }}
                                   className={`w-full flex items-center gap-2 px-3 py-1.5 text-left transition-all group ${
                                     recentlyChangedFiles.has(file.path)
-                                      ? 'bg-emerald-500/10 border-l-2 border-emerald-400'
+                                      ? recentlyChangedFiles.get(file.path) === 'created'
+                                        ? 'bg-emerald-500/10 border-l-2 border-emerald-400'
+                                        : 'bg-amber-500/10 border-l-2 border-amber-400'
                                       : selectedFile?.id === file.id ? 'bg-white/5 border-l-2 border-emerald-400/50' : 'hover:bg-white/5 border-l-2 border-transparent'
                                   }`}
                                 >
                                   <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                                    recentlyChangedFiles.has(file.path) ? 'bg-emerald-400 animate-pulse'
-                                    : isMainFile ? 'bg-blue-400' : isCSS ? 'bg-purple-400' : 'bg-emerald-400'
+                                    recentlyChangedFiles.has(file.path)
+                                      ? recentlyChangedFiles.get(file.path) === 'created'
+                                        ? 'bg-emerald-400 animate-pulse'
+                                        : 'bg-amber-400 animate-pulse'
+                                      : isMainFile ? 'bg-blue-400' : isCSS ? 'bg-purple-400' : 'bg-emerald-400'
                                   }`} />
                                   <div className="flex-1 min-w-0">
                                     <div className={`text-xs truncate transition-colors ${
-                                      recentlyChangedFiles.has(file.path) ? 'text-emerald-300 font-medium' : 'text-gray-300 group-hover:text-white'
+                                      recentlyChangedFiles.has(file.path)
+                                        ? recentlyChangedFiles.get(file.path) === 'created'
+                                          ? 'text-emerald-300 font-medium'
+                                          : 'text-amber-300 font-medium'
+                                        : 'text-gray-300 group-hover:text-white'
                                     }`}>
                                       {file.name}
-                                      {recentlyChangedFiles.has(file.path) && <span className="ml-1.5 text-[9px] text-emerald-400 font-normal">NEW</span>}
+                                      {recentlyChangedFiles.has(file.path) && (
+                                        <span className={`ml-1.5 text-[9px] font-normal ${
+                                          recentlyChangedFiles.get(file.path) === 'created' ? 'text-emerald-400' : 'text-amber-400'
+                                        }`}>
+                                          {recentlyChangedFiles.get(file.path) === 'created' ? 'NEW' : 'MOD'}
+                                        </span>
+                                      )}
                                     </div>
                                     <div className="text-[10px] text-gray-600 truncate">{file.path}</div>
                                   </div>
@@ -741,6 +865,13 @@ function AppBuilderPageContent() {
                             })
                         )}
                       </div>
+                    ) : activeStreamingFile && streamingFiles.length > 0 ? (
+                      <StreamingCodeView
+                        streamingFiles={streamingFiles}
+                        activeFile={activeStreamingFile}
+                        onSelectFile={setActiveStreamingFile}
+                        projectFiles={projectFiles}
+                      />
                     ) : (
                       <ErrorBoundary componentName="Code Editor">
                         <CodeEditor

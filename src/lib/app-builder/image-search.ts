@@ -243,11 +243,23 @@ function getProductQueries(appType: string, brandName: string): string[] {
 export function formatImageMapForPrompt(imageMap: Record<string, ImageResult>): string {
   if (Object.keys(imageMap).length === 0) return '';
 
-  let text = '\n\nREAL IMAGE URLs (use these EXACT URLs instead of picsum.photos):\n';
+  const roleMapping: Record<string, string> = {
+    'hero': 'Hero section background or main image',
+    'feature': 'Feature section illustration',
+    'product-1': 'First product/service card image',
+    'product-2': 'Second product/service card image',
+    'product-3': 'Third product/service card image',
+    'product-4': 'Fourth product/service card image',
+  };
+
+  let text = '\n\n=== MANDATORY IMAGE URLS (DO NOT USE picsum.photos OR unsplash) ===\n';
+  text += 'You MUST use the following real image URLs in your components. Do NOT substitute, replace, or ignore them.\n\n';
   for (const [role, img] of Object.entries(imageMap)) {
-    text += `- ${role}: ${img.url} (alt: "${img.alt}")\n`;
+    const usage = roleMapping[role] || role.replace(/-/g, ' ');
+    text += `${role.toUpperCase()}: ${img.url}\n  alt="${img.alt}" | Use for: ${usage}\n`;
   }
-  text += 'Use these real image URLs in your components. If you need more images beyond these, use https://picsum.photos/seed/{descriptive-keyword}/{w}/{h} with app-specific keywords.\n';
+  text += '\nFor any ADDITIONAL images beyond these, use https://picsum.photos/seed/{descriptive-keyword}/{w}/{h} with app-specific keywords.\n';
+  text += '=== END MANDATORY IMAGES ===\n';
   return text;
 }
 

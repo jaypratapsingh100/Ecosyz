@@ -21,6 +21,8 @@ export default function PreviewPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [viewport, setViewport] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
+  const viewportWidths = { desktop: '100%', tablet: '768px', mobile: '375px' };
 
   // Prevent overlapping preview calls; queue one more refresh if requested while in flight
   const inFlightRef = useRef(false);
@@ -182,6 +184,27 @@ export default function PreviewPanel({
       {projectId && (
         <div className="flex-shrink-0 px-3 py-1.5 border-b border-white/10 bg-[#0d0d0d] flex items-center justify-between">
           <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Preview</span>
+          <div className="flex items-center gap-1">
+            {/* Viewport toggle: Desktop / Tablet / Mobile */}
+            {(['desktop', 'tablet', 'mobile'] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setViewport(v)}
+                className={`p-1 rounded transition-colors ${viewport === v ? 'bg-white/10 text-white' : 'text-gray-600 hover:text-gray-400'}`}
+                title={v.charAt(0).toUpperCase() + v.slice(1) + (v === 'tablet' ? ' (768px)' : v === 'mobile' ? ' (375px)' : '')}
+              >
+                {v === 'desktop' ? (
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></svg>
+                ) : v === 'tablet' ? (
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><rect x="4" y="2" width="16" height="20" rx="2" /><path d="M12 18h.01" /></svg>
+                ) : (
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><rect x="7" y="2" width="10" height="20" rx="2" /><path d="M12 18h.01" /></svg>
+                )}
+              </button>
+            ))}
+            <span className="w-px h-4 bg-white/10 mx-1" />
+          </div>
           <button
             type="button"
             onClick={() => generatePreview()}
@@ -200,7 +223,7 @@ export default function PreviewPanel({
           </button>
         </div>
       )}
-      <div className="w-full flex-1 min-h-0 relative">
+      <div className="w-full flex-1 min-h-0 relative flex justify-center" style={{ backgroundColor: viewport !== 'desktop' ? '#050505' : undefined }}>
         {loading && !previewHtml ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#050505]">
             <div className="relative flex flex-col items-center gap-4">
@@ -282,6 +305,15 @@ export default function PreviewPanel({
             </div>
           </div>
         ) : previewHtml ? (
+          <div
+            className="h-full mx-auto transition-all duration-300 ease-in-out"
+            style={{
+              width: viewportWidths[viewport],
+              maxWidth: '100%',
+              borderLeft: viewport !== 'desktop' ? '1px solid rgba(255,255,255,0.1)' : undefined,
+              borderRight: viewport !== 'desktop' ? '1px solid rgba(255,255,255,0.1)' : undefined,
+            }}
+          >
           <iframe
             ref={iframeRef}
             srcDoc={previewHtml}
@@ -317,6 +349,7 @@ export default function PreviewPanel({
               }
             }}
           />
+          </div>
         ) : (
           <div className="absolute inset-0 flex items-center justify-center p-8 bg-gradient-to-br from-[#0a0a0a] via-[#0d0d0d] to-[#0a0a0a]">
             <div className="text-center max-w-md mx-auto">

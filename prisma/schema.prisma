@@ -240,18 +240,30 @@ model AppProjectUpvote {
 }
 
 model AppFile {
-  id        String     @id @default(cuid())
+  id        String           @id @default(cuid())
   projectId String
-  project   AppProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   AppProject       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   path      String
   name      String
-  content   String     @db.Text
+  content   String           @db.Text
   language  String?
-  isMain    Boolean    @default(false)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  isMain    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  versions  AppFileVersion[]
 
   @@unique([projectId, path])
+}
+
+model AppFileVersion {
+  id        String   @id @default(cuid())
+  fileId    String
+  file      AppFile  @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  content   String   @db.Text
+  version   Int
+  createdAt DateTime @default(now())
+
+  @@index([fileId, version])
 }
 
 model AppImage {

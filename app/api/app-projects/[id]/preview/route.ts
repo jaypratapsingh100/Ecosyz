@@ -10,6 +10,7 @@ import { prisma } from '@/lib/db';
 import { getCurrentUser, ensureUserInDb } from '@/lib/auth';
 import { DEFAULT_APP_CONTENT, SCAFFOLD_STYLES, PREVIEW_BASE_CSS } from '@/app/lib/app-builder/scaffolds';
 import { stripForBrowser, sortComponentsByDependency } from '@/app/lib/app-builder/strip-for-browser';
+import { detectRequiredPackages, generateCDNScripts } from '@/lib/app-builder/cdn-packages';
 
 /**
  * Extract PascalCase component names (function Navbar, const Navbar =, class Navbar)
@@ -18,14 +19,43 @@ import { stripForBrowser, sortComponentsByDependency } from '@/app/lib/app-build
 function extractComponentNames(code: string): string[] {
   const names: string[] = [];
   const patterns = [
+    // PascalCase: React components, Context objects
     /(?:function)\s+([A-Z][a-zA-Z0-9]*)\s*\(/g,
     /(?:const|let|var)\s+([A-Z][a-zA-Z0-9]*)\s*=/g,
     /(?:class)\s+([A-Z][a-zA-Z0-9]*)\s+/g,
+    // camelCase hooks: useCart, useAuth, useDarkMode, etc.
+    /(?:const|let|var|function)\s+(use[A-Z][a-zA-Z0-9]*)\s*[=(]/g,
+    // camelCase variables: formatPrice, cartStore, initialProducts, etc.
+    /(?:const|let|var)\s+([a-z][a-zA-Z0-9]*)\s*=/g,
+    /function\s+([a-z][a-zA-Z0-9]*)\s*\(/g,
   ];
   for (const pat of patterns) {
     let m;
     while ((m = pat.exec(code)) !== null) {
-      names.push(m[1]);
+      const name = m[1];
+      // Skip React built-in hooks
+      if (/^use(State|Effect|Ref|Context|Reducer|Callback|Memo|Id|LayoutEffect|DeferredValue|Transition)$/.test(name)) continue;
+      // Skip short names (1-2 chars) — almost always local variables
+      if (name.length <= 2) continue;
+      // Skip common JS local variables, loop vars, destructured vars
+      const SKIP_NAMES = new Set([
+        'idx','key','val','ref','obj','arr','str','num','len','pos','col','row','map','set',
+        'acc','cur','sum','min','max','tmp','buf','msg','txt','src','dst','cls','tag','doc',
+        'win','nav','btn','img','svg','url','api','ctx','cfg','opt','arg','err','res','req',
+        'item','elem','node','list','name','type','path','file','line','char','word','text',
+        'body','head','root','base','self','args','opts','conf','spec','desc','meta','info',
+        'data','result','error','index','event','value','label','title','input','field',
+        'param','props','state','style','child','count','total','start','entry','query',
+        'timer','scope','store','cache','limit','model','token','match','block','level',
+        'width','height','length','color','status','option','config','format','handle',
+        'update','change','toggle','submit','render','create','remove','delete','filter',
+        'reduce','select','method','action','detail','target','source','origin','parent',
+        'prefix','suffix','cursor','offset','signal','promise','callback','response',
+        'resolve','reject','timeout','interval','boolean','number','string','symbol',
+        'object','module','window','global','import','export','return',
+      ]);
+      if (SKIP_NAMES.has(name)) continue;
+      names.push(name);
     }
   }
   return [...new Set(names)];
@@ -170,7 +200,7 @@ export async function POST(
     for (const cssFile of cssFiles) {
       const name = cssFile.path.split('/').pop() || cssFile.path;
       html = html.replace(
-        new RegExp(`<link[^>]*href=["']([^"']*${name.replace('.', '\\.')})["'][^>]*>`, 'gi'),
+        new RegExp(`<link[^>]*href=["']([^"']*${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})["'][^>]*>`, 'gi'),
         ''
       );
     }
@@ -180,6 +210,7 @@ export async function POST(
     // Tailwind CSS via CDN with extended config for production-grade output
     const tailwindCdn = `<script src="https://cdn.tailwindcss.com"></script>
     <script>tailwind.config = {
+      darkMode: 'class',
       theme: {
         extend: {
           fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
@@ -194,7 +225,16 @@ export async function POST(
           },
         },
       },
-    }</script>`;
+    }</script>
+    <script>
+    // Auto-detect dark mode: if app uses dark bg classes, enable Tailwind dark: utilities
+    document.addEventListener('DOMContentLoaded', function() {
+      var b = document.body, h = document.documentElement;
+      var isDark = b.className && /bg-(gray|slate)-(800|900|950)|bg-black/.test(b.className);
+      if (!isDark) { var first = b.firstElementChild; if (first) isDark = /bg-(gray|slate)-(800|900|950)|bg-black/.test(first.className || ''); }
+      if (isDark || h.classList.contains('dark')) h.classList.add('dark');
+    });
+    </script>`;
     // Global styles for polished preview rendering
     const previewStyles = `<style id="preview-globals">
       html { scroll-behavior: smooth; }
@@ -373,6 +413,21 @@ export async function POST(
             html = reactScripts + '\n' + html;
           }
         }
+
+        // Conditionally inject CDN packages (recharts, lucide-react, supabase) based on imports
+        const requiredPkgs = detectRequiredPackages(
+          project.files.map((f: { content: string }) => ({ content: f.content || '' }))
+        );
+        if (requiredPkgs.length > 0) {
+          const cdnScripts = generateCDNScripts(requiredPkgs);
+          if (html.includes('</head>')) {
+            html = html.replace('</head>', `${cdnScripts}\n</head>`);
+          } else {
+            html = cdnScripts + '\n' + html;
+          }
+          console.log(`📦 CDN: Injected ${requiredPkgs.map(p => p.name).join(', ')}`);
+        }
+
         if (!html.includes('<div id="root">') && !html.includes('<div id=\'root\'>')) {
           if (html.includes('</body>')) {
             html = html.replace('</body>', '  <div id="root"></div>\n</body>');
@@ -387,9 +442,11 @@ export async function POST(
         // Component files (ToDoList, ToDoForm, etc.) - inject before App so they're in scope
         const componentFiles = project.files.filter(
         (f: { path: string; language: string | null }) =>
-            (f.language === 'jsx' || f.language === 'tsx' || f.path.endsWith('.jsx') || f.path.endsWith('.tsx')) &&
+            (f.language === 'jsx' || f.language === 'tsx' || f.language === 'javascript' || f.language === 'typescript' ||
+             f.path.endsWith('.jsx') || f.path.endsWith('.tsx') || f.path.endsWith('.js') || f.path.endsWith('.ts')) &&
             f.path !== mainJsFile.path &&
-            !f.path.match(/^src\/main\.(jsx|tsx)$/) // Exclude entry - we inject App directly
+            !f.path.match(/^src\/main\.(jsx?|tsx?)$/) && // Exclude entry - we inject App directly
+            !f.path.match(/^(package\.json|vite\.config\.|tsconfig\.|postcss\.config\.|tailwind\.config\.)/) // Exclude config files
         );
         // Sort: dependencies first (TodoItem before TodoList, etc.)
         const sortedComponents = sortComponentsByDependency(componentFiles);
@@ -552,11 +609,50 @@ export async function POST(
         // Inject the App.jsx component with proper React rendering
         let appContent = mainJsFile.content
           .replace(/export\s+default\s+/g, '')
-          .replace(/export\s+(?:const|let|var|function|class)\s+/g, (m) => m.replace(/^export\s+/, ''))
+        // BEFORE stripping imports: extract import aliases so we can register them on window
+        // e.g., "import Testimonials from './components/TestimonialSection'" → alias Testimonials → TestimonialSection
+        const importAliases: Array<{alias: string; source: string}> = [];
+        const importRegex = /import\s+(\w+)\s+from\s+['"]\.\/(?:components|pages|hooks|context|store|lib|utils)\/(\w+)(?:\.jsx?|\.tsx?)?['"]/g;
+        let importMatch;
+        while ((importMatch = importRegex.exec(appContent)) !== null) {
+          const alias = importMatch[1];
+          const sourceName = importMatch[2];
+          if (alias !== sourceName) {
+            importAliases.push({ alias, source: sourceName });
+          }
+        }
+
+        // BEFORE stripping: extract CDN package named imports for strict-mode compatibility
+        const cdnImportNames: string[] = [];
+        const cdnPkgs = ['lucide-react', 'recharts', '@supabase/supabase-js'];
+        for (const pkg of cdnPkgs) {
+          const escaped = pkg.replace(/[/\\@]/g, '\\$&');
+          const re = new RegExp(`import\\s+\\{([^}]+)\\}\\s+from\\s+['"]${escaped}['"]`, 'g');
+          let m;
+          while ((m = re.exec(appContent)) !== null) {
+            const names = m[1].split(',').map(n => n.trim().split(/\s+as\s+/).pop()!.trim()).filter(Boolean);
+            cdnImportNames.push(...names);
+          }
+        }
+
+        appContent = appContent
+          .replace(/export\s+default\s+/g, '')
+          .replace(/export\s+(?:const|let|var|function|class)\s+/g, (em) => em.replace(/^export\s+/, ''))
           .replace(/import\s+[\s\S]*?from\s+['"][^'"]*['"]\s*;?\s*/g, '') // Remove ES6 imports (components injected above)
           .replace(/import\s+['"][^'"]*['"]\s*;?\s*/g, '') // Remove bare side-effect imports (e.g. import './index.css')
           .replace(/(?:const|let|var)\s+\w+\s*=\s*require\s*\(\s*['"][^'"]*['"]\s*\)\s*;?\s*/g, '') // Remove require() assignments
           .replace(/require\s*\(\s*['"][^'"]*['"]\s*\)\s*;?\s*/g, ''); // Remove standalone require() calls
+
+        // Register import aliases on window so App.jsx can find components by their import name
+        // e.g., if App imports "Testimonials" from "./components/TestimonialSection",
+        // register window.Testimonials = window.TestimonialSection
+        if (importAliases.length > 0) {
+          const aliasLines = importAliases
+            .map(a => `if (typeof window["${a.source}"] !== "undefined" && typeof ${a.alias} === "undefined") { var ${a.alias} = window["${a.source}"]; window["${a.alias}"] = ${a.alias}; }`)
+            .join('\n');
+          appContent = aliasLines + '\n' + appContent;
+        }
+
         appContent = appContent.trim();
         // Ensure all common React hooks/utilities are in scope in iframe (same as component files)
         const appUsesReactApi = /use(State|Effect|Ref|Context|Reducer|Callback|Memo|Id|LayoutEffect|DeferredValue|Transition)\s*\(/.test(appContent)
@@ -586,6 +682,15 @@ const useLocation = window.useLocation;
 const useParams = window.useParams;
 `;
           appContent = routerStub + appContent;
+        }
+
+        // Inject window references for CDN-backed package imports (lucide-react icons, etc.)
+        if (cdnImportNames.length > 0) {
+          const uniqueCdn = [...new Set(cdnImportNames)];
+          const cdnDeclarations = uniqueCdn
+            .map(name => `const ${name} = window["${name}"];`)
+            .join('\n');
+          appContent = cdnDeclarations + '\n' + appContent;
         }
 
         // CRITICAL: Escape </script> so HTML parser doesn't close script tag early

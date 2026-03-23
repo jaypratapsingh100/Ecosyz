@@ -34,6 +34,8 @@ export interface PipelineConfig {
   userMessage?: string;
   /** Existing project files from DB for fix-loop context */
   existingFiles?: Array<{ path: string; content: string }>;
+  /** If true, skip saving files that already exist (continuation mode) */
+  isContinuation?: boolean;
   /** Callback for each file created (for SSE streaming) */
   onFileCreated?: (result: FileCreationResult) => void;
   /** Callback for pipeline status updates */
@@ -75,6 +77,7 @@ export async function runGenerationPipeline(
     skipValidation = false,
     userMessage,
     existingFiles,
+    isContinuation = false,
     onFileCreated,
     onStatus,
   } = config;
@@ -100,9 +103,32 @@ export async function runGenerationPipeline(
 
   // Step 2: Filter protected scaffold paths
   onStatus?.('filtering');
-  const { allowed, rejected: rejectedPaths } = filterAIFiles(parsedFiles);
+  const { allowed: scaffoldFiltered, rejected: rejectedPaths } = filterAIFiles(parsedFiles);
   if (rejectedPaths.length > 0) {
     console.warn(`🛡️ Pipeline: Blocked ${rejectedPaths.length} protected paths:`, rejectedPaths);
+  }
+
+  // Step 2b: Continuation mode — skip files that already exist in the project
+  // This prevents the AI from overwriting previously generated files when "continuing"
+  // EXCEPTION: Always allow App.jsx to be overwritten if it still has scaffold default content
+  let allowed = scaffoldFiltered;
+  if (isContinuation && existingFiles && existingFiles.length > 0) {
+    const existingMap = new Map(existingFiles.map(f => [f.path, f.content]));
+    const isScaffoldDefault = (path: string) => {
+      const content = existingMap.get(path) || '';
+      return content.includes('Welcome to your new app') || content.includes('tell me what kind of product');
+    };
+    const newOnly = allowed.filter(f => {
+      // Always allow overwriting scaffold defaults (App.jsx, index.css with placeholder content)
+      if (isScaffoldDefault(f.path)) return true;
+      // Skip files that already exist with real content
+      return !existingMap.has(f.path);
+    });
+    const skippedPaths = allowed.filter(f => existingMap.has(f.path) && !isScaffoldDefault(f.path)).map(f => f.path);
+    if (skippedPaths.length > 0) {
+      console.log(`🔄 Pipeline (continuation): Skipping ${skippedPaths.length} existing files:`, skippedPaths);
+    }
+    allowed = newOnly;
   }
 
   // Step 3: Sanitize imports

@@ -29,6 +29,20 @@ export const maxDuration = 300;
 
 type FileCreationResult = { path: string; success: boolean; error?: string; validated?: boolean; validationError?: string; sandboxIssues?: string[] };
 
+/** Summarize an AI response to ~200 chars for conversation memory (avoid sending full code) */
+function summarizeAIResponse(content: string): string {
+  if (!content || content.length < 200) return content;
+  // Try to extract the summary field from JSON response
+  const summaryMatch = content.match(/"summary"\s*:\s*"([^"]+)"/);
+  if (summaryMatch) return `[Generated files] ${summaryMatch[1].slice(0, 200)}`;
+  // Try to extract file paths created
+  const paths = [...content.matchAll(/"path"\s*:\s*"([^"]+)"/g)].map(m => m[1]);
+  if (paths.length > 0) return `[Generated ${paths.length} files: ${paths.join(', ').slice(0, 200)}]`;
+  // Fallback: first 200 chars of non-code content
+  const textOnly = content.replace(/```[\s\S]*?```/g, '[code]').replace(/\{[\s\S]*?\}/g, '[json]');
+  return textOnly.slice(0, 200) + '...';
+}
+
 // GET endpoint to fetch chat history
 export async function GET(
   req: NextRequest,
@@ -657,7 +671,7 @@ export async function POST(
             }
           }
           promptRes = buildAppBuilderPrompts({
-            message: message + imagePromptSection,
+            message: message,
             questionnaireData,
             frameworkForScaffold,
             useTypeScript,
@@ -679,18 +693,39 @@ export async function POST(
           const coderParams = getStageParams('coder');
           let fullResponse = '';
 
+          // ── CONVERSATION MEMORY: Load chat history for context ──
+          let chatHistoryMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+          try {
+            const existingChatForHistory = await prisma.appChat.findFirst({ where: { projectId: id } });
+            if (existingChatForHistory?.messages) {
+              const allMsgs = existingChatForHistory.messages as Array<{ role: string; content: string }>;
+              // Take last 6 messages, summarize AI responses to save tokens
+              const recent = allMsgs.slice(-6);
+              chatHistoryMessages = recent.map(m => ({
+                role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+                content: m.role === 'user'
+                  ? m.content.slice(0, 500) // User messages: keep first 500 chars
+                  : summarizeAIResponse(m.content), // AI responses: summarize to ~200 chars
+              }));
+            }
+          } catch { /* non-critical */ }
+
           const streamWithProvider = async (aiClient: typeof client, aiModel: string, aiMaxTokens: number) => {
             const streamStartMs = Date.now();
             let firstTokenMs: number | null = null;
             streamUsage = null;
             streamGenerationId = undefined;
 
+            // Build messages array: system + chat history + current user message
+            const aiMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+              { role: 'system', content: promptRes.systemPrompt },
+              ...chatHistoryMessages,
+              { role: 'user', content: promptRes.userMessage },
+            ];
+
             const completion = await aiClient.chat.completions.create({
               model: aiModel,
-              messages: [
-                { role: 'system', content: promptRes.systemPrompt },
-                { role: 'user', content: promptRes.userMessage },
-              ],
+              messages: aiMessages,
               temperature: coderParams.temperature,
               top_p: coderParams.top_p,
               max_tokens: aiMaxTokens,
@@ -763,6 +798,13 @@ export async function POST(
                 throw primaryErr; // No fallback available
               }
             } else {
+              // Check for credit/billing errors — show friendly message
+              const errMsg = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
+              if (errMsg.includes('402') || errMsg.includes('credits') || errMsg.includes('afford') || errMsg.includes('insufficient')) {
+                emit({ type: 'error', data: { message: 'Insufficient API credits. Please add credits at your AI provider dashboard (e.g., openrouter.ai/settings/credits) and try again.' } });
+                close();
+                return;
+              }
               throw primaryErr; // Not retryable
             }
           }
@@ -770,6 +812,7 @@ export async function POST(
           // ── Parse, validate, and create files via deterministic pipeline ──
           emit({ type: 'status', data: 'creating-files' });
 
+          const isContinuationRequest = message.startsWith('[CONTINUE]');
           const pipelineResult = await runGenerationPipeline({
             projectId: id,
             responseText: fullResponse,
@@ -779,6 +822,7 @@ export async function POST(
             maxFixRetries: 2,
             userMessage: message,
             existingFiles: project.files?.map((f: { path: string; content: string }) => ({ path: f.path, content: f.content })),
+            isContinuation: isContinuationRequest,
             onFileCreated: (result) => {
               emit({ type: 'file-created', data: result });
             },
@@ -799,11 +843,12 @@ export async function POST(
           }
 
           // ── Auto-retry (fast providers only) — if too few files created ──
-          if (!slowProvider && !usedFallback) {
-            const jsxCreated = createdPaths.filter(p => p.endsWith('.jsx') || p.endsWith('.tsx'));
+          // Skip retry for continuation/edit requests (they intentionally produce fewer files)
+          if (!slowProvider && !usedFallback && !isContinuationRequest && !message.startsWith('[CONTINUE]')) {
+            const jsxCreated = createdPaths.filter(p => p.endsWith('.jsx') || p.endsWith('.tsx') || p.endsWith('.js'));
             const planExpected = streamPlan?.files?.length ?? 0;
 
-            if (jsxCreated.length < 3 && planExpected > 3) {
+            if (jsxCreated.length < 2 && planExpected > 4) {
               emit({ type: 'status', data: 'retrying' });
               try {
                 const missingFiles = (streamPlan?.files?.map(f => f.path) ?? []).filter(p => !createdPaths.includes(p));

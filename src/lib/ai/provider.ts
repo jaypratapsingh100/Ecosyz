@@ -147,22 +147,24 @@ export const PROVIDER_GROUPS = [
  */
 export function getMaxOutputTokens(provider: AIProvider, model?: string): number {
   if (provider === 'openrouter' && model) {
-    // Gemini models — fast with high output limits
-    if (model.startsWith('google/gemini')) return 16384;
+    // Gemini Flash — good balance of speed and output
+    if (model.includes('gemini-2.5-flash')) return 8192;
+    // Gemini Pro — allow more output for quality
+    if (model.includes('gemini-2.5-pro')) return 12288;
     // Claude/GPT via OpenRouter
-    if (model.startsWith('anthropic/') || model.startsWith('openai/')) return 16384;
-    // Llama, Mistral — 16K output
-    if (model.startsWith('meta-llama/') || model.startsWith('mistralai/')) return 16384;
-    // DeepSeek — keep lower for speed through proxy
+    if (model.startsWith('anthropic/') || model.startsWith('openai/')) return 8192;
+    // Llama, Mistral
+    if (model.startsWith('meta-llama/') || model.startsWith('mistralai/')) return 8192;
+    // DeepSeek — keep lower for speed
     if (model.startsWith('deepseek/')) return 8192;
-    // Qwen Coder — 8K max
+    // Qwen Coder
     if (model.startsWith('qwen/')) return 8192;
     return 8192;
   }
   switch (provider) {
-    case 'anthropic': return 16384;
-    case 'openai': return 16384;
-    case 'groq': return 16384;
+    case 'anthropic': return 8192;
+    case 'openai': return 8192;
+    case 'groq': return 8192;
     case 'openrouter': return 8192;
     default: return 8192;
   }

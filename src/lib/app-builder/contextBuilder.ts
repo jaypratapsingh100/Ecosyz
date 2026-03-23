@@ -4,6 +4,7 @@ import type {
 } from '@/app/types/app-builder';
 import { buildSystemPrompt, buildUserPrompt, buildCompactSystemPrompt } from '@/lib/app-builder/promptBuilder';
 import { mapDesignStyleToTheme } from '@/lib/app-builder/themePresets';
+import { analyzeProject, formatProjectStatusForPrompt } from '@/lib/app-builder/project-analyzer';
 
 export interface AppBuilderPromptInput {
   message: string;
@@ -55,8 +56,10 @@ export function buildAppBuilderPrompts(input: AppBuilderPromptInput): AppBuilder
   const designStyle = (questionnaireData?.designStyle as string) || undefined;
   const colorScheme = (questionnaireData?.colorScheme as string) || undefined;
   const appType = (questionnaireData?.appType as string) || undefined;
+  const brandName = (questionnaireData?.brandName as string) || undefined;
+  const projectGoal = (questionnaireData?.projectGoal as string) || undefined;
 
-  // Base Lovable/Replit-style system prompt with theme + color + layout DNA injection
+  // Base Lovable/Replit-style system prompt with theme + color + layout DNA + industry context
   let systemPrompt = buildSystemPrompt({
     framework: frameworkForScaffold,
     language: useTypeScript ? 'typescript' : 'javascript',
@@ -65,6 +68,8 @@ export function buildAppBuilderPrompts(input: AppBuilderPromptInput): AppBuilder
     themeId,
     designStyle,
     colorScheme,
+    brandName,
+    projectGoal,
     appType,
   });
 
@@ -99,6 +104,52 @@ export function buildAppBuilderPrompts(input: AppBuilderPromptInput): AppBuilder
   }
   if (hasScaffoldFiles && existingFilePaths.length > 0) {
     userMessage += `\n\nEXTEND existing files. Add imports and render new components in App.${fileExtension}.`;
+  }
+
+  // ── PROJECT ANALYSIS: Context-aware state tracking ──
+  const isContinuation = message.startsWith('[CONTINUE]');
+  const SCAFFOLD_ONLY = new Set([
+    'index.html', 'src/App.jsx', 'src/App.tsx', 'src/main.jsx', 'src/main.tsx',
+    'src/index.css', 'package.json', 'vite.config.js', 'README.md',
+  ]);
+  const hasUserGeneratedFiles = existingFilePaths.some(p => !SCAFFOLD_ONLY.has(p));
+
+  // Run project analysis when files exist — gives AI full context
+  if (hasUserGeneratedFiles && input.projectFiles.length > 0) {
+    const projectStatus = analyzeProject(
+      input.projectFiles.map(f => ({ path: f.path, content: f.content || '' })),
+      (questionnaireData?.requiredFeatures as string[]) || undefined,
+    );
+    const statusPrompt = formatProjectStatusForPrompt(projectStatus);
+
+    if (isContinuation) {
+      systemPrompt += `\n\nCONTINUATION MODE (OVERRIDES previous rules):
+- This is a CONTINUATION of a truncated generation.
+- Generate ONLY the files that are MISSING. Do NOT regenerate files that already exist.
+- The minimum file count rule does NOT apply. If only 1 file is missing, return only that 1 file.
+- Match the existing design system, theme, colors, and component naming patterns.
+${statusPrompt}`;
+      console.log(`🔄 CONTINUATION: ${projectStatus.health} — ${projectStatus.healthDetails}`);
+    } else {
+      // Check if App.jsx still has scaffold default content
+      const appContent = input.projectFiles.find(f => f.path === `src/App.${fileExtension}`)?.content || '';
+      const appIsScaffold = appContent.includes('Welcome to your new app') || appContent.includes('tell me what kind of product');
+
+      if (appIsScaffold) {
+        systemPrompt += '\n\nIMPORTANT: src/App.' + fileExtension + ' currently has placeholder content. You MUST generate a real App.' + fileExtension + ' that imports and renders all the components. This is the MOST critical file.';
+      } else {
+        systemPrompt += '\n\nEDIT MODE (OVERRIDES "return ALL files" and "minimum 4 files" rules):'
+          + '\nThis project already has ' + existingFilePaths.length + ' files. The user is requesting a MODIFICATION, not a full rebuild.'
+          + '\n- Do NOT regenerate the entire app. Only output files that need to CHANGE.'
+          + '\n- If the user asks to "fix" something, only fix that specific file.'
+          + '\n- If the user asks to "add" something, create the new file(s) AND update App.' + fileExtension + ' to import/render them.'
+          + '\n- The minimum file count rule does NOT apply.'
+          + '\n- Do NOT change the app\'s architecture, component names, theme, or routing pattern.'
+          + '\n- PRESERVE all existing imports, components, and state management patterns.';
+      }
+      systemPrompt += '\n' + statusPrompt;
+      console.log('✏️ EDIT MODE: ' + projectStatus.health + ' — ' + projectStatus.healthDetails);
+    }
   }
 
   // CURSOR-LIKE: Include current file context for editing
@@ -210,7 +261,7 @@ export function buildFastPathPrompts(input: Omit<AppBuilderPromptInput, 'plan' |
   const appType = (questionnaireData?.appType as string) || undefined;
 
   // Compact system prompt with theme + color + layout DNA injection
-  const systemPrompt = buildCompactSystemPrompt({
+  let systemPrompt = buildCompactSystemPrompt({
     framework: frameworkForScaffold,
     language: useTypeScript ? 'typescript' : 'javascript',
     filePaths: existingFilePaths,
@@ -253,7 +304,28 @@ export function buildFastPathPrompts(input: Omit<AppBuilderPromptInput, 'plan' |
     }
   }
 
-  userMessage += `\n\nReturn ALL files as JSON. Include App + every component it imports as separate files.`;
+  // Edit mode for fast path — same logic as full path
+  const FP_SCAFFOLD = new Set([
+    'index.html', 'src/App.jsx', 'src/App.tsx', 'src/main.jsx', 'src/main.tsx',
+    'src/index.css', 'package.json', 'vite.config.js', 'README.md',
+  ]);
+  const fpHasUserFiles = existingFilePaths.some(p => !FP_SCAFFOLD.has(p));
+  if (fpHasUserFiles && input.projectFiles.length > 0) {
+    // Compact project analysis for fast path
+    const fpStatus = analyzeProject(
+      input.projectFiles.map(f => ({ path: f.path, content: f.content || '' })),
+    );
+    const issues = [
+      ...fpStatus.unresolvedImports.map(i => `MISSING: ${i.importPath} (imported by ${i.importedBy})`),
+      ...fpStatus.missingPages.map(p => `MISSING PAGE: ${p}`),
+      ...fpStatus.undefinedComponents.map(c => `UNDEFINED: <${c} />`),
+    ];
+    const issueStr = issues.length > 0 ? `\nISSUES TO FIX:\n${issues.join('\n')}` : '';
+    systemPrompt += `\nEDIT MODE: Project has ${existingFilePaths.length} files (${fpStatus.health}). Only output files that need to CHANGE.${issueStr}\nExisting: ${existingFilePaths.join(', ')}`;
+    userMessage += `\n\nOnly return files that need to change. Do NOT regenerate the entire app.`;
+  } else {
+    userMessage += `\n\nReturn ALL files as JSON. Include App + every component it imports as separate files.`;
+  }
 
   const approxSystemTokens = Math.ceil(systemPrompt.length / 4);
   const approxUserTokens = Math.ceil(userMessage.length / 4);
